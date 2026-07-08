@@ -1,0 +1,38 @@
+# ══ 密鑰 / 環境（絕不進版控）══
+.env
+.env.*
+!.env.example
+*.secret
+*secrets*.env
+.ailivex_secrets.env
+
+# ── 你的私有角色（範例保留，實際角色不進版控）──
+config/character.md
+
+# ── 執行期資料 ──
+data/
+*.db
+*.sqlite
+*.jsonl
+*.log
+*.wav
+*.pcm
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*-venv/
+*.egg-info/
+
+# ── Node / 前端 ──
+node_modules/
+.next/
+dist/
+build/
+
+# ── 備份 / 雜項 ──
+*.bak
+*.bak_*
+.DS_Store
