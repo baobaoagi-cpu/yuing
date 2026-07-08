@@ -1,0 +1,13 @@
+# Voice Companion 後端依賴
+flask>=3.0
+pyjwt>=2.8
+requests>=2.31
+python-dotenv>=1.0
+
+# 會議 STT（模組 B）依你選的供應商而定，擇一安裝：
+#   deepgram-sdk>=3.0      # Deepgram
+#   （或你自己的 STT client）
+
+# LLM 摘要 / 對話（會議記要、健康檢查）：
+#   anthropic>=0.30        # Claude
+#   （MiniMax / Gemini 走 HTTP，requests 即可）

@@ -1,0 +1,20 @@
+# ailivex-realtime-agent dependencies
+# LiveKit 套件全部鎖 ==1.5.1（版本不一致會 ChunkedStream crash）
+livekit>=1.0.0,<2.0.0
+livekit-agents==1.5.1
+livekit-plugins-silero==1.5.1
+livekit-plugins-anthropic==1.5.1
+livekit-plugins-soniox==1.5.1
+
+# MiniMax 自訂 wrapper（官方 plugin 不相容 1.5.x）
+aiohttp>=3.9.0
+
+# 繁→簡硬轉（MiniMax 簡體發音穩定，不靠 LLM prompt 拜託，程式保證）
+opencc-python-reimplemented>=0.1.7
+
+# Firestore
+firebase-admin>=6.5.0
+
+python-dotenv>=1.0.0
+numpy>=1.24.0
+httpx>=0.26.0

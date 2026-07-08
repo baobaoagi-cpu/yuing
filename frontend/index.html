@@ -1,0 +1,2151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="Voice Companion" />
+<title>Voice Companion · 跟AI 夥伴通話</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/yuling-icon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/yuling-icon-180.png" />
+<style>
+  :root{ --ink:#000; --light:#fff; --dim:rgba(255,255,255,.55); --faint:rgba(255,255,255,.12);
+         --live:#1d9e75; --warn:#d85a30; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; background:var(--ink); color:var(--light);
+    font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    overscroll-behavior:none; }
+  body{ display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+    padding:max(6vh,32px) 24px max(8vh,40px); text-align:center; }
+  .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+  .top{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .clock{ font-size:13px; color:var(--dim); letter-spacing:.06em; margin-bottom:4px; }
+  .name{ font-size:26px; font-weight:500; letter-spacing:.08em; }
+  .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
+
+  #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  /* 去背AI 夥伴: 鎖定右下角, 各裝置自適應, 不擋點擊 */
+  #bao-bg{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
+    width:min(40vw,260px); height:auto; opacity:.92; user-select:none;
+    -webkit-user-drag:none; }
+  .stage{ flex:1; }
+  .top, .controls{ position:relative; z-index:2; }
+  .gear, .lamps, .panel{ z-index:3; }
+
+  .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
+  .btn{ border:none; background:none; color:var(--light); cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:8px; font-size:13px; color:var(--dim); }
+  /* 靜音鈕過場: 待機縮在掛斷球中心(scale.2/透明), 連線滑出左側長大 */
+  .mutefab{ position:absolute; left:50%; top:10px;
+    transform:translateX(-50%) scale(.2); opacity:0; pointer-events:none;
+    transition:transform .5s cubic-bezier(.34,1.25,.5,1), opacity .4s ease; }
+  .mutefab.show{ transform:translateX(calc(-50% - 102px)) scale(1); opacity:1; pointer-events:auto; }
+  .circle{ width:64px; height:64px; border-radius:50%; border:1px solid var(--faint);
+    display:flex; align-items:center; justify-content:center; transition:background .2s, opacity .2s; }
+  .circle svg{ width:26px; height:26px; }
+  .btn:active .circle{ transform:scale(.94); }
+  .call{ width:84px; height:84px; }
+  .call.go{ background:var(--live); border-color:var(--live); }
+  .call.end{ background:var(--warn); border-color:var(--warn); }
+  .btn[disabled]{ opacity:.3; pointer-events:none; }
+  .hidden{ display:none !important; }
+
+  .gear{ position:absolute; top:max(4vh,18px); left:20px; color:var(--dim);
+    background:none; border:none; cursor:pointer; padding:8px; }
+  .gear svg{ width:22px; height:22px; }
+
+  /* 整排置中、單行不換行 → 6 顆燈一行排得下 (記憶不掉到第二行) */
+  .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
+    flex-wrap:nowrap; justify-content:center; gap:9px; padding:0 8px; }
+  .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
+    letter-spacing:0; white-space:nowrap; flex:none; }
+  .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
+    flex:none; transition:background .3s, box-shadow .3s; }
+  .lamp.ok   .dot{ background:var(--live); box-shadow:0 0 6px rgba(29,158,117,.7); }
+  .lamp.bad  .dot{ background:var(--warn); box-shadow:0 0 6px rgba(216,90,48,.7); }
+  .lamp.warn .dot{ background:#e0a52e; box-shadow:0 0 6px rgba(224,165,46,.6); }
+  .lamp.ok{ color:rgba(255,255,255,.8); }
+  .panel{ position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.94);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    padding:32px; }
+  .panel input{ width:min(86vw,320px); height:46px; background:#0c0c0c; border:1px solid var(--faint);
+    color:var(--light); border-radius:12px; padding:0 16px; font-size:16px; text-align:center; }
+  .panel label{ font-size:14px; color:var(--dim); }
+  .panel .save{ background:var(--light); color:var(--ink); border:none; border-radius:12px;
+    padding:12px 32px; font-size:16px; font-weight:500; cursor:pointer; }
+  .hint{ font-size:12px; color:var(--dim); max-width:300px; line-height:1.6; }
+  .panel .linkbtn{ background:none; border:1px solid var(--faint); color:var(--dim);
+    border-radius:12px; padding:11px 26px; font-size:15px; cursor:pointer; }
+  .panel .linkbtn:hover{ color:var(--light); border-color:var(--dim); }
+  /* 對話紀錄面板 */
+  .logpanel{ justify-content:flex-start; padding:0; background:#090a05; }
+  .logbar{ display:flex; align-items:center; gap:14px; width:100%;
+    padding:max(4vh,18px) 20px 14px; border-bottom:1px solid var(--faint); }
+  .logbar button{ background:none; border:none; color:var(--dim); font-size:16px; cursor:pointer; padding:4px; }
+  .logbar button:hover{ color:var(--light); }
+  .logbar .ttl{ font-size:16px; color:var(--light); font-weight:500; }
+  .logbody{ flex:1; width:100%; max-width:560px; overflow-y:auto;
+    padding:14px 18px 28px; display:flex; flex-direction:column; gap:10px;
+    -webkit-overflow-scrolling:touch; }
+  .logbody.detail{ max-width:920px; gap:16px; }
+  .logempty{ color:var(--dim); font-size:14px; text-align:center; margin-top:40px; line-height:1.8; }
+  .callitem{ background:#0c0c0c; border:1px solid var(--faint); border-radius:14px;
+    padding:14px 16px; cursor:pointer; text-align:left; }
+  .callitem:hover{ border-color:var(--dim); }
+  .callitem .when{ font-size:14px; color:var(--light); }
+  .callitem .meta{ font-size:12px; color:var(--dim); margin-top:3px; }
+  .callitem .prev{ font-size:13px; color:var(--dim); margin-top:7px; line-height:1.5;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .turn{ max-width:82%; padding:9px 13px; border-radius:14px; font-size:15px; line-height:1.55; }
+  .turn .tts{ display:block; font-size:10px; color:var(--dim); margin-bottom:3px; opacity:.7; }
+  .turn.bao{ align-self:flex-start; background:#141414; border:1px solid var(--faint);
+    color:var(--light); border-bottom-left-radius:4px; }
+  .turn.coach{ align-self:flex-end; background:#1d2733; color:#dfeaf5; border-bottom-right-radius:4px; }
+  .turn.coach .tts{ text-align:right; }
+  .audiobar{ position:relative; background:rgba(0,0,0,.96); border:1px solid var(--faint);
+    border-radius:14px; padding:12px 14px; display:flex; flex-direction:column; gap:10px; margin-bottom:4px; }
+  .audiobar.primary{ position:sticky; top:0; z-index:2; }
+  .audiobar audio{ width:100%; height:34px; }
+  .audiobar .noaud{ font-size:13px; color:var(--dim); text-align:center; }
+  .audiobar .keeprow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .audiobar .keepstatus{ font-size:12px; color:var(--dim); }
+  .keepbtn{ background:none; border:1px solid var(--faint); color:var(--dim);
+    border-radius:10px; padding:8px 16px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .keepbtn.on{ background:rgba(224,165,46,.16); border-color:#e0a52e; color:#e8c46a; }
+  .callitem .badges{ font-size:12px; margin-top:4px; }
+  .detailgrid{ display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
+  .detailmeta{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+  .timelinecard{ display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .turnlist{ display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .verlink{ position:relative; z-index:3; background:none; border:none; color:rgba(255,255,255,.34); font-size:11px;
+    letter-spacing:.1em; cursor:pointer; padding:6px 12px; }
+  .verlink:hover{ color:var(--dim); }
+  .veritem{ border:1px solid var(--faint); border-radius:12px; padding:12px 14px; }
+  .veritem .vh{ display:flex; align-items:center; gap:8px; }
+  .veritem .vtype{ font-size:11px; padding:2px 9px; border-radius:6px; white-space:nowrap; }
+  .veritem .vtime{ font-size:11px; color:var(--dim); letter-spacing:.04em; }
+  .veritem .vtitle{ font-size:14px; color:var(--light); margin-top:7px; line-height:1.5; }
+  .veritem .vdesc{ font-size:12px; color:var(--dim); margin-top:4px; line-height:1.55; }
+  .inneritem{ border:1px solid var(--faint); border-left:2px solid rgba(255,255,255,.18);
+    border-radius:12px; padding:13px 16px; }
+  .inneritem .it{ font-size:11px; color:var(--dim); margin-bottom:7px; letter-spacing:.04em; }
+  .inneritem .ix{ font-size:14px; color:rgba(255,255,255,.82); line-height:1.7; white-space:pre-wrap; }
+  .callpane{ position:relative; z-index:2; transition:transform .34s ease, opacity .34s ease; will-change:transform,opacity; touch-action:pan-y; }
+  .meetingview{ position:fixed; inset:0; z-index:2; padding:max(7.4vh,58px) 16px max(4.8vh,22px);
+    display:flex; align-items:stretch; justify-content:flex-start; pointer-events:none; opacity:0; touch-action:pan-y;
+    transform:translate3d(calc(-100% - 18px),0,0); transition:transform .34s ease, opacity .34s ease; }
+  .meetingview.open{ pointer-events:auto; opacity:1; transform:translate3d(0,0,0); }
+  .meetingsheet{ width:min(100%,540px); height:100%; display:grid; grid-template-rows:auto minmax(0,1fr) auto;
+    max-height:100%; overflow:hidden; gap:12px; padding:12px; border:1px solid rgba(255,255,255,.08); border-radius:18px; touch-action:pan-y;
+    background:linear-gradient(180deg,rgba(8,10,10,.9),rgba(8,8,8,.72)); backdrop-filter:blur(14px); }
+  .meetinghead{ display:block; }
+  .meetingtopwave{ height:28px; border-radius:12px; border:1px solid rgba(255,255,255,.06);
+    background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.008)); overflow:hidden; }
+  .meetingbody{ min-height:0; display:grid; grid-template-rows:minmax(420px,1fr) auto; gap:10px; }
+  .meetingbody.expanded{ grid-template-rows:minmax(540px,1fr) auto; }
+  .recordcard,.meetingactionbar{ border:1px solid rgba(255,255,255,.08); border-radius:16px; background:rgba(255,255,255,.03); text-align:left; overflow:hidden; }
+  .recordcard{ display:grid; grid-template-rows:auto minmax(172px,1fr); padding:12px; gap:10px; }
+  .recordmeta{ display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; }
+  .recordmeta .grow{ flex:1 1 auto; }
+  .transportbar{ display:flex; align-items:center; gap:10px; min-height:36px; padding:0 2px; }
+  .transportpill{ display:inline-flex; align-items:center; min-height:28px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.05); color:var(--light); font-size:12px; white-space:nowrap; }
+  .transportpill.connecting{ border-color:rgba(115,197,255,.34); background:rgba(115,197,255,.12); color:#dff5ff; }
+  .transportpill.backend-live{ border-color:rgba(86,214,154,.38); background:rgba(29,158,117,.16); color:#e9fff4; }
+  .transportpill.append-reconnect,.transportpill.rollover{ border-color:rgba(255,204,94,.34); background:rgba(255,204,94,.12); color:#fff1c5; }
+  .transportpill.stream-dead,.transportpill.error{ border-color:rgba(234,90,69,.34); background:rgba(234,90,69,.12); color:#ffe2dc; }
+  .transportpill.fallback-active{ border-color:rgba(179,120,255,.34); background:rgba(179,120,255,.12); color:#f0e6ff; }
+  .transportpill.closed,.transportpill.idle{ border-color:rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.76); }
+  .transportdetail{ min-width:0; flex:1 1 auto; font-size:12px; line-height:1.55; color:rgba(255,255,255,.64); }
+  .recordtoggle{ display:inline-flex; align-items:center; gap:8px; min-height:32px; padding:0 10px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); color:rgba(255,255,255,.72); font-size:12px; }
+  .recordtoggle input{ width:15px; height:15px; accent-color:#56d69a; }
+  .recordbadge{ display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:6px 10px; font-size:12px;
+    background:rgba(255,255,255,.06); color:var(--light); }
+  .expandbtn{ min-width:42px; height:36px; padding:0 12px; border-radius:11px; border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04); color:var(--light); font-size:16px; cursor:pointer; }
+  .expandbtn[aria-pressed="true"]{ background:rgba(29,158,117,.14); border-color:rgba(29,158,117,.38); color:#dff8ee; }
+  .recordbadge.live::before,.recordbtn.live::before{ content:''; width:8px; height:8px; border-radius:50%; background:#ea5a45; box-shadow:0 0 12px rgba(234,90,69,.85); }
+  .recordbadge.pause::before{ content:''; width:8px; height:8px; border-radius:50%; background:#e0a52e; box-shadow:0 0 10px rgba(224,165,46,.75); }
+  .recordbadge.idle::before{ content:''; width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.24); }
+  .recordtimer{ font-size:28px; font-variant-numeric:tabular-nums; letter-spacing:.05em; color:var(--light); }
+  .recordhint{ font-size:12px; color:rgba(255,255,255,.5); }
+  .recordwave{ width:100%; height:100%; display:block;
+    background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.08),rgba(255,255,255,.01) 65%,rgba(255,255,255,0) 100%); }
+  .chunkrail{ min-height:172px; overflow:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px; align-self:stretch; }
+  .chunkitem{ border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 12px; background:rgba(0,0,0,.18); }
+  .chunkitem.active{ border-color:rgba(29,158,117,.42); background:rgba(29,158,117,.08); }
+  .chunkhead{ display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; color:var(--dim); }
+  .chunkname{ color:var(--light); font-size:13px; }
+  .chunksub{ margin-top:6px; font-size:12px; color:rgba(255,255,255,.58); line-height:1.55; }
+  .livestream{ display:flex; flex-direction:column; min-height:100%; }
+  .livepad{ min-height:100%; border:1px solid rgba(255,255,255,.06); border-radius:14px;
+    background:rgba(255,255,255,.025); padding:14px 16px; overflow:auto; }
+  .livepad.blank{ background:rgba(255,255,255,.015); }
+  .liveflow{ display:flex; flex-direction:column; gap:10px; min-height:100%; }
+  .livefinal,.liveinterimline{ font-size:15px; line-height:1.78; word-break:break-word; white-space:pre-wrap; }
+  .livefinal{ color:rgba(255,255,255,.86); }
+  .liveinterimline{ color:#fff; }
+  .liveanchor{ width:100%; height:1px; margin:0; opacity:0; pointer-events:none; }
+  .liverow{ border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:10px 12px; background:rgba(255,255,255,.025); }
+  .liverow.active{ border-color:rgba(29,158,117,.42); background:rgba(29,158,117,.08); }
+  .livestamp{ display:block; font-size:11px; color:rgba(255,255,255,.42); margin-bottom:6px; }
+  .livetext{ font-size:14px; color:rgba(255,255,255,.84); line-height:1.7; word-break:break-word; }
+  .liverow.active .livetext{ color:#fff; }
+  .livecaret{ display:inline-block; width:10px; color:#56d69a; animation:blink 1s steps(1,end) infinite; }
+  .streammeta{ font-size:12px; color:rgba(255,255,255,.52); line-height:1.6; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .meetingactionbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; min-height:68px; }
+  .actionmeta{ min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .actiontitle{ font-size:14px; color:var(--light); letter-spacing:.03em; }
+  .actionstatus{ font-size:12px; color:var(--dim); line-height:1.5; }
+  .actionbtn{ min-height:42px; padding:0 16px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.06); color:var(--light); font-size:13px; cursor:pointer; white-space:nowrap; }
+  .actionbtn[disabled]{ opacity:.36; cursor:default; }
+  .meetingempty{ margin:auto 0; text-align:center; color:var(--dim); font-size:13px; line-height:1.8; padding:12px 6px; }
+  .meetingcontrols{ display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:end; }
+  .meetbtn{ min-height:46px; border-radius:14px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04);
+    color:var(--light); font-size:14px; cursor:pointer; }
+  .meetbtn[disabled]{ opacity:.32; cursor:default; }
+  .recordbtn{ width:88px; height:88px; border-radius:50%; border:none; margin:0 auto; background:#1d9e75; color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; font-size:12px; cursor:pointer;
+    box-shadow:0 20px 38px rgba(29,158,117,.22); }
+  .recordbtn.stop{ background:#d85a30; box-shadow:0 20px 38px rgba(216,90,48,.2); }
+  .recordbtn.pause{ background:#94743c; box-shadow:0 18px 32px rgba(148,116,60,.18); }
+  .recordbtn span{ pointer-events:none; }
+  .swipehint{ position:fixed; left:14px; top:50%; transform:translateY(-50%); z-index:2; pointer-events:auto;
+    writing-mode:vertical-rl; font-size:11px; letter-spacing:.18em; color:rgba(255,255,255,.28); transition:opacity .24s ease;
+    cursor:pointer; user-select:none; -webkit-user-select:none; }
+  .swipehint.hide{ opacity:0; }
+  @media (max-width:700px){
+    .logbody{ max-width:none; padding:12px 12px 24px; }
+    .logbody.detail{ max-width:none; gap:12px; }
+    .detailgrid,.detailmeta{ gap:12px; }
+    .detailmeta{ grid-template-columns:1fr; }
+    .meetingview{ padding:max(6.2vh,50px) 8px max(2vh,10px); }
+    .meetingsheet{ width:100%; gap:8px; padding:8px; border-radius:16px; }
+    .meetingbody{ gap:8px; grid-template-rows:minmax(392px,1fr) auto; }
+    .meetingbody.expanded{ grid-template-rows:minmax(520px,1fr) auto; }
+    .meetingactionbar{ align-items:flex-start; flex-direction:column; }
+    .meetingtopwave{ height:24px; }
+    .recordcard{ grid-template-rows:auto minmax(196px,1fr); padding:10px; gap:8px; }
+    .chunkrail{ min-height:196px; }
+    .recordmeta{ gap:8px 10px; }
+    .recordbadge{ padding:5px 9px; font-size:11px; }
+    .recordtimer{ font-size:20px; }
+    .expandbtn{ min-width:38px; height:32px; padding:0 10px; font-size:15px; }
+    .recordhint,.chunksub,.actionstatus{ font-size:12px; }
+    .meetingcontrols{ gap:10px; }
+    .meetbtn{ min-height:40px; font-size:13px; }
+    .recordbtn{ width:74px; height:74px; font-size:11px; gap:5px; }
+  }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Voice Companion：點中間的綠色按鈕就能跟AI 夥伴即時語音通話。中央光球會隨聲音呼吸。</h2>
+
+<canvas id="viz" aria-hidden="true"></canvas>
+<img id="bao-bg" src="avatar.png" alt="" aria-hidden="true" />
+
+<button class="gear" id="gear" aria-label="設定">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+
+<div class="lamps" id="lamps" aria-label="系統健康狀態">
+  <span class="lamp" id="lamp-llm"><i class="dot"></i>頭腦</span>
+  <span class="lamp" id="lamp-stt"><i class="dot"></i>聽聲</span>
+  <span class="lamp" id="lamp-tts"><i class="dot"></i>發聲</span>
+  <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
+  <span class="lamp" id="lamp-livekit"><i class="dot"></i>連線</span>
+  <span class="lamp" id="lamp-memory"><i class="dot"></i>記憶</span>
+</div>
+
+<div class="top callpane" id="callTop">
+  <div class="clock" id="clock" aria-label="台北時間">—</div>
+  <div class="name">AI 夥伴</div>
+  <div class="status" id="status">點下面綠色按鈕開始通話</div>
+</div>
+
+<div class="stage callpane" id="callStage"></div>
+
+<div class="controls callpane" id="callControls">
+  <button class="btn mutefab" id="muteBtn">
+    <span class="circle" id="muteCircle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></span>
+    <span id="muteLabel">靜音</span>
+  </button>
+
+  <button class="btn" id="callBtn">
+    <span class="circle call go" id="callCircle">
+      <svg id="callIcon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    </span>
+    <span id="callLabel">撥打</span>
+  </button>
+  <button class="verlink" id="verLink">版本紀錄</button>
+</div>
+
+<section class="meetingview" id="meetingView" aria-label="錄音同時做記錄">
+  <div class="meetingsheet">
+    <div class="meetinghead">
+      <div class="meetingtopwave">
+        <canvas class="recordwave" id="meetingWave" width="640" height="72" aria-label="錄音波紋"></canvas>
+      </div>
+    </div>
+    <div class="meetingbody" id="meetingBody">
+      <div class="recordcard">
+        <div class="recordmeta">
+          <span class="recordbadge idle" id="meetingBadge">未開始</span>
+          <span class="recordtimer" id="meetingTimer">00:00</span>
+          <span class="recordhint grow" id="meetingChunkMeta">尚未開始即時字幕</span>
+          <label class="recordtoggle"><input id="meetingSaveAudioToggle" type="checkbox" /><span>保存音訊</span></label>
+          <button class="expandbtn" id="meetingExpandBtn" type="button" aria-label="放大錄音轉文字區" aria-pressed="false">⤢</button>
+        </div>
+        <div class="transportbar" id="meetingTransportBar">
+          <span class="transportpill idle" id="meetingTransportBadge">待命中</span>
+          <span class="transportdetail" id="meetingTransportDetail">錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。</span>
+        </div>
+        <div class="meetingstatus" id="meetingStatus" hidden>開始錄音後，後端即時字幕會貼著你的聲音往下長。</div>
+        <div class="chunkrail" id="meetingChunkRail">
+          <div class="meetingempty">開始錄音後，字幕會貼著你的聲音往下長。</div>
+        </div>
+      </div>
+      <div class="meetingactionbar">
+        <div class="actionmeta">
+          <span class="actiontitle">會議整理</span>
+          <span class="actionstatus" id="meetingDraftState">等待錄音</span>
+        </div>
+        <button class="actionbtn" id="meetingFormalBtn" type="button">
+          再次整理成專業的會議記錄
+        </button>
+      </div>
+    </div>
+    <div class="meetingcontrols">
+      <button class="meetbtn" id="meetingDiscardBtn" disabled>清空</button>
+      <button class="recordbtn" id="meetingRecordBtn" aria-label="開始錄音">
+        <span id="meetingRecordLabel">錄音</span>
+      </button>
+      <button class="meetbtn" id="meetingPauseBtn" disabled>暫停</button>
+    </div>
+  </div>
+</section>
+
+<div class="swipehint" id="swipeHint" role="button" tabindex="0" aria-label="開啟錄音同時做記錄">向右滑開啟錄音</div>
+
+
+<div class="panel hidden logpanel" id="verPanel">
+  <div class="logbar">
+    <button id="verBack" aria-label="返回">‹</button>
+    <span class="ttl">版本紀錄</span>
+  </div>
+  <div class="logbody" id="verBody"></div>
+</div>
+
+<div class="panel hidden" id="panel">
+  <label for="accessInput">通話密語（使用者設定的 access secret，沒設就留空）</label>
+  <input id="accessInput" type="password" placeholder="留空 = 不需要" autocomplete="off" />
+  <button class="save" id="saveBtn">儲存</button>
+  <button class="linkbtn" id="logOpenBtn">📜 對話紀錄</button>
+  <button class="linkbtn" id="innerOpenBtn">🤍 內心獨白</button>
+  <div class="hint">密語存在這台裝置的瀏覽器裡，不會上傳。換裝置要重設。</div>
+</div>
+
+<div class="panel hidden logpanel" id="innerPanel">
+  <div class="logbar">
+    <button id="innerBack" aria-label="返回">‹</button>
+    <span class="ttl">內心獨白</span>
+  </div>
+  <div class="logbody" id="innerBody"></div>
+</div>
+
+<div class="panel hidden logpanel" id="logPanel">
+  <div class="logbar">
+    <button id="logBack" aria-label="返回">‹</button>
+    <span class="ttl" id="logTitle">對話紀錄</span>
+  </div>
+  <div class="logbody" id="logBody"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+(function(){
+  const LK = window.LivekitClient;
+  const $ = id => document.getElementById(id);
+  const statusEl=$('status');
+  const callBtn=$('callBtn'), callCircle=$('callCircle'), callIcon=$('callIcon'), callLabel=$('callLabel');
+  const muteBtn=$('muteBtn'), muteCircle=$('muteCircle'), muteLabel=$('muteLabel');
+  const gear=$('gear'), panel=$('panel'), accessInput=$('accessInput'), saveBtn=$('saveBtn');
+  const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
+  const meetingView=$('meetingView'), swipeHint=$('swipeHint');
+  const meetingStatus=$('meetingStatus'), meetingBadge=$('meetingBadge'), meetingTimer=$('meetingTimer');
+  const meetingChunkMeta=$('meetingChunkMeta'), meetingDraftState=$('meetingDraftState');
+  const meetingChunkRail=$('meetingChunkRail'), meetingFormalBtn=$('meetingFormalBtn');
+  const meetingBody=$('meetingBody'), meetingExpandBtn=$('meetingExpandBtn');
+  const meetingTransportBar=$('meetingTransportBar'), meetingTransportBadge=$('meetingTransportBadge');
+  const meetingTransportDetail=$('meetingTransportDetail');
+  const meetingRecordBtn=$('meetingRecordBtn'), meetingRecordLabel=$('meetingRecordLabel');
+  const meetingPauseBtn=$('meetingPauseBtn'), meetingDiscardBtn=$('meetingDiscardBtn');
+  const meetingSaveAudioToggle=$('meetingSaveAudioToggle');
+  const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
+
+  let room=null, connecting=false, muted=false, currentCallId='';
+  const ACCESS_KEY='yuling_access';
+  const API_ROOT=(location.protocol==='file:')
+    ? 'http://127.0.0.1:8080'
+    : (location.port==='3000' ? `${location.protocol}//${location.hostname}:8080` : '');
+  const apiUrl=path=>`${API_ROOT}${path}`;
+  let meetingProgress=0;
+  let meetingDrag=null;
+  let meetingHistory=[];
+  let meetingTranscriptExpanded=false;
+  const NOTE_ROLLUP_MS=60000;
+  const STREAM_SAMPLE_RATE=16000;
+  const meetingRec={
+    stream:null, recorder:null, mimeType:'audio/pcm', segments:[], isRecording:false, isPaused:false,
+    startAt:0, pausedMs:0, pauseAt:0, segmentStartMs:0, raf:0, analyser:null, source:null, audioCtx:null,
+    sessionId:'', liveSlices:[], minuteNotes:[], nextMinuteIndex:1,
+    minuteUploading:false,
+    saveAudio:false, processor:null, silentGain:null, pcmQueue:[], pcmUploading:false, pcmCursorMs:0,
+    streamReader:null, streamAbort:null, streamBuffer:'', streamConnected:false,
+    speechRec:null, speechSupported:false, speechRunning:false, interimText:'', lastFinalMs:0, speechError:'',
+    backendLiveActive:false, fallbackTimer:0,
+    speechStartedAt:0, speechLastEventAt:0, speechCycleTimer:0,
+    formalizing:false, formalizedAt:0,
+    streamState:'idle', streamStateNote:'錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。', streamStateAt:0, streamEvents:[]
+  };
+  const SPEECH_RECYCLE_MS=45000;
+  const SPEECH_STALL_MS=8000;
+
+  function setMeetingProgress(next, animate){
+    meetingProgress=Math.max(0,Math.min(1,next||0));
+    const shift=Math.round(innerWidth*0.54*meetingProgress);
+    callPanes.forEach(el=>{
+      if(!el) return;
+      el.style.transition=animate===false?'none':'';
+      el.style.transform=`translate3d(${shift}px,0,0)`;
+      el.style.opacity=String(1-meetingProgress*0.78);
+      el.style.pointerEvents=meetingProgress>0.82?'none':'';
+    });
+    if(meetingView){
+      meetingView.style.transition=animate===false?'none':'';
+      const x=Math.round((-1+meetingProgress)*Math.min(innerWidth*0.94, 560));
+      meetingView.style.transform=`translate3d(${x}px,0,0)`;
+      meetingView.style.opacity=String(Math.max(0,meetingProgress));
+      meetingView.classList.toggle('open',meetingProgress>0.02);
+      meetingView.style.pointerEvents=meetingProgress>0.02?'auto':'none';
+    }
+    if(swipeHint) swipeHint.classList.toggle('hide', false);
+    refreshSwipeHint();
+  }
+  function refreshSwipeHint(){
+    if(!swipeHint) return;
+    const isOpen=meetingProgress>0.5;
+    swipeHint.textContent=isOpen?'向左滑關閉錄音':'向右滑開啟錄音';
+    swipeHint.setAttribute('aria-label', isOpen?'關閉錄音同時做記錄':'開啟錄音同時做記錄');
+    swipeHint.setAttribute('aria-pressed', isOpen?'true':'false');
+    swipeHint.title=isOpen?'點一下也可關閉錄音':'點一下也可開啟錄音';
+  }
+  function openMeetingView(){ setMeetingProgress(1,true); }
+  function closeMeetingView(){ setMeetingProgress(0,true); }
+  function toggleMeetingView(){
+    if(meetingProgress>0.5) closeMeetingView();
+    else openMeetingView();
+  }
+  function setMeetingTranscriptExpanded(expanded){
+    meetingTranscriptExpanded=!!expanded;
+    if(meetingBody) meetingBody.classList.toggle('expanded', meetingTranscriptExpanded);
+    if(meetingExpandBtn){
+      meetingExpandBtn.setAttribute('aria-pressed', meetingTranscriptExpanded ? 'true' : 'false');
+      meetingExpandBtn.setAttribute('aria-label', meetingTranscriptExpanded ? '收起錄音轉文字區' : '放大錄音轉文字區');
+      meetingExpandBtn.textContent=meetingTranscriptExpanded ? '⤡' : '⤢';
+    }
+  }
+  function toggleMeetingTranscriptExpanded(){
+    setMeetingTranscriptExpanded(!meetingTranscriptExpanded);
+  }
+  function activeOverlayOpen(){
+    return [panel, $('logPanel'), $('innerPanel'), $('verPanel')].some(el=>el && !el.classList.contains('hidden'));
+  }
+  function fmtClock(ms){
+    const total=Math.max(0,Math.floor(ms/1000));
+    const m=String(Math.floor(total/60)).padStart(2,'0');
+    const s=String(total%60).padStart(2,'0');
+    return `${m}:${s}`;
+  }
+  function meetingElapsedMs(){
+    if(!meetingRec.isRecording) return 0;
+    const now=meetingRec.isPaused ? meetingRec.pauseAt : performance.now();
+    return Math.max(0, now-meetingRec.startAt-meetingRec.pausedMs);
+  }
+  function segmentRangeText(startMs,endMs){
+    return `${fmtClock(startMs)} - ${fmtClock(endMs)}`;
+  }
+  function meetingDisplaySlices(){
+    return meetingRec.liveSlices
+      .filter(slice=>slice && slice.transcript)
+      .map(slice=>({
+        ...slice,
+        transcript:String(slice.transcript||'').trim(),
+      }))
+      .filter(slice=>slice.transcript);
+  }
+  function meetingBackendSlices(){
+    return meetingDisplaySlices().filter(slice=>slice.source==='backend');
+  }
+  function buildMeetingWrapup(){
+    const lines=(meetingRec.minuteNotes.length
+      ? meetingRec.minuteNotes.map(note=>note.summary||note.transcript||'')
+      : meetingBackendSlices().map(slice=>slice.transcript||'')).filter(Boolean);
+    if(!lines.length) return '';
+    return lines.slice(0,4).join(' ').slice(0,260);
+  }
+  function meetingFormalSummary(){
+    const notes=meetingRec.minuteNotes
+      .map(note=>(note.summary||note.transcript||'').trim())
+      .filter(Boolean);
+    if(notes.length) return notes.join(' ').slice(0,220);
+    return buildMeetingWrapup();
+  }
+  function getMeetingLoopState(){
+    const elapsed=meetingElapsedMs();
+    const hasNotes=meetingRec.minuteNotes.some(note=>(note.summary||note.transcript||'').trim());
+    const noteUploading=meetingRec.minuteNotes.some(note=>note.uploading && !note.done);
+    const ready=!!meetingFormalSummary();
+    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready};
+    if(meetingRec.formalizedAt) return {phase:'done', label:'已產出', status:'正式會議已產出，已收進歷史會議紀錄。', canFormalize:ready, ready};
+    if(noteUploading) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready};
+    if(!hasNotes) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready:false};
+    return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:true, ready};
+  }
+  async function finalizeMeetingFormalNotes(){
+    const loop=getMeetingLoopState();
+    if(!loop.canFormalize || meetingRec.formalizing) return;
+    if(!meetingRec.sessionId) return;
+    meetingRec.formalizing=true;
+    setMeetingUi();
+    try{
+      const summary=meetingFormalSummary();
+      const preview=meetingBackendSlices()
+        .map(slice=>slice.transcript||'')
+        .filter(Boolean)
+        .join(' ')
+        .slice(0,180);
+      const res=await fetch(apiUrl('/api/yuling/meetings/finalize'),{
+        method:'POST',
+        headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
+        body:JSON.stringify({
+          session_id:meetingRec.sessionId,
+          summary,
+          transcript_preview:preview
+        })
+      });
+      if(!res.ok) throw new Error('finalize '+res.status);
+      const data=await res.json();
+      meetingRec.formalizedAt=Date.parse(data.formalized_at||'') || Date.now();
+      await loadMeetingHistory();
+    }finally{
+      meetingRec.formalizing=false;
+      setMeetingUi();
+    }
+  }
+  function speechCtor(){
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+  function escHtml(s){
+    return String(s||'').replace(/[&<>\"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function appendMeetingTranscript(text, startMs, endMs, source){
+    const clean=String(text||'').replace(/\s+/g,' ').trim();
+    if(!clean) return null;
+    const slice={
+      index:meetingRec.liveSlices.length+1,
+      startMs:Math.max(0, startMs||0),
+      endMs:Math.max(0, endMs||0),
+      blob:null,
+      transcript:clean,
+      done:true,
+      uploading:false,
+      error:'',
+      source:source||'browser',
+      minuteIndex:Math.floor(Math.max(0, startMs||0)/NOTE_ROLLUP_MS)+1
+    };
+    meetingRec.liveSlices.push(slice);
+    return slice;
+  }
+  function downsampleMeetingBuffer(input, inputRate, outputRate){
+    if(!input || !input.length) return new Float32Array(0);
+    if(inputRate===outputRate) return input;
+    const ratio=inputRate/outputRate;
+    const newLength=Math.max(1,Math.round(input.length/ratio));
+    const result=new Float32Array(newLength);
+    let offset=0;
+    for(let i=0;i<newLength;i++){
+      const next=Math.min(input.length, Math.round((i+1)*ratio));
+      let sum=0, count=0;
+      for(let j=offset;j<next;j++){ sum += input[j]; count += 1; }
+      result[i]=count ? (sum/count) : 0;
+      offset=next;
+    }
+    return result;
+  }
+  function encodeMeetingPcm(input, inputRate){
+    const down=downsampleMeetingBuffer(input, inputRate, STREAM_SAMPLE_RATE);
+    const bytes=new Uint8Array(down.length*2);
+    const view=new DataView(bytes.buffer);
+    for(let i=0;i<down.length;i++){
+      const sample=Math.max(-1,Math.min(1,down[i]));
+      view.setInt16(i*2, sample<0 ? sample*0x8000 : sample*0x7fff, true);
+    }
+    return bytes;
+  }
+  function stopMeetingEventStream(){
+    if(meetingRec.streamAbort){
+      try{ meetingRec.streamAbort.abort(); }catch(_){}
+    }
+    meetingRec.streamAbort=null;
+    meetingRec.streamReader=null;
+    meetingRec.streamBuffer='';
+  }
+  function clearMeetingFallbackTimer(){
+    if(meetingRec.fallbackTimer) clearTimeout(meetingRec.fallbackTimer);
+    meetingRec.fallbackTimer=0;
+  }
+  function pushMeetingStreamEvent(state, note){
+    const entry={
+      state:String(state||'idle'),
+      note:String(note||'').trim(),
+      at:Date.now()
+    };
+    meetingRec.streamEvents.unshift(entry);
+    if(meetingRec.streamEvents.length>8) meetingRec.streamEvents.length=8;
+  }
+  function setMeetingStreamState(state, note){
+    const next=String(state||'idle');
+    const detail=String(note||'').trim();
+    if(meetingRec.streamState===next && meetingRec.streamStateNote===detail) return;
+    meetingRec.streamState=next;
+    meetingRec.streamStateNote=detail;
+    meetingRec.streamStateAt=Date.now();
+    pushMeetingStreamEvent(next, detail);
+  }
+  function meetingStreamUi(){
+    const state=meetingRec.streamState||'idle';
+    const map={
+      idle:{label:'待命中', cls:'idle', detail:'錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。'},
+      connecting:{label:'接通中', cls:'connecting', detail:'後端即時字幕正在建立長連線。'},
+      'backend-open':{label:'後端已接通', cls:'connecting', detail:'後端字幕已在線，正在等第一段真正的語音。'},
+      'backend-live':{label:'後端逐字中', cls:'backend-live', detail:'後端即時字幕正在跟著你的聲音出字。'},
+      'append-reconnect':{label:'重接中', cls:'append-reconnect', detail:'後端流剛斷過一次，正在補開新線接回主路徑。'},
+      'stream-dead':{label:'串流中斷', cls:'stream-dead', detail:'後端字幕流剛剛斷線，正在等待重接或切到備援逐字。'},
+      rollover:{label:'換流中', cls:'rollover', detail:'長會議到換流點，正在無縫接到下一條後端字幕流。'},
+      'fallback-active':{label:'備援逐字中', cls:'fallback-active', detail:'目前先用這台裝置的即時字幕頂住，後端恢復後會切回主路徑。'},
+      error:{label:'異常', cls:'error', detail:'即時字幕鏈路出現錯誤，需要看最近事件與後端紀錄。'},
+      closed:{label:'已停止', cls:'closed', detail:'這段錄音已停止；字幕與AI 夥伴作業停在目前內容。'}
+    };
+    const base=map[state]||map.idle;
+    return {
+      label:base.label,
+      cls:base.cls,
+      detail:meetingRec.streamStateNote || base.detail,
+    };
+  }
+  function scheduleMeetingSpeechFallback(delayMs){
+    clearMeetingFallbackTimer();
+    meetingRec.fallbackTimer=setTimeout(()=>{
+      meetingRec.fallbackTimer=0;
+      if(!meetingRec.isRecording || meetingRec.isPaused) return;
+      if(meetingRec.backendLiveActive || meetingRec.speechRunning) return;
+      setMeetingStreamState('fallback-active', '後端即時字幕暫時沒出字，先切到裝置端逐字避免整片空白。');
+      startMeetingSpeechRecognition();
+      setMeetingUi();
+    }, Math.max(0, Number(delayMs||0)));
+  }
+  function handleMeetingStreamEvent(rawType, payload){
+    const type=rawType||'message';
+    if(type==='status'){
+      const status=(payload&&payload.status)||'';
+      if(status==='stream-open'){
+        const detail=(payload&&payload.base_start_ms)>0
+          ? `後端字幕已重接，從 ${fmtClock(payload.base_start_ms||0)} 接回主路徑。`
+          : '後端即時字幕已接通，正在等第一段真正的語音。';
+        setMeetingStreamState('backend-open', detail);
+      }else if(status==='append-reconnect'){
+        meetingRec.backendLiveActive=false;
+        setMeetingStreamState('append-reconnect', '後端流剛斷過一次，正在補開新線接回主路徑。');
+      }else if(status==='stream-dead'){
+        meetingRec.backendLiveActive=false;
+        const reason=(payload&&payload.reason)||'';
+        setMeetingStreamState('stream-dead', reason ? `後端字幕流中斷：${reason}` : '後端字幕流中斷，正在等待重接或備援逐字。');
+        scheduleMeetingSpeechFallback(120);
+      }else if(status==='rollover'){
+        meetingRec.backendLiveActive=false;
+        setMeetingStreamState('rollover', '長會議到換流點，正在接下一條後端字幕流。');
+      }
+      setMeetingUi();
+      return;
+    }
+    if(type==='interim'){
+      meetingRec.backendLiveActive=true;
+      clearMeetingFallbackTimer();
+      setMeetingStreamState('backend-live', '後端即時字幕正在跟著你的聲音出字。');
+      meetingRec.interimText=(payload&&payload.transcript)||'';
+      setMeetingUi();
+      return;
+    }
+    if(type==='final'){
+      meetingRec.backendLiveActive=true;
+      clearMeetingFallbackTimer();
+      setMeetingStreamState('backend-live', '後端即時字幕正在穩定吐字。');
+      meetingRec.interimText='';
+      appendMeetingTranscript((payload&&payload.transcript)||'', payload&&payload.start_ms, payload&&payload.end_ms, 'backend');
+      meetingRec.lastFinalMs=Math.max(meetingRec.lastFinalMs||0, (payload&&payload.end_ms)||0);
+      maybeRollMeetingMinute(false);
+      setMeetingUi();
+      return;
+    }
+    if(type==='error'){
+      meetingRec.backendLiveActive=false;
+      meetingRec.speechError=(payload&&payload.message)||'stream-error';
+      setMeetingStreamState('error', `後端字幕錯誤：${meetingRec.speechError}`);
+      scheduleMeetingSpeechFallback(120);
+      setMeetingUi();
+      return;
+    }
+    if(type==='closed'){
+      meetingRec.backendLiveActive=false;
+      meetingRec.interimText='';
+      setMeetingStreamState('closed', '這段錄音已停止；字幕與AI 夥伴作業停在目前內容。');
+      setMeetingUi();
+    }
+  }
+  function processMeetingEventBuffer(){
+    let boundary=meetingRec.streamBuffer.indexOf('\n\n');
+    while(boundary>=0){
+      const block=meetingRec.streamBuffer.slice(0,boundary);
+      meetingRec.streamBuffer=meetingRec.streamBuffer.slice(boundary+2);
+      let eventType='message';
+      let dataText='';
+      block.split('\n').forEach(line=>{
+        if(line.startsWith('event:')) eventType=line.slice(6).trim();
+        else if(line.startsWith('data:')) dataText += line.slice(5).trim();
+      });
+      if(dataText){
+        try{ handleMeetingStreamEvent(eventType, JSON.parse(dataText)); }
+        catch(_){}
+      }
+      boundary=meetingRec.streamBuffer.indexOf('\n\n');
+    }
+  }
+  async function startMeetingEventStream(sessionId){
+    stopMeetingEventStream();
+    const controller=new AbortController();
+    meetingRec.streamAbort=controller;
+    try{
+      const res=await fetch(apiUrl(`/api/yuling/meetings/stream/${encodeURIComponent(sessionId)}/events`),{
+        headers:logHeaders(),
+        signal:controller.signal,
+      });
+      if(!res.ok || !res.body) throw new Error('events '+res.status);
+      meetingRec.streamConnected=true;
+      setMeetingStreamState('connecting', '後端事件流已連上，正在等字幕事件開始進來。');
+      const reader=res.body.getReader();
+      const decoder=new TextDecoder();
+      meetingRec.streamReader=reader;
+      while(true){
+        const {done,value}=await reader.read();
+        if(done) break;
+        meetingRec.streamBuffer += decoder.decode(value, {stream:true});
+        processMeetingEventBuffer();
+      }
+    }catch(err){
+      if(controller.signal.aborted) return;
+      meetingRec.streamConnected=false;
+      meetingRec.backendLiveActive=false;
+      meetingRec.speechError=String((err&&err.message)||err||'events-failed');
+      setMeetingStreamState('stream-dead', `後端事件流失聯：${meetingRec.speechError}`);
+      if(!meetingRec.backendLiveActive) startMeetingSpeechRecognition();
+      setMeetingUi();
+    }
+  }
+  async function flushMeetingPcmQueue(){
+    if(meetingRec.pcmUploading || !meetingRec.pcmQueue.length || !meetingRec.sessionId) return;
+    const next=meetingRec.pcmQueue[0];
+    meetingRec.pcmUploading=true;
+    try{
+      const res=await fetch(apiUrl(`/api/yuling/meetings/stream/${encodeURIComponent(meetingRec.sessionId)}/append`),{
+        method:'POST',
+        headers:Object.assign({
+          'Content-Type':'application/octet-stream',
+          'X-Start-Ms':String(next.startMs),
+          'X-End-Ms':String(next.endMs),
+        },logHeaders()),
+        body:next.bytes,
+      });
+      if(!res.ok){
+        let detail='append '+res.status;
+        try{
+          const data=await res.json();
+          if(data && data.error) detail += ' '+ String(data.error);
+        }catch(_){}
+        throw new Error(detail);
+      }
+      meetingRec.pcmQueue.shift();
+    }catch(err){
+      next.tries=(next.tries||0)+1;
+      if(next.tries>3){
+        meetingRec.pcmQueue.shift();
+        meetingRec.speechError=String((err&&err.message)||err||'append-failed');
+        setMeetingStreamState('error', `送音訊到後端失敗：${meetingRec.speechError}`);
+      }
+      if(next.tries>=2 && !meetingRec.backendLiveActive && !meetingRec.speechRunning){
+        setMeetingStreamState('fallback-active', '後端音訊追加不穩，先切到裝置端逐字避免整片空白。');
+        startMeetingSpeechRecognition();
+      }
+    }finally{
+      meetingRec.pcmUploading=false;
+      if(meetingRec.pcmQueue.length) setTimeout(flushMeetingPcmQueue, 30);
+      setMeetingUi();
+    }
+  }
+  async function waitForMeetingPcmDrain(timeoutMs){
+    const deadline=Date.now()+(timeoutMs||2000);
+    while((meetingRec.pcmUploading || meetingRec.pcmQueue.length) && Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,40));
+    }
+  }
+  function queueMeetingPcm(bytes, startMs, endMs){
+    if(!(bytes && bytes.byteLength)) return;
+    meetingRec.pcmQueue.push({bytes, startMs, endMs, tries:0});
+    flushMeetingPcmQueue();
+  }
+  function stopMeetingPcmPump(){
+    clearMeetingFallbackTimer();
+    if(meetingRec.processor){
+      try{ meetingRec.processor.disconnect(); }catch(_){}
+      meetingRec.processor.onaudioprocess=null;
+    }
+    if(meetingRec.silentGain){
+      try{ meetingRec.silentGain.disconnect(); }catch(_){}
+    }
+    meetingRec.processor=null;
+    meetingRec.silentGain=null;
+  }
+  function startMeetingPcmPump(stream){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    const ac=meetingRec.audioCtx||(meetingRec.audioCtx=new AC());
+    if(ac.state==='suspended') ac.resume();
+    const processor=ac.createScriptProcessor(4096,1,1);
+    const silentGain=ac.createGain();
+    silentGain.gain.value=0;
+    meetingRec.source.connect(processor);
+    processor.connect(silentGain);
+    silentGain.connect(ac.destination);
+    meetingRec.processor=processor;
+    meetingRec.silentGain=silentGain;
+    meetingRec.pcmCursorMs=0;
+    processor.onaudioprocess=(event)=>{
+      if(!meetingRec.isRecording || meetingRec.isPaused || !meetingRec.sessionId) return;
+      const input=event.inputBuffer.getChannelData(0);
+      const bytes=encodeMeetingPcm(input, ac.sampleRate);
+      const durationMs=Math.round((bytes.byteLength/2)/STREAM_SAMPLE_RATE*1000);
+      const startMs=meetingRec.pcmCursorMs;
+      const endMs=startMs+durationMs;
+      meetingRec.pcmCursorMs=endMs;
+      queueMeetingPcm(bytes, startMs, endMs);
+    };
+  }
+  function flushMeetingInterimText(force){
+    const text=(meetingRec.interimText||'').trim();
+    if(!text) return;
+    if(force){
+      const endMs=meetingElapsedMs();
+      const startMs=meetingRec.lastFinalMs || Math.max(0,endMs-1800);
+      appendMeetingTranscript(text, startMs, endMs, 'browser');
+      meetingRec.lastFinalMs=endMs;
+    }
+    meetingRec.interimText='';
+  }
+  function scheduleMeetingSpeechRecycle(){
+    if(meetingRec.speechCycleTimer) clearTimeout(meetingRec.speechCycleTimer);
+    meetingRec.speechCycleTimer=0;
+    if(!meetingRec.isRecording || meetingRec.isPaused || !meetingRec.speechSupported) return;
+    meetingRec.speechCycleTimer=setTimeout(()=>{
+      if(!meetingRec.isRecording || meetingRec.isPaused || !meetingRec.speechSupported) return;
+      stopMeetingSpeechRecognition(true);
+      startMeetingSpeechRecognition();
+    }, SPEECH_RECYCLE_MS);
+  }
+  function restartMeetingSpeechRecognition(reason){
+    if(!meetingRec.isRecording || meetingRec.isPaused || !meetingRec.speechSupported) return false;
+    meetingRec.speechError=reason||'speech-restart';
+    stopMeetingSpeechRecognition(true);
+    return startMeetingSpeechRecognition();
+  }
+  function stopMeetingSpeechRecognition(finalizeInterim){
+    if(finalizeInterim) flushMeetingInterimText(true);
+    const rec=meetingRec.speechRec;
+    meetingRec.speechRec=null;
+    meetingRec.speechRunning=false;
+    meetingRec.speechStartedAt=0;
+    if(meetingRec.speechCycleTimer) clearTimeout(meetingRec.speechCycleTimer);
+    meetingRec.speechCycleTimer=0;
+    if(!rec) return;
+    rec.onresult=null;
+    rec.onerror=null;
+    rec.onend=null;
+    try{ rec.stop(); }catch(_){}
+  }
+  function startMeetingSpeechRecognition(){
+    const Ctor=speechCtor();
+    meetingRec.speechSupported=!!Ctor;
+    if(!Ctor || !meetingRec.isRecording || meetingRec.isPaused) return false;
+    stopMeetingSpeechRecognition(false);
+    const rec=new Ctor();
+    rec.lang='zh-TW';
+    rec.continuous=true;
+    rec.interimResults=true;
+    rec.maxAlternatives=1;
+    meetingRec.speechStartedAt=performance.now();
+    meetingRec.speechLastEventAt=meetingRec.speechStartedAt;
+    rec.onresult=(event)=>{
+      meetingRec.speechLastEventAt=performance.now();
+      let interim=[];
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        const part=((event.results[i]||[{}])[0]||{}).transcript||'';
+        const text=String(part).replace(/\s+/g,' ').trim();
+        if(!text) continue;
+        if(event.results[i].isFinal){
+          const endMs=meetingElapsedMs();
+          const startMs=meetingRec.lastFinalMs || Math.max(0,endMs-1800);
+          appendMeetingTranscript(text, startMs, endMs, 'browser');
+          meetingRec.lastFinalMs=endMs;
+        }else{
+          interim.push(text);
+        }
+      }
+      meetingRec.interimText=interim.join(' ').trim();
+      meetingRec.speechError='';
+      maybeRollMeetingMinute(false);
+      setMeetingUi();
+    };
+    rec.onerror=(event)=>{
+      meetingRec.speechLastEventAt=performance.now();
+      const code=(event&&event.error)||'speech-error';
+      if(code!=='no-speech') meetingRec.speechError=code;
+      if(code==='not-allowed' || code==='service-not-allowed' || code==='audio-capture'){
+        meetingRec.speechSupported=false;
+        meetingStatus.textContent='瀏覽器沒有開放即時字幕權限，先退回背景錄音保存。';
+      }
+    };
+    rec.onend=()=>{
+      meetingRec.speechRunning=false;
+      if(meetingRec.isRecording && !meetingRec.isPaused && meetingRec.speechSupported){
+        setTimeout(()=>{
+          if(meetingRec.isRecording && !meetingRec.isPaused && !meetingRec.speechRunning){
+            startMeetingSpeechRecognition();
+          }
+        }, 180);
+      }
+    };
+    try{
+      rec.start();
+      meetingRec.speechRec=rec;
+      meetingRec.speechRunning=true;
+      meetingRec.speechError='';
+      meetingRec.speechSupported=true;
+      if(!meetingRec.backendLiveActive) setMeetingStreamState('fallback-active', '目前先用這台裝置的即時字幕頂住，等後端恢復會切回主路徑。');
+      scheduleMeetingSpeechRecycle();
+      return true;
+    }catch(_){
+      meetingRec.speechSupported=false;
+      return false;
+    }
+  }
+  async function uploadMeetingMinuteNote(note){
+    if(!note || note.uploading || note.done) return;
+    note.uploading=true;
+    setMeetingUi();
+    try{
+      const res=await fetch(apiUrl('/api/yuling/meetings/minute-note'),{
+        method:'POST',
+        headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
+        body:JSON.stringify({
+          session_id:meetingRec.sessionId,
+          minute_index:note.minuteIndex,
+          start_ms:Math.round(note.startMs),
+          end_ms:Math.round(note.endMs),
+          transcript:note.transcript
+        })
+      });
+      if(!res.ok) throw new Error('minute note '+res.status);
+      const data=await res.json();
+      meetingRec.sessionId=data.session_id||meetingRec.sessionId;
+      note.summary=(data.summary||note.summary||'').trim();
+      note.error='';
+      note.done=true;
+      loadMeetingHistory();
+    }catch(err){
+      note.error=String((err&&err.message)||err||'minute note failed');
+    }finally{
+      note.uploading=false;
+      setMeetingUi();
+    }
+  }
+  function maybeRollMeetingMinute(force){
+    const elapsed=meetingElapsedMs();
+    if(force && elapsed<NOTE_ROLLUP_MS){
+      return;
+    }
+    const eligibleMinute=force
+      ? Math.ceil(Math.max(0, elapsed)/NOTE_ROLLUP_MS)
+      : Math.floor(Math.max(0, elapsed-5000)/NOTE_ROLLUP_MS);
+    while(meetingRec.nextMinuteIndex<=eligibleMinute){
+      const minuteIndex=meetingRec.nextMinuteIndex;
+      const startMs=(minuteIndex-1)*NOTE_ROLLUP_MS;
+      const endMs=Math.min(force ? elapsed : minuteIndex*NOTE_ROLLUP_MS, elapsed);
+      const slicesForMinute=meetingBackendSlices().filter(slice=>slice.minuteIndex===minuteIndex);
+      const pendingForMinute=slicesForMinute.some(slice=>!slice.done && !slice.error);
+      const transcript=meetingBackendSlices()
+        .filter(slice=>slice.done && !slice.error && slice.minuteIndex===minuteIndex && slice.transcript)
+        .map(slice=>slice.transcript.trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if(!force && pendingForMinute){
+        return;
+      }
+      if(transcript){
+        const note={
+          minuteIndex,
+          startMs,
+          endMs,
+          transcript,
+          summary:'',
+          uploading:false,
+          done:false,
+          error:''
+        };
+        meetingRec.minuteNotes.push(note);
+        uploadMeetingMinuteNote(note);
+      }
+      meetingRec.nextMinuteIndex += 1;
+    }
+  }
+  async function loadMeetingHistory(){
+    try{
+      const res=await fetch(apiUrl('/api/yuling/meetings?limit=8'),{headers:logHeaders()});
+      if(!res.ok) throw new Error('history '+res.status);
+      const data=await res.json();
+      meetingHistory=(data.meetings||[]).filter(item=>item.formalized_at);
+    }catch(_){
+      meetingHistory=[];
+    }
+    renderMeetingLists();
+  }
+
+  function setStatus(t){ statusEl.textContent=t; }
+  // AI 夥伴當下真實狀態 (LiveKit lk.agent.state) → 人話
+  const AGENT_STATE={ initializing:'接通中…', listening:'收音待命', thinking:'思考中', speaking:'說話中', idle:'空閒待命' };
+  let agentState='', agentStateAt=0, lastUserVoiceAt=0, lastBaoVoiceAt=0;
+  function applyAgentState(s){
+    const label=AGENT_STATE[s];
+    if(!label || !room) return;
+    agentState=s; agentStateAt=performance.now(); setStatus(label);
+  }
+  function checkStandbyReason(){
+    if(!room || !agentState) return;
+    const now=performance.now(), label=AGENT_STATE[agentState];
+    if(agentState==='listening'){
+      const silentFor=now-Math.max(lastUserVoiceAt,lastBaoVoiceAt,agentStateAt);
+      if(silentFor>15000) setStatus('收音待命偏久');
+      else if(silentFor>8000) setStatus('收音待命（正常等待）');
+      else setStatus(label);
+    }else if(agentState==='idle'){
+      const idleFor=now-agentStateAt;
+      if(idleFor>15000) setStatus('空閒待命偏久');
+      else setStatus(label);
+    }
+  }
+
+  const motionFX={bound:false,enabled:false,x:0,y:0,tx:0,ty:0,shake:0,lastShake:0,
+    hue:null,colorGlow:0,lastColor:0};
+  const MOTION_HUES=[0,28,54,120,210,246,285];
+  const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+  function pickMotionHue(){
+    let next=MOTION_HUES[(Math.random()*MOTION_HUES.length)|0];
+    if(MOTION_HUES.length>1 && next===motionFX.hue) next=MOTION_HUES[(MOTION_HUES.indexOf(next)+1)%MOTION_HUES.length];
+    motionFX.hue=next; motionFX.colorGlow=1; motionFX.lastColor=performance.now();
+  }
+  async function enableMotionFX(){
+    if(motionFX.bound) return true;
+    try{
+      const permissions=[];
+      if(typeof DeviceOrientationEvent!=='undefined' &&
+         typeof DeviceOrientationEvent.requestPermission==='function'){
+        permissions.push(DeviceOrientationEvent.requestPermission());
+      }
+      if(typeof DeviceMotionEvent!=='undefined' &&
+         typeof DeviceMotionEvent.requestPermission==='function'){
+        permissions.push(DeviceMotionEvent.requestPermission());
+      }
+      if(permissions.length){
+        const results=await Promise.all(permissions);
+        if(results.some(res=>res!=='granted')) return false;
+      }
+      window.addEventListener('deviceorientation',e=>{
+        motionFX.tx=clamp((e.gamma||0)/38,-1,1);
+        motionFX.ty=clamp((e.beta||0)/48,-1,1);
+        motionFX.enabled=true;
+        const tilt=Math.hypot(motionFX.tx,motionFX.ty);
+        if(tilt>0.62 && performance.now()-motionFX.lastColor>720) pickMotionHue();
+      },true);
+      window.addEventListener('devicemotion',e=>{
+        const a=e.accelerationIncludingGravity; if(!a) return;
+        const force=Math.sqrt((a.x||0)**2+(a.y||0)**2+(a.z||0)**2);
+        const now=performance.now();
+        if(force>22 && now-motionFX.lastShake>480){
+          motionFX.shake=1; motionFX.lastShake=now;
+        }
+      },true);
+      motionFX.bound=true;
+      return true;
+    }catch(_){ return false; }
+  }
+
+  // ═══════════ 螺旋丸 · 聲浪光球 (audio-reactive viz) ═══════════
+  const cv=$('viz'), cx=cv.getContext('2d');
+  let VW=0,VH=0,DPR=1;
+  function vizResize(){
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    VW=cv.width=Math.round(innerWidth*DPR); VH=cv.height=Math.round(innerHeight*DPR);
+    cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
+  }
+  vizResize(); addEventListener('resize', vizResize);
+
+  let micCalc=null, baoCalc=null;   // 即時聲浪 0..1 (track 就緒才接)
+  let boostedAudioNodes=[];
+  let mLvl=0, bLvl=0;               // 平滑後的等級 (禪意: 緩起緩落)
+  const lerp=(a,b,k)=>a+(b-a)*k;
+
+  // 鳥群 (彗星/V 隊形): 領頭鳥飛, 後面的鳥沿「領頭走過的軌跡」一隻接一隻跟進。
+  // 每隻取領頭歷史上的一個過去點(age=延遲) + 側向偏移(往尾巴變寬=V) → 自然彗星尾。
+  const FN = innerWidth<700 ? 420 : 760;
+  const fage=new Float32Array(FN), flat=new Float32Array(FN),
+        fper=new Float32Array(FN), fph=new Float32Array(FN), fsz=new Float32Array(FN);
+  for(let i=0;i<FN;i++){
+    fage[i]=Math.pow(Math.random(), 0.7);    // 沿尾巴位置 0=頭 1=尾 (偏頭密)
+    flat[i]=Math.random()*2-1;               // 側向偏移 → V 擴散
+    fper[i]=1+Math.floor(Math.random()*3);   // 閃爍週期 1/2/3 秒
+    fph[i]=Math.random()*6.2832;             // 閃爍相位
+    fsz[i]=0.5+Math.random()*0.7;            // 大小微差
+  }
+  const HIST=600;                            // 領頭軌跡環形緩衝 (幀)
+  const hx=new Float32Array(HIST), hy=new Float32Array(HIST);
+  let hidx=0, histSeeded=false;
+  let lx=0, ly=0, lvx=0, lvy=0, lhead=0, prevGv=0, armRot=0;  // 領頭鳥 + 航向
+
+  const ripples=[]; let lastRip=0, t0=null;
+
+  function vizFrame(ts){
+    if(t0===null) t0=ts; const t=(ts-t0)/1000;
+    const micRaw = micCalc ? Math.min(1, micCalc()*1.7) : 0;
+    const baoRaw = baoCalc ? Math.min(1, baoCalc()*1.8) : 0;
+    if(micRaw>0.08) lastUserVoiceAt=ts;
+    if(baoRaw>0.06) lastBaoVoiceAt=ts;
+    mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
+    bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
+    motionFX.x=lerp(motionFX.x,motionFX.tx,0.08);
+    motionFX.y=lerp(motionFX.y,motionFX.ty,0.08);
+    motionFX.shake*=0.88;
+    motionFX.colorGlow*=0.975;
+    const vol = Math.max(mLvl, bLvl);
+    const gv = vol<0.06 ? 0 : (vol-0.06)/0.94;          // 噪聲門檻: 真安靜→0 (擋麥克風底噪)
+    const bao = bLvl>=mLvl;                               // 誰在發聲 → 配色
+    const baseHue = bao ? 158 : 192;                      // AI 夥伴=青綠, 使用者=冷白藍
+    const hue = motionFX.hue===null ? baseHue : lerp(baseHue,motionFX.hue,Math.min(1,motionFX.colorGlow));
+    const sat = 20 + vol*38, lit = 62 + vol*16;
+    const motionPush=motionFX.enabled ? (1+vol*.8) : 0;
+    const cxp=VW/2 - motionFX.x*DPR*48*motionPush;
+    const cyp=VH*0.5 + motionFX.y*DPR*26*motionPush;
+    const base=Math.min(VW,VH)*0.125, breathe=1+Math.sin(t*0.8)*0.04;
+    const R=base*breathe*(1+vol*0.8+motionFX.shake*0.16);
+
+    cx.clearRect(0,0,VW,VH);
+    cx.globalCompositeOperation='lighter';
+
+    // 全畫面氣暈 (極淡)
+    let g=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(VW,VH)*0.6);
+    const aA=0.01+vol*0.05;
+    g.addColorStop(0,`hsla(${hue},${sat}%,${lit}%,${aA})`);
+    g.addColorStop(0.5,`hsla(${hue},${sat}%,${lit}%,${aA*0.2})`);
+    g.addColorStop(1,'hsla(0,0%,0%,0)');
+    cx.fillStyle=g; cx.fillRect(0,0,VW,VH);
+
+    // 光球外暈 (薄霧)
+    g=cx.createRadialGradient(cxp,cyp,R*0.3,cxp,cyp,R*2.6);
+    g.addColorStop(0,`hsla(${hue},${sat}%,${lit}%,${0.045+vol*0.11})`);
+    g.addColorStop(0.45,`hsla(${hue},${sat}%,${lit}%,${0.015+vol*0.05})`);
+    g.addColorStop(1,'hsla(0,0%,0%,0)');
+    cx.fillStyle=g; cx.beginPath(); cx.arc(cxp,cyp,R*2.6,0,6.2832); cx.fill();
+
+    // (螺旋臂層已移除 — 使用者 2026-06-15)
+
+    // 核 (柔, 不刺眼)
+    g=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,R*1.1);
+    g.addColorStop(0,`hsla(${hue},${Math.max(0,sat-14)}%,${Math.min(90,lit+14)}%,${0.18+vol*0.14})`);
+    g.addColorStop(0.5,`hsla(${hue},${sat}%,${lit+6}%,${0.07+vol*0.1})`);
+    g.addColorStop(1,'hsla(0,0%,0%,0)');
+    cx.fillStyle=g; cx.beginPath(); cx.arc(cxp,cyp,R*1.1,0,6.2832); cx.fill();
+
+    // 鳥群 (彗星/V): 領頭鳥飛, 後面沿領頭軌跡一隻接一隻跟進
+    if(!histSeeded){ for(let i=0;i<HIST;i++){ hx[i]=cxp; hy[i]=cyp; } lx=cxp; ly=cyp; histSeeded=true; }
+    // 新聲音進來 → 領頭隨機改變方向 (rising edge)
+    if(gv>0.16 && prevGv<=0.16) lhead=Math.random()*6.2832;
+    prevGv=gv;
+    lhead += Math.sin(t*0.8+7.1)*0.03;                        // 平滑緩轉 (非每幀亂跳, 才不像蚊子)
+    const spd=Math.min(VW,VH)*0.0085*gv;                      // 速度隨聲浪 (靜止=0)
+    lvx = lvx*0.85 + Math.cos(lhead)*spd*0.15;
+    lvy = lvy*0.85 + Math.sin(lhead)*spd*0.15;
+    const cpull = gv>0.04 ? 0.003 : 0.03;                     // 有聲弱回中; 靜止→慢慢回正中央
+    lvx += (cxp-lx)*cpull; lvy += (cyp-ly)*cpull;
+    lx+=lvx; ly+=lvy;
+    hidx=(hidx+1)%HIST; hx[hidx]=lx; hy[hidx]=ly;             // 推進領頭軌跡
+    const trail=220;                                          // 尾巴長度(幀)
+    for(let i=0;i<FN;i++){
+      const back=(fage[i]*trail)|0;
+      const j=(hidx-back+HIST)%HIST, j2=(j-3+HIST)%HIST;
+      let dx=hx[j]-hx[j2], dy=hy[j]-hy[j2];
+      const dl=Math.sqrt(dx*dx+dy*dy)||1; dx/=dl; dy/=dl;     // 該軌跡點的行進方向
+      const cone=R*(0.04+fage[i]*1.25);                       // 越往尾巴越寬 → V 擴散
+      const px=hx[j] + (-dy)*flat[i]*cone, py=hy[j] + dx*flat[i]*cone;
+      const tw=0.2+0.8*(0.5+0.5*Math.sin(t*6.2832/fper[i]+fph[i]));  // 一閃一閃 1/2/3 秒
+      cx.fillStyle=`hsla(${hue},${sat+10}%,${lit+16}%,${(0.1+gv*0.3)*tw})`;
+      cx.fillRect(px, py, DPR*fsz[i]*1.4, DPR*fsz[i]*1.4);
+    }
+
+    // 漣漪 (極淡細圈)
+    if(vol>0.18 && ts-lastRip>Math.max(220,560-vol*380)){ ripples.push({r:R*1.05,a:0.08+vol*0.13}); lastRip=ts; }
+    for(let i=ripples.length-1;i>=0;i--){ const rp=ripples[i]; rp.r+=DPR*(1.6+vol*5.5); rp.a*=0.968;
+      if(rp.a<0.012){ ripples.splice(i,1); continue; }
+      cx.strokeStyle=`hsla(${hue},${sat}%,${lit+8}%,${rp.a})`; cx.lineWidth=DPR*0.6;
+      cx.beginPath(); cx.arc(cxp,cyp,rp.r,0,6.2832); cx.stroke(); }
+
+    cx.globalCompositeOperation='source-over';
+    requestAnimationFrame(vizFrame);
+  }
+  requestAnimationFrame(vizFrame);
+  setInterval(checkStandbyReason, 2000);
+
+  // 從 LiveKit track 取即時聲浪 (0..1)。優先用 LK 內建, 退 Web Audio。
+  function makeVol(track){
+    try{
+      if(LK.createAudioAnalyser){
+        const a=LK.createAudioAnalyser(track,{cloneTrack:true,fftSize:256});
+        return a.calculateVolume;
+      }
+    }catch(_){}
+    try{
+      const mst=track.mediaStreamTrack||(track.mediaStream&&track.mediaStream.getAudioTracks()[0]);
+      if(!mst) return null;
+      const AC=window.AudioContext||window.webkitAudioContext;
+      const ac=window._yac||(window._yac=new AC());
+      if(ac.state==='suspended') ac.resume();
+      const src=ac.createMediaStreamSource(new MediaStream([mst]));
+      const an=ac.createAnalyser(); an.fftSize=256; src.connect(an);
+      const buf=new Uint8Array(an.frequencyBinCount);
+      return ()=>{ an.getByteFrequencyData(buf); let s=0; for(let i=0;i<buf.length;i++)s+=buf[i]; return s/buf.length/255; };
+    }catch(_){ return null; }
+  }
+
+  function resizeMeetingWave(){
+    const rect=meetingWave.getBoundingClientRect();
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    meetingWave.width=Math.max(240,Math.round(rect.width*dpr));
+    meetingWave.height=Math.max(100,Math.round(rect.height*dpr));
+  }
+  function drawMeetingWave(){
+    const ctx=meetingWaveCtx, w=meetingWave.width, h=meetingWave.height;
+    ctx.clearRect(0,0,w,h);
+    const now=performance.now();
+    const bins=84, ampBase=h*0.32;
+    const arr=meetingRec.analyser ? new Uint8Array(meetingRec.analyser.frequencyBinCount) : null;
+    if(arr) meetingRec.analyser.getByteFrequencyData(arr);
+    const samples=[];
+    for(let i=0;i<=bins;i++){
+      let sample=0;
+      if(arr){
+        const stride=Math.max(1,Math.floor(arr.length/bins));
+        const start=Math.min(arr.length-1,i*stride);
+        let sum=0;
+        for(let j=0;j<stride && start+j<arr.length;j++) sum+=arr[start+j];
+        sample=(sum/Math.max(1,stride))/255;
+      }else{
+        sample=0.14+0.08*Math.sin((now/700)+(i*0.35));
+      }
+      sample=Math.min(1, Math.pow(Math.max(0, sample), 0.42)*2.9);
+      samples.push(sample);
+    }
+    const layers=[
+      { hue:190, alpha:0.38, width:Math.max(2.1,w/280), speed:620, offset:0.0, lift:-0.16, blur:14 },
+      { hue:285, alpha:0.34, width:Math.max(2.0,w/300), speed:760, offset:1.3, lift:0.0, blur:16 },
+      { hue:325, alpha:0.31, width:Math.max(1.9,w/320), speed:540, offset:2.2, lift:0.16, blur:14 },
+    ];
+    const centerY=h/2;
+    ctx.globalCompositeOperation='lighter';
+    layers.forEach(layer=>{
+      ctx.beginPath();
+      for(let i=0;i<=bins;i++){
+        const x=w*(i/bins);
+        const wave=Math.sin((now/layer.speed)+(i*0.42)+layer.offset)*0.65
+          + Math.sin((now/(layer.speed*0.66))+(i*0.19)+layer.offset*1.7)*0.35;
+        const cloud=Math.exp(-Math.pow((i-bins/2)/(bins*0.28),2));
+        const pulse=1.8+samples[i]*8.9;
+        const y=centerY + layer.lift*h + wave*ampBase*pulse*cloud;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle=`hsla(${layer.hue},85%,68%,${layer.alpha})`;
+      ctx.lineWidth=layer.width;
+      ctx.lineCap='round';
+      ctx.shadowBlur=layer.blur;
+      ctx.shadowColor=`hsla(${layer.hue},90%,70%,${layer.alpha*1.4})`;
+      ctx.stroke();
+    });
+    ctx.shadowBlur=0;
+    const glow=ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,h*0.6);
+    glow.addColorStop(0,'rgba(255,255,255,0.10)');
+    glow.addColorStop(.45,'rgba(95,165,255,0.08)');
+    glow.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=glow;
+    ctx.fillRect(0,0,w,h);
+    ctx.globalCompositeOperation='source-over';
+    meetingRec.raf=requestAnimationFrame(drawMeetingWave);
+  }
+  function stopMeetingWave(){
+    if(meetingRec.raf){ cancelAnimationFrame(meetingRec.raf); meetingRec.raf=0; }
+  }
+  function ensureMeetingAudioGraph(stream){
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;
+      const ac=meetingRec.audioCtx||(meetingRec.audioCtx=new AC());
+      if(ac.state==='suspended') ac.resume();
+      if(meetingRec.source) try{ meetingRec.source.disconnect(); }catch(_){}
+      meetingRec.source=ac.createMediaStreamSource(stream);
+      meetingRec.analyser=ac.createAnalyser();
+      meetingRec.analyser.fftSize=256;
+      meetingRec.source.connect(meetingRec.analyser);
+    }catch(_){}
+  }
+  function toggleMeetingPause(){
+    if(!meetingRec.isRecording) return;
+    if(meetingRec.isPaused){
+      meetingRec.pausedMs += performance.now()-meetingRec.pauseAt;
+      meetingRec.pauseAt=0;
+      meetingRec.isPaused=false;
+      drawMeetingWave();
+    }else{
+      meetingRec.pauseAt=performance.now();
+      meetingRec.isPaused=true;
+      stopMeetingWave();
+    }
+    setMeetingUi();
+    loadMeetingHistory();
+  }
+  function renderMeetingLists(){
+    meetingChunkRail.innerHTML='';
+    const transcriptLines=meetingDisplaySlices().map(slice=>slice.transcript);
+    const interimText=(meetingRec.interimText||'').trim();
+    const isLiveMode=true;
+    if(isLiveMode){
+      const stream=document.createElement('div'); stream.className='livestream';
+      const livePad=document.createElement('div'); livePad.className=`livepad${(!interimText && !transcriptLines.length) ? ' blank' : ''}`;
+      if(interimText || transcriptLines.length){
+        const flow=document.createElement('div'); flow.className='liveflow';
+        if(transcriptLines.length){
+          const finalBlock=document.createElement('div');
+          finalBlock.className='livefinal';
+          finalBlock.textContent=transcriptLines.join('\n');
+          flow.appendChild(finalBlock);
+        }
+        if(interimText){
+          const interimBlock=document.createElement('div');
+          interimBlock.className='liveinterimline';
+          interimBlock.innerHTML=`${escHtml(interimText)}<span class="livecaret">|</span>`;
+          flow.appendChild(interimBlock);
+        }
+        const liveAnchor=document.createElement('div');
+        liveAnchor.className='liveanchor';
+        liveAnchor.setAttribute('aria-hidden','true');
+        flow.appendChild(liveAnchor);
+        livePad.appendChild(flow);
+      }
+      if(meetingRec.speechError){
+        livePad.title=`即時字幕連線異常：${meetingRec.speechError}`;
+      }
+      stream.appendChild(livePad);
+      meetingChunkRail.appendChild(stream);
+      requestAnimationFrame(()=>{
+        const anchor=livePad.querySelector('.liveanchor');
+        if(anchor){
+          anchor.scrollIntoView({block:'center', inline:'nearest'});
+        }else{
+          livePad.scrollTop=livePad.scrollHeight;
+        }
+      });
+    }
+  }
+  function setMeetingUi(){
+    const streamUi=meetingStreamUi();
+    const loop=getMeetingLoopState();
+    meetingTimer.textContent=fmtClock(meetingElapsedMs());
+    meetingPauseBtn.disabled=!meetingRec.isRecording;
+    meetingDiscardBtn.disabled=meetingRec.isRecording || (!meetingRec.segments.length && !meetingRec.liveSlices.length);
+    if(meetingTransportBadge){
+      meetingTransportBadge.className=`transportpill ${streamUi.cls}`;
+      meetingTransportBadge.textContent=streamUi.label;
+    }
+    if(meetingTransportDetail) meetingTransportDetail.textContent=streamUi.detail;
+    if(meetingTransportBar && meetingRec.streamEvents.length){
+      meetingTransportBar.title=meetingRec.streamEvents
+        .slice()
+        .reverse()
+        .map(item=>`${new Date(item.at).toLocaleTimeString('zh-TW',{hour12:false})} ${item.state} ${item.note||''}`.trim())
+        .join('\n');
+    }
+    if(meetingSaveAudioToggle){
+      meetingSaveAudioToggle.checked=!!meetingRec.saveAudio;
+      meetingSaveAudioToggle.disabled=meetingRec.isRecording;
+    }
+    if(meetingFormalBtn){
+      meetingFormalBtn.disabled=!loop.canFormalize || !!meetingRec.formalizedAt || !!meetingRec.formalizing;
+      meetingFormalBtn.textContent=meetingRec.formalizedAt
+        ? '專業會議記錄已整理完成'
+        : '再次整理成專業的會議記錄';
+    }
+    if(meetingRec.isRecording && !meetingRec.isPaused){
+      meetingBadge.className='recordbadge live';
+      meetingBadge.textContent='錄音中';
+      meetingRecordBtn.className='recordbtn stop';
+      meetingRecordLabel.textContent='停止';
+      meetingPauseBtn.textContent='暫停';
+      const currentElapsed=meetingElapsedMs();
+      meetingDraftState.textContent=currentElapsed<NOTE_ROLLUP_MS?'先累積上下文，滿 1 分鐘後可整理':'錄音持續中，隨時可在結束後再整理';
+      meetingChunkMeta.textContent=meetingRec.saveAudio
+        ? '後端即時字幕會跟著你的聲音往下長；音訊保存已開啟，後端會自動長連線 rollover。'
+        : '後端即時字幕會跟著你的聲音往下長；目前只保存逐字稿。';
+      meetingStatus.textContent=currentElapsed<NOTE_ROLLUP_MS
+        ? '上半段持續長出後端即時字幕；下半段會先累積上下文，滿 1 分鐘才開始第一段AI 夥伴作業。'
+        : '上半段持續長出後端即時字幕；下半段會開始把上下文整理成AI 夥伴作業。';
+    }else if(meetingRec.isRecording && meetingRec.isPaused){
+      meetingBadge.className='recordbadge pause';
+      meetingBadge.textContent='已暫停';
+      meetingRecordBtn.className='recordbtn pause';
+      meetingRecordLabel.textContent='停止';
+      meetingPauseBtn.textContent='繼續';
+      meetingDraftState.textContent='錄音暫停中';
+      meetingChunkMeta.textContent='錄音已暫停';
+      meetingStatus.textContent='目前暫停收音；逐字與AI 夥伴作業都會停在這裡。';
+    }else{
+      meetingBadge.className='recordbadge idle';
+      const hasStoredAudio=meetingRec.segments.length>0;
+      const hasTranscript=meetingRec.liveSlices.length>0;
+      meetingBadge.textContent=(hasStoredAudio || hasTranscript)?'已停止':'未開始';
+      meetingRecordBtn.className='recordbtn';
+      meetingRecordLabel.textContent=(hasStoredAudio || hasTranscript)?'重錄':'錄音';
+      meetingPauseBtn.textContent='暫停';
+      meetingDraftState.textContent=meetingRec.formalizing
+        ? '正在整理成正式會議記錄'
+        : (meetingRec.formalizedAt
+          ? '正式會議記錄已整理完成'
+          : ((hasStoredAudio || hasTranscript) ? '錄音已停止，可手動整理成正式會議記錄' : '等待錄音'));
+      meetingChunkMeta.textContent=meetingRec.saveAudio
+        ? (hasStoredAudio?`這次另外保存了 ${meetingRec.segments.length} 段音訊。`:'尚未開始錄音')
+        : (hasTranscript?'本次只保存逐字稿。':'尚未開始錄音');
+      meetingStatus.textContent=(hasStoredAudio || hasTranscript)
+        ? '錄音已停止。上半段保留逐字流，下半段保留每分鐘的AI 夥伴作業。'
+        : '開始錄音後，後端即時字幕會貼著你的聲音往下長。';
+    }
+    renderMeetingLists();
+  }
+  async function startMeetingRecording(){
+    if(meetingRec.isRecording) return;
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      meetingStatus.textContent='這台裝置不支援錄音。';
+      return;
+    }
+    try{
+      const startRes=await fetch(apiUrl('/api/yuling/meetings/stream/start'),{
+        method:'POST',
+        headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
+        body:JSON.stringify({save_audio: !!(meetingSaveAudioToggle&&meetingSaveAudioToggle.checked)}),
+      });
+      if(!startRes.ok) throw new Error('stream-start '+startRes.status);
+      const started=await startRes.json();
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      meetingRec.stream=stream;
+      meetingRec.recorder=null;
+      meetingRec.mimeType='audio/pcm';
+      meetingRec.segments=[];
+      meetingRec.liveSlices=[];
+      meetingRec.minuteNotes=[];
+      meetingRec.isRecording=true;
+      meetingRec.isPaused=false;
+      meetingRec.startAt=performance.now();
+      meetingRec.pausedMs=0;
+      meetingRec.pauseAt=0;
+      meetingRec.segmentStartMs=0;
+      meetingRec.nextMinuteIndex=1;
+      meetingRec.minuteUploading=false;
+      meetingRec.speechSupported=false;
+      meetingRec.speechRunning=false;
+      meetingRec.interimText='';
+      meetingRec.lastFinalMs=0;
+      meetingRec.backendLiveActive=false;
+      meetingRec.speechError='';
+      meetingRec.formalizing=false;
+      meetingRec.formalizedAt=0;
+      meetingRec.streamState='connecting';
+      meetingRec.streamStateNote='後端即時字幕正在建立長連線。';
+      meetingRec.streamStateAt=Date.now();
+      meetingRec.streamEvents=[];
+      pushMeetingStreamEvent(meetingRec.streamState, meetingRec.streamStateNote);
+      meetingRec.sessionId=started.session_id||'';
+      meetingRec.saveAudio=!!started.save_audio;
+      meetingRec.pcmQueue=[];
+      meetingRec.pcmUploading=false;
+      meetingRec.pcmCursorMs=0;
+      meetingRec.streamConnected=false;
+      ensureMeetingAudioGraph(stream);
+      startMeetingPcmPump(stream);
+      startMeetingEventStream(meetingRec.sessionId);
+      scheduleMeetingSpeechFallback(1600);
+      resizeMeetingWave();
+      stopMeetingWave();
+      drawMeetingWave();
+      setMeetingUi();
+    }catch(err){
+      meetingStatus.textContent='麥克風沒有成功開啟。';
+      meetingDraftState.textContent='錄音失敗';
+    }
+  }
+  async function stopMeetingRecording(){
+    if(!meetingRec.isRecording) return;
+    stopMeetingPcmPump();
+    stopMeetingSpeechRecognition(false);
+    await waitForMeetingPcmDrain(2200);
+    stopMeetingEventStream();
+    let stopResult=null;
+    if(meetingRec.sessionId){
+      try{
+        const stopRes=await fetch(apiUrl(`/api/yuling/meetings/stream/${encodeURIComponent(meetingRec.sessionId)}/stop`),{
+          method:'POST',
+          headers:logHeaders(),
+        });
+        if(stopRes.ok) stopResult=await stopRes.json();
+      }catch(_){}
+    }
+    maybeRollMeetingMinute(true);
+    if(meetingRec.sessionId){
+      try{
+        const detailRes=await fetch(apiUrl(`/api/yuling/meetings/${encodeURIComponent(meetingRec.sessionId)}`),{
+          headers:logHeaders(),
+        });
+        if(detailRes.ok){
+          const detail=await detailRes.json();
+          meetingRec.saveAudio=!!(detail.settings&&detail.settings.save_audio);
+          meetingRec.segments=Array.isArray(detail.chunks)?detail.chunks:[];
+          meetingRec.liveSlices=Array.isArray(detail.live_slices)?detail.live_slices.map((slice, idx)=>({
+            index:Number(slice.slice_index||idx+1),
+            startMs:Math.max(0, Number(slice.start_ms||0)),
+            endMs:Math.max(0, Number(slice.end_ms||0)),
+            blob:null,
+            transcript:String(slice.transcript||'').trim(),
+            done:true,
+            uploading:false,
+            error:'',
+            source:'backend',
+            minuteIndex:Math.floor(Math.max(0, Number(slice.start_ms||0))/NOTE_ROLLUP_MS)+1
+          })).filter(slice=>slice.transcript):meetingRec.liveSlices;
+          meetingRec.minuteNotes=Array.isArray(detail.minute_notes)?detail.minute_notes.map(note=>({
+            minuteIndex:Number(note.minute_index||0),
+            startMs:Math.max(0, Number(note.start_ms||0)),
+            endMs:Math.max(0, Number(note.end_ms||0)),
+            transcript:String(note.transcript||'').trim(),
+            summary:String(note.summary||'').trim(),
+            uploading:false,
+            done:true,
+            error:''
+          })):meetingRec.minuteNotes;
+          if(detail.formal_record&&detail.formal_record.formalized_at){
+            meetingRec.formalizedAt=Date.parse(detail.formal_record.formalized_at)||meetingRec.formalizedAt;
+          }
+        }
+      }catch(_){}
+    }
+    if(stopResult&&typeof stopResult.end_ms==='number'){
+      meetingRec.lastFinalMs=Math.max(meetingRec.lastFinalMs||0, stopResult.end_ms||0);
+    }
+    if(meetingRec.stream) meetingRec.stream.getTracks().forEach(t=>t.stop());
+    meetingRec.stream=null;
+    meetingRec.recorder=null;
+    meetingRec.isRecording=false;
+    meetingRec.isPaused=false;
+    meetingRec.pauseAt=0;
+    meetingRec.analyser=null;
+    if(meetingRec.source) try{ meetingRec.source.disconnect(); }catch(_){}
+    meetingRec.source=null;
+    setMeetingStreamState('closed', '這段錄音已停止；字幕與AI 夥伴作業停在目前內容。');
+    stopMeetingWave();
+    setMeetingUi();
+    loadMeetingHistory();
+  }
+  function discardMeetingRecording(){
+    if(meetingRec.isRecording) return;
+    meetingRec.segments=[];
+    meetingRec.liveSlices=[];
+    meetingRec.minuteNotes=[];
+    meetingRec.startAt=0;
+    meetingRec.segmentStartMs=0;
+    meetingRec.nextMinuteIndex=1;
+    meetingRec.interimText='';
+    meetingRec.lastFinalMs=0;
+    meetingRec.backendLiveActive=false;
+    meetingRec.speechError='';
+    meetingRec.formalizing=false;
+    meetingRec.formalizedAt=0;
+    meetingRec.sessionId='';
+    meetingRec.pcmQueue=[];
+    meetingRec.pcmUploading=false;
+    meetingRec.pcmCursorMs=0;
+    meetingRec.streamConnected=false;
+    meetingRec.streamEvents=[];
+    setMeetingStreamState('idle', '錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。');
+    meetingRec.saveAudio=!!(meetingSaveAudioToggle&&meetingSaveAudioToggle.checked);
+    setMeetingUi();
+  }
+  function tickMeetingRecording(){
+    if(meetingRec.isRecording && !meetingRec.isPaused){
+      maybeRollMeetingMinute(false);
+    }
+    setMeetingUi();
+  }
+
+  const audioEventFX={timer:null,baseline:0.015,last:{},bound:false};
+  function classifyAudioEvent(rms,peak,highRatio,zcr){
+    if(peak>0.82 && rms>audioEventFX.baseline*5) return {label:'impact', confidence:Math.min(0.95, peak)};
+    if(rms>0.16 && peak>0.62 && highRatio>0.30) return {label:'sneeze', confidence:Math.min(0.92, 0.55+rms+highRatio*.5)};
+    if(rms>0.09 && peak>0.36 && highRatio>0.16 && zcr>0.05) return {label:'cough', confidence:Math.min(0.88, 0.48+rms+highRatio*.45)};
+    return null;
+  }
+  function postAudioEvent(evt, metrics){
+    if(!currentCallId || !evt) return;
+    const now=performance.now();
+    if(now-(audioEventFX.last[evt.label]||0)<2600) return;
+    audioEventFX.last[evt.label]=now;
+    fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(currentCallId)+'/event'),{
+      method:'POST',
+      headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
+      body:JSON.stringify({label:evt.label,confidence:evt.confidence,meta:Object.assign({source:'browser-heuristic'},metrics)})
+    }).catch(()=>{});
+  }
+  function bindAudioEventDetector(track){
+    try{
+      if(audioEventFX.timer) clearInterval(audioEventFX.timer);
+      const mst=track.mediaStreamTrack||(track.mediaStream&&track.mediaStream.getAudioTracks()[0]);
+      if(!mst) return;
+      const AC=window.AudioContext||window.webkitAudioContext;
+      const ac=window._yac||(window._yac=new AC());
+      if(ac.state==='suspended') ac.resume();
+      const src=ac.createMediaStreamSource(new MediaStream([mst]));
+      const an=ac.createAnalyser(); an.fftSize=2048; src.connect(an);
+      const td=new Float32Array(an.fftSize), fd=new Uint8Array(an.frequencyBinCount);
+      audioEventFX.timer=setInterval(()=>{
+        an.getFloatTimeDomainData(td); an.getByteFrequencyData(fd);
+        let sum=0, peak=0, crossings=0;
+        for(let i=0;i<td.length;i++){
+          const v=Math.abs(td[i]); sum+=td[i]*td[i]; if(v>peak) peak=v;
+          if(i>0 && ((td[i]>=0)!=(td[i-1]>=0))) crossings++;
+        }
+        const rms=Math.sqrt(sum/td.length), zcr=crossings/td.length;
+        let high=0,total=1;
+        for(let i=0;i<fd.length;i++){ total+=fd[i]; if(i>fd.length*.42) high+=fd[i]; }
+        const highRatio=high/total;
+        audioEventFX.baseline=audioEventFX.baseline*.96+Math.min(rms,0.08)*.04;
+        const evt=classifyAudioEvent(rms,peak,highRatio,zcr);
+        if(evt) postAudioEvent(evt,{rms:+rms.toFixed(4),peak:+peak.toFixed(4),highRatio:+highRatio.toFixed(3),zcr:+zcr.toFixed(3)});
+      },260);
+      audioEventFX.bound=true;
+    }catch(_){}
+  }
+
+  function boostRemoteAudio(track, attachedEl){
+    try{
+      const mst=track.mediaStreamTrack||(track.mediaStream&&track.mediaStream.getAudioTracks()[0]);
+      if(!mst) return false;
+      const AC=window.AudioContext||window.webkitAudioContext;
+      const ac=window._yac||(window._yac=new AC());
+      if(ac.state==='suspended') ac.resume();
+      const src=ac.createMediaStreamSource(new MediaStream([mst]));
+      const gain=ac.createGain();
+      gain.gain.value=1.65;
+      src.connect(gain); gain.connect(ac.destination);
+      boostedAudioNodes.push({src,gain});
+      if(attachedEl) attachedEl.muted=true;
+      return true;
+    }catch(_){ return false; }
+  }
+
+  function setLamp(id, state){
+    const el=$('lamp-'+id); if(!el) return;
+    el.classList.remove('ok','bad','warn');
+    if(state) el.classList.add(state);
+  }
+  function setMic(state){ setLamp('mic', state); }
+
+  async function pollHealth(){
+    // 後端回 ok/bad/unknown 字串 (真實檢測): 綠=確認運作, 紅=壞/缺, 黃=還沒驗證
+    const m = s => s==='ok' ? 'ok' : (s==='unknown' ? 'warn' : 'bad');
+    try{
+      const r=await fetch(apiUrl('/api/yuling/health'),{cache:'no-store'});
+      if(!r.ok) throw 0;
+      const h=await r.json();
+      ['llm','stt','tts','livekit','memory'].forEach(k=>setLamp(k, m(h[k])));
+    }catch(_){
+      ['llm','stt','tts','livekit','memory'].forEach(k=>setLamp(k,'bad'));
+    }
+  }
+
+  function uiIdle(){
+    connecting=false;
+    callCircle.className='circle call go';
+    callIcon.setAttribute('stroke','#fff');
+    callLabel.textContent='撥打';
+    muteBtn.classList.remove('show');   // 掛斷→靜音鈕慢慢縮回掛斷球
+  }
+  function uiInCall(){
+    callCircle.className='circle call end';
+    callLabel.textContent='掛斷';
+    muteBtn.classList.add('show');      // 確保通話中靜音鈕在外面
+  }
+
+  // 等待接聽鈴聲 (撥打 → AI 夥伴接聽之間的過渡期循環播放)
+  const ringback=new Audio('ringback.wav'); ringback.loop=true; ringback.volume=0.55;
+  function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
+
+  async function startCall(){
+    if(connecting||room) return;
+    connecting=true; setStatus('撥號中…'); callLabel.textContent='連線中';
+    muteBtn.classList.add('show');   // 連線中→靜音鈕慢慢從掛斷球長出來
+    ringback.currentTime=0; ringback.play().catch(()=>{});   // 開始播等待接聽音效
+    try{
+      const access=localStorage.getItem(ACCESS_KEY)||'';
+      const res=await fetch(apiUrl('/api/yuling/token'),{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ identity:'coach', name:'使用者', access })
+      });
+      if(res.status===403){ stopRing(); setStatus('密語錯誤，點右上齒輪設定'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setStatus('連不上太乙（'+res.status+'）'); uiIdle(); return; }
+      const d=await res.json();
+      currentCallId=d.room||'';
+
+      room=new LK.Room({ adaptiveStream:true, dynacast:true });
+      room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
+        if(track.kind===LK.Track.Kind.Audio){
+          stopRing();                       // AI 夥伴接聽了 → 停等待鈴聲
+          const el=track.attach(); el.autoplay=true; el.playsInline=true;
+          el.style.display='none'; document.body.appendChild(el);
+          el.play&&el.play().catch(()=>{});
+          boostRemoteAudio(track, el);
+          baoCalc=makeVol(track);          // AI 夥伴發聲 → 光球反應
+        }
+      });
+      room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
+        const s=p&&p.attributes&&p.attributes['lk.agent.state'];
+        if(s) applyAgentState(s); else setStatus('通話中');
+      });
+      room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
+        const s=changed&&changed['lk.agent.state'];
+        if(s) applyAgentState(s);
+      });
+      room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已掛斷'); });
+
+      await room.connect(d.url, d.token);
+      try{
+        await room.localParticipant.setMicrophoneEnabled(true);
+        setMic('ok');
+        const mp=room.localParticipant.getTrackPublication(LK.Track.Source.Microphone);
+        if(mp&&mp.track){
+          micCalc=makeVol(mp.track);   // 你發聲 → 光球反應
+          bindAudioEventDetector(mp.track);
+        }
+      }catch(micErr){
+        setMic('bad'); setStatus('麥克風被擋，請允許權限');
+      }
+      connecting=false; uiInCall();
+      const others=room.numParticipants||0;
+      setStatus(others>0?'通話中':'AI 夥伴接通中…');
+      // AI 夥伴已在房且已有狀態 → 立刻反映 (避免錯過第一個狀態)
+      try{ room.remoteParticipants.forEach(p=>{ const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
+    }catch(e){
+      stopRing(); setStatus('出錯了：'+(e&&e.message?e.message:e)); uiIdle(); room=null;
+    }
+  }
+
+  function cleanup(msg){
+    stopRing();
+    try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
+    try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
+    try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
+    micCalc=null; baoCalc=null;       // 聲浪源歸零 → 光球回待機呼吸
+    room=null; muted=false; currentCallId=''; setMic(''); uiIdle(); setStatus(msg||'已掛斷');
+  }
+  async function endCall(){
+    if(room){ try{ await room.disconnect(); }catch(_){} }
+    cleanup('已掛斷');
+  }
+  function toggleMute(){
+    if(!room) return;
+    muted=!muted;
+    room.localParticipant.setMicrophoneEnabled(!muted);
+    muteCircle.style.background=muted?'rgba(216,90,48,.25)':'';
+    muteLabel.textContent=muted?'已靜音':'靜音';
+    setMic(muted?'warn':'ok');
+  }
+
+  callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
+  muteBtn.addEventListener('click', toggleMute);
+  meetingExpandBtn&&meetingExpandBtn.addEventListener('click', toggleMeetingTranscriptExpanded);
+  swipeHint&&swipeHint.addEventListener('click',()=>{ if(!activeOverlayOpen()) toggleMeetingView(); });
+  swipeHint&&swipeHint.addEventListener('keydown',e=>{
+    if(e.key==='Enter' || e.key===' '){
+      e.preventDefault();
+      if(!activeOverlayOpen()) toggleMeetingView();
+    }
+  });
+  gear.addEventListener('click',()=>{ accessInput.value=localStorage.getItem(ACCESS_KEY)||''; panel.classList.remove('hidden'); });
+  saveBtn.addEventListener('click',()=>{
+    const v=accessInput.value.trim();
+    if(v) localStorage.setItem(ACCESS_KEY,v); else localStorage.removeItem(ACCESS_KEY);
+    panel.classList.add('hidden'); setStatus('密語已更新');
+  });
+  panel.addEventListener('click',e=>{ if(e.target===panel) panel.classList.add('hidden'); });
+
+  // ── 對話紀錄 ──
+  const logPanel=$('logPanel'), logBody=$('logBody'), logTitle=$('logTitle'), logBack=$('logBack');
+  function logHeaders(){
+    const a=localStorage.getItem(ACCESS_KEY)||'';
+    return a?{'X-Yuling-Access':a}:{};
+  }
+  function fmtWhen(ts){            // "2026-06-15 21:00:05" → "6/15（週日）21:00"
+    if(!ts) return '';
+    const m=ts.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+    if(!m) return ts;
+    const wd='日一二三四五六'[new Date(+m[1],+m[2]-1,+m[3]).getDay()];
+    return `${+m[2]}/${+m[3]}（週${wd}）${m[4]}:${m[5]}`;
+  }
+  function esc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+  async function loadCallList(){
+    logBody.classList.remove('detail');
+    logTitle.textContent='對話紀錄'; logBack.dataset.mode='close';
+    logBody.innerHTML='<div class="logempty">載入中…</div>';
+    try{
+      const r=await fetch(apiUrl('/api/yuling/calls'),{headers:logHeaders()});
+      if(r.status===403){ logBody.innerHTML='<div class="logempty">需要通話密語才能看紀錄，<br>請先到設定輸入密語。</div>'; return; }
+      const calls=(await r.json()).calls||[];
+      if(!calls.length){ logBody.innerHTML='<div class="logempty">還沒有對話紀錄。<br>跟AI 夥伴通一次話就會出現在這裡。</div>'; return; }
+      logBody.innerHTML='';
+      calls.forEach(c=>{
+        const el=document.createElement('button'); el.className='callitem';
+        const audit=c.audit||{};
+        const aq=audit.status==='bad'?'⚠️ 異常':(audit.status==='warn'?'△ 待檢':'✓ 正常');
+        const ltag=c.latency_events?`⏱ ${c.latency_events}點`:'';
+        const etag=c.audio_events?`👂 ${c.audio_events}聲`:'';
+        const badges=[c.audio?'🔊 有錄音':'', c.kept?'⭐ 已保存':'', aq, ltag, etag].filter(Boolean).join('　');
+        el.innerHTML=`<div class="when">${esc(fmtWhen(c.started))}</div>`+
+          `<div class="meta">${c.turns} 句 · 起 ${esc((c.started||'').slice(11,19))} 訖 ${esc((c.ended||'').slice(11,19))}</div>`+
+          (badges?`<div class="badges">${badges}</div>`:'')+
+          `<div class="prev">${esc(c.preview)}</div>`;
+        el.addEventListener('click',()=>openCall(c.call_id, fmtWhen(c.started)));
+        logBody.appendChild(el);
+      });
+    }catch(e){ logBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+  }
+  const audioObjectUrls = new Set();
+  function revokeAudioUrls(){
+    audioObjectUrls.forEach(u=>URL.revokeObjectURL(u));
+    audioObjectUrls.clear();
+  }
+  async function loadAudioSrc(audioEl, callId){
+    const r=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(callId)+'/audio'),{headers:logHeaders()});
+    if(!r.ok) throw new Error('audio '+r.status);
+    const url=URL.createObjectURL(await r.blob());
+    audioObjectUrls.add(url);
+    audioEl.src=url;
+  }
+  async function openCall(id, title){
+    logBody.classList.add('detail');
+    logTitle.textContent=title||'對話'; logBack.dataset.mode='list';
+    logBody.innerHTML='<div class="logempty">載入中…</div>';
+    try{
+      const r=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(id)),{headers:logHeaders()});
+      const d=await r.json(); const turns=d.turns||[];
+      logBody.innerHTML='';
+      const detail=document.createElement('div'); detail.className='detailgrid';
+      const meta=document.createElement('div'); meta.className='detailmeta';
+      const timeline=document.createElement('div'); timeline.className='timelinecard';
+      const turnList=document.createElement('div'); turnList.className='turnlist';
+      // 聲音條: 播放 + 正式保存
+      const bar=document.createElement('div'); bar.className='audiobar primary';
+      if(d.audio){
+        const au=document.createElement('audio'); au.controls=true; au.preload='none';
+        loadAudioSrc(au,id).catch(()=>{ bar.innerHTML='<div class="noaud">錄音讀取失敗</div>'; });
+        bar.appendChild(au);
+        const row=document.createElement('div'); row.className='keeprow';
+        const kb=document.createElement('button');
+        const st=document.createElement('span'); st.className='keepstatus';
+        const paint=k=>{ kb.className='keepbtn'+(k?' on':''); kb.textContent=k?'✓ 已正式保存':'正式保存';
+          st.textContent=k?'永久保留':'未保存 · 3天後自動刪除錄音'; };
+        paint(d.kept);
+        kb.addEventListener('click',async()=>{
+          const next=!kb.classList.contains('on'); kb.disabled=true;
+          try{
+            const rr=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(id)+'/keep'),{
+              method:'POST',headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
+              body:JSON.stringify({keep:next})});
+            paint((await rr.json()).kept);
+          }catch(e){}
+          kb.disabled=false;
+        });
+        row.appendChild(kb); row.appendChild(st); bar.appendChild(row);
+      } else { bar.innerHTML='<div class="noaud">（這通沒有錄音）</div>'; }
+      detail.appendChild(bar);
+      const audit=d.audit||{};
+      const issues=audit.issues||[];
+      const ab=document.createElement('div'); ab.className='audiobar';
+      const title=audit.status==='bad'?'通話檢查：異常':(audit.status==='warn'?'通話檢查：待檢':'通話檢查：正常');
+      ab.innerHTML='<div class="keepstatus">'+esc(title)+'　分數 '+esc(String(audit.score??100))+'</div>'+
+        (issues.length?'<div class="keepstatus">'+issues.map(i=>esc(i.message)).join('<br>')+'</div>':'');
+      meta.appendChild(ab);
+      const latency=d.latency||[];
+      const lb=document.createElement('div'); lb.className='audiobar';
+      if(latency.length){
+        lb.innerHTML='<div class="keepstatus">延遲儀表</div>'+
+          '<div class="keepstatus">'+latency.map(e=>{
+            const dt=Number.isFinite(e.delta_ms)?` +${e.delta_ms}ms`:'';
+            return esc((e.stage||'')+dt);
+          }).join('<br>')+'</div>';
+      }else{
+        lb.innerHTML='<div class="keepstatus">延遲儀表：這通尚無打點</div>';
+      }
+      meta.appendChild(lb);
+      const events=d.audio_events||[];
+      const eb=document.createElement('div'); eb.className='audiobar';
+      if(events.length){
+        const names={cough:'咳嗽',sneeze:'噴嚏',impact:'撞擊'};
+        eb.innerHTML='<div class="keepstatus">現場聲音</div>'+
+          '<div class="keepstatus">'+events.map(e=>{
+            const pct=Math.round((e.confidence||0)*100);
+            return esc((names[e.label]||e.label||'聲音')+' '+pct+'%');
+          }).join('<br>')+'</div>';
+      }else{
+        eb.innerHTML='<div class="keepstatus">現場聲音：這通尚無事件</div>';
+      }
+      meta.appendChild(eb);
+      detail.appendChild(meta);
+      // 逐句氣泡
+      if(!turns.length){ const e=document.createElement('div'); e.className='logempty'; e.textContent='這通沒有逐字內容。'; timeline.appendChild(e); }
+      turns.forEach(t=>{
+        const bao=t.role==='assistant';
+        const el=document.createElement('div');
+        el.className='turn '+(bao?'bao':'coach');
+        el.innerHTML=`<span class="tts">${bao?'AI 夥伴':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
+        turnList.appendChild(el);
+      });
+      timeline.appendChild(turnList);
+      detail.appendChild(timeline);
+      logBody.appendChild(detail);
+    }catch(e){ logBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+  }
+  $('logOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); logPanel.classList.remove('hidden'); loadCallList(); });
+  logBack.addEventListener('click',()=>{
+    revokeAudioUrls();
+    if(logBack.dataset.mode==='list') loadCallList();          // 詳情 → 回列表
+    else logPanel.classList.add('hidden');                      // 列表 → 關閉
+  });
+
+  // ── 版本紀錄 ──
+  const verPanel=$('verPanel'), verBody=$('verBody'), verBack=$('verBack');
+  const VERTYPE={'新功能':'#3aa86a','修復':'#e0a52e','調整':'#5b9bd5','介面':'#9b7fd5','部署':'#8a8f98'};
+  async function loadVer(){
+    verBody.innerHTML='<div class="logempty">載入中…</div>';
+    try{
+      const r=await fetch('/yuling_changelog.json?t='+Date.now());
+      const items=(await r.json()).entries||[];
+      if(!items.length){ verBody.innerHTML='<div class="logempty">還沒有版本紀錄。</div>'; return; }
+      verBody.innerHTML='';
+      items.forEach(e=>{
+        const c=VERTYPE[e.type]||'#8a8f98';
+        const el=document.createElement('div'); el.className='veritem';
+        el.innerHTML=`<div class="vh"><span class="vtype" style="background:${c}22;color:${c};border:1px solid ${c}66">${esc(e.type)}</span><span class="vtime">${esc(e.ts)}</span></div>`+
+          `<div class="vtitle">${esc(e.title)}</div>`+
+          (e.desc?`<div class="vdesc">${esc(e.desc)}</div>`:'');
+        verBody.appendChild(el);
+      });
+    }catch(err){ verBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+  }
+  $('verLink').addEventListener('click',()=>{ verPanel.classList.remove('hidden'); loadVer(); });
+  verBack.addEventListener('click',()=>verPanel.classList.add('hidden'));
+  verPanel.addEventListener('click',e=>{ if(e.target===verPanel) verPanel.classList.add('hidden'); });
+
+  // ── 內心獨白 ──
+  const innerPanel=$('innerPanel'), innerBody=$('innerBody'), innerBack=$('innerBack');
+  async function loadInner(){
+    innerBody.innerHTML='<div class="logempty">載入中…</div>';
+    try{
+      const r=await fetch(apiUrl('/api/yuling/inner'),{headers:logHeaders()});
+      if(r.status===403){ innerBody.innerHTML='<div class="logempty">需要通話密語才能看，<br>請先到設定輸入密語。</div>'; return; }
+      const items=(await r.json()).inner||[];
+      if(!items.length){ innerBody.innerHTML='<div class="logempty">還沒有內心獨白。<br>通一次話、掛斷後，AI 夥伴這通的內心話會出現在這裡。</div>'; return; }
+      innerBody.innerHTML='';
+      items.forEach(e=>{
+        const el=document.createElement('div'); el.className='inneritem';
+        el.innerHTML=`<div class="it">🤍 ${esc(fmtWhen(e.ts))}</div><div class="ix">${esc(e.text)}</div>`;
+        innerBody.appendChild(el);
+      });
+    }catch(err){ innerBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+  }
+  $('innerOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); innerPanel.classList.remove('hidden'); loadInner(); });
+  innerBack.addEventListener('click',()=>innerPanel.classList.add('hidden'));
+  innerPanel.addEventListener('click',e=>{ if(e.target===innerPanel) innerPanel.classList.add('hidden'); });
+
+  meetingRecordBtn.addEventListener('click',()=>{
+    if(meetingRec.isRecording) stopMeetingRecording();
+    else startMeetingRecording();
+  });
+  meetingFormalBtn&&meetingFormalBtn.addEventListener('click', finalizeMeetingFormalNotes);
+  meetingPauseBtn.addEventListener('click', toggleMeetingPause);
+  meetingDiscardBtn.addEventListener('click', discardMeetingRecording);
+  meetingSaveAudioToggle&&meetingSaveAudioToggle.addEventListener('change',()=>{
+    meetingRec.saveAudio=!!meetingSaveAudioToggle.checked;
+    setMeetingUi();
+  });
+
+  function beginMeetingDrag(clientX, clientY, target){
+    if(activeOverlayOpen()) return;
+    const active=document.activeElement;
+    if(active && /input|textarea|select/i.test(active.tagName||'')) return;
+    if(target && target.closest && target.closest('button, a, input, textarea, select, canvas, [data-noswipe]')) return;
+    meetingDrag={startX:clientX, startY:clientY, lastX:clientX, base:meetingProgress, axis:'pending'};
+    setMeetingProgress(meetingProgress,false);
+  }
+  function moveMeetingDrag(clientX){
+    if(!meetingDrag) return;
+    meetingDrag.lastX=clientX;
+    const delta=clientX-meetingDrag.startX;
+    const width=Math.min(innerWidth*0.94, 560);
+    const next=meetingDrag.base + (delta/Math.max(240,width));
+    setMeetingProgress(next,false);
+  }
+  function endMeetingDrag(clientX){
+    if(!meetingDrag) return;
+    const delta=clientX-meetingDrag.startX;
+    const shouldOpen=meetingProgress>0.5 || delta>72;
+    meetingDrag=null;
+    setMeetingProgress(shouldOpen?1:0,true);
+  }
+  function updateMeetingDrag(clientX, clientY){
+    if(!meetingDrag) return false;
+    const dx=clientX-meetingDrag.startX;
+    const dy=clientY-meetingDrag.startY;
+    if(meetingDrag.axis==='pending'){
+      if(Math.abs(dx)<12 && Math.abs(dy)<12) return false;
+      if(Math.abs(dx) > Math.abs(dy)+6){
+        meetingDrag.axis='x';
+      }else if(Math.abs(dy) >= Math.abs(dx)){
+        meetingDrag=null;
+        return false;
+      }
+    }
+    if(meetingDrag.axis!=='x') return false;
+    moveMeetingDrag(clientX);
+    return true;
+  }
+
+  document.addEventListener('touchstart',e=>{
+    if(!e.touches || e.touches.length!==1) return;
+    const touch=e.touches[0];
+    beginMeetingDrag(touch.clientX, touch.clientY, e.target);
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!meetingDrag || !e.touches || e.touches.length!==1) return;
+    const touch=e.touches[0];
+    if(updateMeetingDrag(touch.clientX, touch.clientY)) e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchend',e=>{
+    if(!meetingDrag) return;
+    const touch=e.changedTouches && e.changedTouches[0];
+    if(meetingDrag.axis==='x'){
+      endMeetingDrag(touch ? touch.clientX : meetingDrag.lastX);
+      return;
+    }
+    meetingDrag=null;
+  },{passive:true});
+
+  document.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse' && innerWidth>900) return;
+    beginMeetingDrag(e.clientX, e.clientY, e.target);
+  });
+  document.addEventListener('pointermove',e=>{ updateMeetingDrag(e.clientX, e.clientY); });
+  document.addEventListener('pointerup',e=>{
+    if(!meetingDrag) return;
+    if(meetingDrag.axis==='x'){
+      endMeetingDrag(e.clientX);
+      return;
+    }
+    meetingDrag=null;
+  });
+  document.addEventListener('pointercancel',()=>{
+    if(!meetingDrag) return;
+    const shouldOpen=meetingProgress>0.5;
+    meetingDrag=null;
+    setMeetingProgress(shouldOpen?1:0,true);
+  });
+  window.addEventListener('keydown',e=>{
+    if(activeOverlayOpen()) return;
+    if(e.key==='ArrowRight') openMeetingView();
+    if(e.key==='ArrowLeft') closeMeetingView();
+  });
+
+  if(!LK){ setStatus('語音元件載入失敗，請重新整理'); callBtn.disabled=true; }
+  else uiIdle();
+
+  setMeetingProgress(0,true);
+  refreshSwipeHint();
+  setMeetingUi();
+  resizeMeetingWave();
+  loadMeetingHistory();
+  window.addEventListener('resize',()=>{
+    resizeMeetingWave();
+    setMeetingProgress(meetingProgress,false);
+  });
+  setInterval(tickMeetingRecording, 250);
+
+  setMic('');                       // MIC 待機灰
+  pollHealth();                     // 開機先點亮一次
+  setInterval(pollHealth, 20000);   // 每 20 秒巡一次
+
+  // 台北時鐘 (跟AI 夥伴 prompt 同一套時間/時段, 視覺呈現)
+  const clockEl=$('clock');
+  function updateClock(){
+    const t=new Date(Date.now()+ (new Date().getTimezoneOffset()*60000) + 8*3600000); // → UTC+8
+    const h=t.getHours();
+    const seg = h<5?'半夜':h<8?'清晨':h<11?'早上':h<13?'中午':h<17?'下午':h<19?'傍晚':h<23?'晚上':'半夜';
+    const wd='日一二三四五六'[t.getDay()];
+    const mm=String(t.getMinutes()).padStart(2,'0');
+    clockEl.textContent=`${t.getFullYear()}/${t.getMonth()+1}/${t.getDate()} 週${wd} · ${seg} ${t.getHours()}:${mm}　台北`;
+  }
+  updateClock(); setInterval(updateClock, 15000);
+})();
+</script>
+</body>
+</html>
