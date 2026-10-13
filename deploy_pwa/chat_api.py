@@ -41,6 +41,9 @@ SYSTEM = (
     "不要每一轮都抛问题；只有顺着话题确实想知道时才偶尔问一个。"
     "普通聊天不使用 Markdown 标题、粗体星号、项目符号或编号列表；"
     "不要为了显得亲切而反复用表情符号。"
+    "被问到很宽泛的能力、身份或关系问题时，先用一句话回应眼前的问题，再自然问清对方为什么问；"
+    "若对方的目的仍不清楚，可以在接下来的回合继续追问一两个具体问题，别急着列功能清单。"
+    "熟悉之后可以有一点俏皮的反应和自己的看法，但不要机械地反问，也不要故意拒绝明确而合理的请求。"
 )
 
 
@@ -58,6 +61,8 @@ def _model_url(raw):
 _URL_IN_TEXT = re.compile(r"https?://[^\s<>\[\]{}\"']+", re.I)
 _TRAILING_PUNCTUATION = ".,;:!?。，；：！？)）"
 _INTRO_REQUEST = re.compile(r"自我介绍|自我介紹|介绍一下你|介紹一下你|你是谁|你是誰|你是什么样|你是什麼樣")
+_CAPABILITY_REQUEST = re.compile(r"(?:你|妳).{0,8}(?:有什么能力|有什麼能力|会做什么|會做什麼|能做什么|能做什麼|能干嘛|能幹嘛)")
+_DETAIL_REQUEST = re.compile(r"详细|詳細|具体列|具體列|逐项|逐項|清单|清單|步骤|步驟|完整|全部")
 _EVENT_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
 
 
@@ -103,6 +108,21 @@ def _compact_self_intro(answer):
     if boundary >= 48:
         return result[:boundary + 1].strip()
     return result[:139].rstrip(" ，,；;。！？!?") + "…"
+
+
+def _compact_small_talk(answer):
+    """Keep ordinary chat brief even when the provider ignores style hints."""
+    plain = answer.replace("**", "").replace("——", "，").replace("—", "，")
+    plain = re.sub(r"(?m)^\s*(?:#{1,6}\s*|[-*•]\s+|\d+[.)、]\s*)", "", plain)
+    plain = re.sub(r"\s*\n+\s*", " ", plain).strip()
+    sentences = re.findall(r"[^。！？!?]+[。！？!?]?", plain)
+    result = "".join(sentences[:3]).strip() if sentences else plain
+    if len(result) <= 160:
+        return result
+    boundary = max((result.rfind(mark, 0, 160) for mark in "。！？!?；;，,"), default=-1)
+    if boundary >= 48:
+        return result[:boundary + 1].strip()
+    return result[:159].rstrip(" ，,；;。！？!?") + "…"
 
 
 def reply_to(text, history, memories=(), image=None, link_url=None,
@@ -225,8 +245,14 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
     messages = list(reversed(kept_history)) + messages[-1:]
     intro_request = bool(_INTRO_REQUEST.search(text)) and not (
         page_context or document_context or image)
+    small_talk = (not intro_request and not (page_context or document_context or image or link_url)
+                  and len(text) <= 120 and not _DETAIL_REQUEST.search(text))
+    broad_capability = small_talk and bool(_CAPABILITY_REQUEST.search(text))
+    if broad_capability:
+        system += ("\n本轮对方只是宽泛地问能力。像朋友一样先问她想做什么，"
+                   "不要一次列举服务、技能或功能；一句回应加一个具体问题即可。")
     body = json.dumps({"model": model,
-                       "max_tokens": 180 if intro_request else 400, "system": system,
+                       "max_tokens": 180 if intro_request else (180 if small_talk else 400), "system": system,
                        "messages": messages}, ensure_ascii=False).encode("utf-8")
     req = Request("https://api.minimax.io/anthropic/v1/messages", data=body,
                   headers={"x-api-key": key, "anthropic-version": "2023-06-01",
@@ -244,4 +270,8 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
         raise ProviderError("对话模型没有返回文字")
     if intro_request:
         answer = _compact_self_intro(answer)
+    elif broad_capability and (len(answer) > 160 or len(re.findall(r"(?m)^\s*[-*•]\s+", answer)) >= 2):
+        answer = "你问这个要干嘛？想拿什么事考考我？"
+    elif small_talk:
+        answer = _compact_small_talk(answer)
     return answer[:4000]

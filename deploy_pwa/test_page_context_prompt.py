@@ -47,6 +47,27 @@ class PageContextPromptTest(unittest.TestCase):
         self.assertNotIn("- ", result)
         self.assertTrue(result.endswith("…"))
 
+    def test_broad_capability_chat_is_short_and_asks_use(self):
+        captured = {}
+
+        def open_fake(request, timeout):
+            captured["body"] = json.loads(request.data)
+            return _Response()
+
+        provider_reply = ("我可以帮你做很多事。\n- **写东西**：文章、脚本和摘要。\n"
+                          "- **整理思路**：把想法理顺。\n" + "我还有很多能力。" * 30)
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-never-sent"}), \
+             patch.object(chat_api, "urlopen", side_effect=open_fake), \
+             patch.object(chat_api.json, "load", return_value={
+                 "content": [{"type": "text", "text": provider_reply}]}):
+            answer = chat_api.reply_to("你有什么能力呢？", [])
+        self.assertEqual(captured["body"]["max_tokens"], 180)
+        self.assertIn("先问她想做什么", captured["body"]["system"])
+        self.assertLessEqual(len(answer), 160)
+        self.assertNotIn("**", answer)
+        self.assertNotIn("\n-", answer)
+        self.assertIn("你问这个要干嘛", answer)
+
     def test_owner_scoped_self_report_candidates_are_marked_tentative(self):
         captured = {}
 
