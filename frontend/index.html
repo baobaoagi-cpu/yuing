@@ -39,7 +39,7 @@
   .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
   .btn{ border:none; background:none; color:var(--light); cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:8px; font-size:13px; color:var(--dim); }
-  /* 静音钮过场: 待机缩在挂断球中心(scale.2/透明), 连线滑出左侧长大 */
+  /* 静音钮过场: 待机缩在挂断球中心(scale.2/透明), 连接滑出左侧长大 */
   .mutefab{ position:absolute; left:50%; top:10px;
     transform:translateX(-50%) scale(.2); opacity:0; pointer-events:none;
     transition:transform .5s cubic-bezier(.34,1.25,.5,1), opacity .4s ease; }
@@ -82,7 +82,7 @@
   .panel .linkbtn{ background:none; border:1px solid var(--faint); color:var(--dim);
     border-radius:12px; padding:11px 26px; font-size:15px; cursor:pointer; }
   .panel .linkbtn:hover{ color:var(--light); border-color:var(--dim); }
-  /* 对话纪录面板 */
+  /* 对话记录面板 */
   .logpanel{ justify-content:flex-start; padding:0; background:#090a05; }
   .logbar{ display:flex; align-items:center; gap:14px; width:100%;
     padding:max(4vh,18px) 20px 14px; border-bottom:1px solid var(--faint); }
@@ -249,18 +249,18 @@
 </style>
 </head>
 <body>
-<h2 class="sr-only">Voice Companion：点中间的绿色按钮就能跟陈端倪即时语音通话。中央光球会随声音呼吸。</h2>
+<h2 class="sr-only">Voice Companion：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
 
-<button class="gear" id="gear" aria-label="设定">
+<button class="gear" id="gear" aria-label="设置">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 </button>
 
 <div class="lamps" id="lamps" aria-label="系统健康状态">
   <span class="lamp" id="lamp-service"><i class="dot"></i>服务</span>
   <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
-  <span class="lamp" id="lamp-livekit"><i class="dot"></i>连线</span>
+  <span class="lamp" id="lamp-livekit"><i class="dot"></i>连接</span>
   <span class="lamp" id="lamp-agent"><i class="dot"></i>语灵</span>
   <span class="lamp" id="lamp-audio"><i class="dot"></i>音轨</span>
 </div>
@@ -285,7 +285,7 @@
     </span>
     <span id="callLabel">拨打</span>
   </button>
-  <button class="verlink" id="verLink">版本纪录</button>
+  <button class="verlink" id="verLink">版本记录</button>
 </div>
 
 <section class="meetingview" id="meetingView" aria-label="录音同时做记录">
@@ -300,7 +300,7 @@
         <div class="recordmeta">
           <span class="recordbadge idle" id="meetingBadge">未开始</span>
           <span class="recordtimer" id="meetingTimer">00:00</span>
-          <span class="recordhint grow" id="meetingChunkMeta">尚未开始即时字幕</span>
+          <span class="recordhint grow" id="meetingChunkMeta">尚未开始实时字幕</span>
           <label class="recordtoggle"><input id="meetingSaveAudioToggle" type="checkbox" /><span>保存音讯</span></label>
           <button class="expandbtn" id="meetingExpandBtn" type="button" aria-label="放大录音转文字区" aria-pressed="false">⤢</button>
         </div>
@@ -308,7 +308,7 @@
           <span class="transportpill idle" id="meetingTransportBadge">待命中</span>
           <span class="transportdetail" id="meetingTransportDetail">录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。</span>
         </div>
-        <div class="meetingstatus" id="meetingStatus" hidden>开始录音后，后端即时字幕会贴著你的声音往下长。</div>
+        <div class="meetingstatus" id="meetingStatus" hidden>开始录音后，后端实时字幕会贴著你的声音往下长。</div>
         <div class="chunkrail" id="meetingChunkRail">
           <div class="meetingempty">开始录音后，字幕会贴著你的声音往下长。</div>
         </div>
@@ -339,15 +339,15 @@
 <div class="panel hidden logpanel" id="verPanel">
   <div class="logbar">
     <button id="verBack" aria-label="返回">‹</button>
-    <span class="ttl">版本纪录</span>
+    <span class="ttl">版本记录</span>
   </div>
   <div class="logbody" id="verBody"></div>
 </div>
 
 <div class="panel hidden" id="panel">
-  <button class="linkbtn" id="logOpenBtn">📜 对话纪录</button>
+  <button class="linkbtn" id="logOpenBtn">📜 对话记录</button>
   <button class="linkbtn" id="innerOpenBtn">🤍 内心独白</button>
-  <div class="hint" id="historyHealth">对话纪录：检查中</div>
+  <div class="hint" id="historyHealth">对话记录：检查中</div>
   <div class="hint" id="innerHealth">内心独白：检查中</div>
 </div>
 
@@ -362,7 +362,7 @@
 <div class="panel hidden logpanel" id="logPanel">
   <div class="logbar">
     <button id="logBack" aria-label="返回">‹</button>
-    <span class="ttl" id="logTitle">对话纪录</span>
+    <span class="ttl" id="logTitle">对话记录</span>
   </div>
   <div class="logbody" id="logBody"></div>
 </div>
@@ -514,11 +514,11 @@
     const hasNotes=meetingRec.minuteNotes.some(note=>(note.summary||note.transcript||'').trim());
     const noteUploading=meetingRec.minuteNotes.some(note=>note.uploading && !note.done);
     const ready=!!meetingFormalSummary();
-    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready};
-    if(meetingRec.formalizedAt) return {phase:'done', label:'已产出', status:'正式会议已产出，已收进历史会议纪录。', canFormalize:ready, ready};
-    if(noteUploading) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready};
-    if(!hasNotes) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready:false};
-    return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:true, ready};
+    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议记录', canFormalize:false, ready};
+    if(meetingRec.formalizedAt) return {phase:'done', label:'已产出', status:'正式会议已产出，已收进历史会议记录。', canFormalize:ready, ready};
+    if(noteUploading) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议记录', canFormalize:false, ready};
+    if(!hasNotes) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议记录', canFormalize:false, ready:false};
+    return {phase:'working', label:'整理中', status:'陈端倪正在整理会议记录', canFormalize:true, ready};
   }
   async function finalizeMeetingFormalNotes(){
     const loop=getMeetingLoopState();
@@ -635,14 +635,14 @@
     const state=meetingRec.streamState||'idle';
     const map={
       idle:{label:'待命中', cls:'idle', detail:'录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。'},
-      connecting:{label:'接通中', cls:'connecting', detail:'后端即时字幕正在建立长连线。'},
+      connecting:{label:'接通中', cls:'connecting', detail:'后端实时字幕正在建立长连接。'},
       'backend-open':{label:'后端已接通', cls:'connecting', detail:'后端字幕已在线，正在等第一段真正的语音。'},
-      'backend-live':{label:'后端逐字中', cls:'backend-live', detail:'后端即时字幕正在跟著你的声音出字。'},
+      'backend-live':{label:'后端逐字中', cls:'backend-live', detail:'后端实时字幕正在跟著你的声音出字。'},
       'append-reconnect':{label:'重接中', cls:'append-reconnect', detail:'后端流刚断过一次，正在补开新线接回主路径。'},
       'stream-dead':{label:'串流中断', cls:'stream-dead', detail:'后端字幕流刚刚断线，正在等待重接或切到备援逐字。'},
       rollover:{label:'换流中', cls:'rollover', detail:'长会议到换流点，正在无缝接到下一条后端字幕流。'},
-      'fallback-active':{label:'备援逐字中', cls:'fallback-active', detail:'目前先用这台装置的即时字幕顶住，后端恢复后会切回主路径。'},
-      error:{label:'异常', cls:'error', detail:'即时字幕链路出现错误，需要看最近事件与后端纪录。'},
+      'fallback-active':{label:'备援逐字中', cls:'fallback-active', detail:'目前先用这台装置的实时字幕顶住，后端恢复后会切回主路径。'},
+      error:{label:'异常', cls:'error', detail:'实时字幕链路出现错误，需要看最近事件与后端记录。'},
       closed:{label:'已停止', cls:'closed', detail:'这段录音已停止；字幕与陈端倪作业停在目前内容。'}
     };
     const base=map[state]||map.idle;
@@ -658,7 +658,7 @@
       meetingRec.fallbackTimer=0;
       if(!meetingRec.isRecording || meetingRec.isPaused) return;
       if(meetingRec.backendLiveActive || meetingRec.speechRunning) return;
-      setMeetingStreamState('fallback-active', '后端即时字幕暂时没出字，先切到装置端逐字避免整片空白。');
+      setMeetingStreamState('fallback-active', '后端实时字幕暂时没出字，先切到装置端逐字避免整片空白。');
       startMeetingSpeechRecognition();
       setMeetingUi();
     }, Math.max(0, Number(delayMs||0)));
@@ -670,7 +670,7 @@
       if(status==='stream-open'){
         const detail=(payload&&payload.base_start_ms)>0
           ? `后端字幕已重接，从 ${fmtClock(payload.base_start_ms||0)} 接回主路径。`
-          : '后端即时字幕已接通，正在等第一段真正的语音。';
+          : '后端实时字幕已接通，正在等第一段真正的语音。';
         setMeetingStreamState('backend-open', detail);
       }else if(status==='append-reconnect'){
         meetingRec.backendLiveActive=false;
@@ -690,7 +690,7 @@
     if(type==='interim'){
       meetingRec.backendLiveActive=true;
       clearMeetingFallbackTimer();
-      setMeetingStreamState('backend-live', '后端即时字幕正在跟著你的声音出字。');
+      setMeetingStreamState('backend-live', '后端实时字幕正在跟著你的声音出字。');
       meetingRec.interimText=(payload&&payload.transcript)||'';
       setMeetingUi();
       return;
@@ -698,7 +698,7 @@
     if(type==='final'){
       meetingRec.backendLiveActive=true;
       clearMeetingFallbackTimer();
-      setMeetingStreamState('backend-live', '后端即时字幕正在稳定吐字。');
+      setMeetingStreamState('backend-live', '后端实时字幕正在稳定吐字。');
       meetingRec.interimText='';
       appendMeetingTranscript((payload&&payload.transcript)||'', payload&&payload.start_ms, payload&&payload.end_ms, 'backend');
       meetingRec.lastFinalMs=Math.max(meetingRec.lastFinalMs||0, (payload&&payload.end_ms)||0);
@@ -937,7 +937,7 @@
       if(code!=='no-speech') meetingRec.speechError=code;
       if(code==='not-allowed' || code==='service-not-allowed' || code==='audio-capture'){
         meetingRec.speechSupported=false;
-        meetingStatus.textContent='浏览器没有开放即时字幕权限，先退回背景录音保存。';
+        meetingStatus.textContent='浏览器没有开放实时字幕权限，先退回背景录音保存。';
       }
     };
     rec.onend=()=>{
@@ -956,7 +956,7 @@
       meetingRec.speechRunning=true;
       meetingRec.speechError='';
       meetingRec.speechSupported=true;
-      if(!meetingRec.backendLiveActive) setMeetingStreamState('fallback-active', '目前先用这台装置的即时字幕顶住，等后端恢复会切回主路径。');
+      if(!meetingRec.backendLiveActive) setMeetingStreamState('fallback-active', '目前先用这台装置的实时字幕顶住，等后端恢复会切回主路径。');
       scheduleMeetingSpeechRecycle();
       return true;
     }catch(_){
@@ -1125,7 +1125,7 @@
   }
   vizResize(); addEventListener('resize', vizResize);
 
-  let micCalc=null, baoCalc=null;   // 即时声浪 0..1 (track 就绪才接)
+  let micCalc=null, baoCalc=null;   // 实时声浪 0..1 (track 就绪才接)
   let boostedAudioNodes=[];
   let mLvl=0, bLvl=0;               // 平滑后的等级 (禅意: 缓起缓落)
   const lerp=(a,b,k)=>a+(b-a)*k;
@@ -1239,7 +1239,7 @@
   requestAnimationFrame(vizFrame);
   setInterval(checkStandbyReason, 2000);
 
-  // 从 LiveKit track 取即时声浪 (0..1)。优先用 LK 内建, 退 Web Audio。
+  // 从 LiveKit track 取实时声浪 (0..1)。优先用 LK 内建, 退 Web Audio。
   function makeVol(track){
     try{
       if(LK.createAudioAnalyser){
@@ -1382,7 +1382,7 @@
         livePad.appendChild(flow);
       }
       if(meetingRec.speechError){
-        livePad.title=`即时字幕连线异常：${meetingRec.speechError}`;
+        livePad.title=`实时字幕连接异常：${meetingRec.speechError}`;
       }
       stream.appendChild(livePad);
       meetingChunkRail.appendChild(stream);
@@ -1433,11 +1433,11 @@
       const currentElapsed=meetingElapsedMs();
       meetingDraftState.textContent=currentElapsed<NOTE_ROLLUP_MS?'先累积上下文，满 1 分钟后可整理':'录音持续中，随时可在结束后再整理';
       meetingChunkMeta.textContent=meetingRec.saveAudio
-        ? '后端即时字幕会跟著你的声音往下长；音讯保存已开启，后端会自动长连线 rollover。'
-        : '后端即时字幕会跟著你的声音往下长；目前只保存逐字稿。';
+        ? '后端实时字幕会跟著你的声音往下长；音讯保存已开启，后端会自动长连接 rollover。'
+        : '后端实时字幕会跟著你的声音往下长；目前只保存逐字稿。';
       meetingStatus.textContent=currentElapsed<NOTE_ROLLUP_MS
-        ? '上半段持续长出后端即时字幕；下半段会先累积上下文，满 1 分钟才开始第一段陈端倪作业。'
-        : '上半段持续长出后端即时字幕；下半段会开始把上下文整理成陈端倪作业。';
+        ? '上半段持续长出后端实时字幕；下半段会先累积上下文，满 1 分钟才开始第一段陈端倪作业。'
+        : '上半段持续长出后端实时字幕；下半段会开始把上下文整理成陈端倪作业。';
     }else if(meetingRec.isRecording && meetingRec.isPaused){
       meetingBadge.className='recordbadge pause';
       meetingBadge.textContent='已暂停';
@@ -1465,14 +1465,14 @@
         : (hasTranscript?'本次只保存逐字稿。':'尚未开始录音');
       meetingStatus.textContent=(hasStoredAudio || hasTranscript)
         ? '录音已停止。上半段保留逐字流，下半段保留每分钟的陈端倪作业。'
-        : '开始录音后，后端即时字幕会贴著你的声音往下长。';
+        : '开始录音后，后端实时字幕会贴著你的声音往下长。';
     }
     renderMeetingLists();
   }
   async function startMeetingRecording(){
     if(meetingRec.isRecording) return;
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      meetingStatus.textContent='这台装置不支援录音。';
+      meetingStatus.textContent='这台装置不支持录音。';
       return;
     }
     try{
@@ -1507,7 +1507,7 @@
       meetingRec.formalizing=false;
       meetingRec.formalizedAt=0;
       meetingRec.streamState='connecting';
-      meetingRec.streamStateNote='后端即时字幕正在建立长连线。';
+      meetingRec.streamStateNote='后端实时字幕正在建立长连接。';
       meetingRec.streamStateAt=Date.now();
       meetingRec.streamEvents=[];
       pushMeetingStreamEvent(meetingRec.streamState, meetingRec.streamStateNote);
@@ -1704,7 +1704,7 @@
     const meanings={
       service:{ok:'Railway API 已回应',bad:'Railway API 无法回应'},
       mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
-      livekit:{ok:'已加入 LiveKit 房间',bad:'无法连接 LiveKit 房间或缺少设定',warn:'正在连接 LiveKit 房间'},
+      livekit:{ok:'已加入 LiveKit 房间',bad:'无法连接 LiveKit 房间或缺少设置',warn:'正在连接 LiveKit 房间'},
       agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
       audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'}
     };
@@ -1723,11 +1723,11 @@
       const h=await r.json();
       setLamp('service','ok');
       if(!room && !connecting) setLamp('livekit',h.call_config==='missing'?'bad':'');
-      $('historyHealth').textContent=`对话纪录：${h.history_health==='ok'?'正常':'未接入'}`;
+      $('historyHealth').textContent=`对话记录：${h.history_health==='ok'?'正常':'未接入'}`;
       $('innerHealth').textContent=`内心独白：${h.inner_health==='ok'?'正常':'未接入'}`;
     }catch(_){
       setLamp('service','bad');
-      $('historyHealth').textContent='对话纪录：无法检查';
+      $('historyHealth').textContent='对话记录：无法检查';
       $('innerHealth').textContent='内心独白：无法检查';
     }
   }
@@ -1751,9 +1751,9 @@
 
   async function startCall(){
     if(connecting||room) return;
-    connecting=true; setStatus('拨号中…'); callLabel.textContent='连线中';
+    connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
     setLamp('livekit','warn'); setLamp('agent','warn'); setLamp('audio','');
-    muteBtn.classList.add('show');   // 连线中→静音钮慢慢从挂断球长出来
+    muteBtn.classList.add('show');   // 连接中→静音钮慢慢从挂断球长出来
     ringback.currentTime=0; ringback.play().catch(()=>{});   // 开始播等待接听音效
     try{
       const res=await fetch(apiUrl('/api/yuling/token'),{
@@ -1846,7 +1846,7 @@
   gear.addEventListener('click',()=>panel.classList.remove('hidden'));
   panel.addEventListener('click',e=>{ if(e.target===panel) panel.classList.add('hidden'); });
 
-  // ── 对话纪录 ──
+  // ── 对话记录 ──
   const logPanel=$('logPanel'), logBody=$('logBody'), logTitle=$('logTitle'), logBack=$('logBack');
   function logHeaders(){
     return {};
@@ -1861,16 +1861,16 @@
   function esc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
   async function loadCallList(){
     logBody.classList.remove('detail');
-    logTitle.textContent='对话纪录'; logBack.dataset.mode='close';
+    logTitle.textContent='对话记录'; logBack.dataset.mode='close';
     logBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
       const r=await fetch(apiUrl('/api/yuling/calls'),{headers:logHeaders()});
       if(r.status===403){ logBody.innerHTML='<div class="logempty">目前没有读取权限。</div>'; return; }
       if(!r.ok) throw new Error('history request failed');
       const payload=await r.json();
-      if(payload.available===false){ logBody.innerHTML='<div class="logempty">对话纪录尚未接入保存服务。</div>'; return; }
+      if(payload.available===false){ logBody.innerHTML='<div class="logempty">对话记录尚未接入保存服务。</div>'; return; }
       const calls=payload.calls||[];
-      if(!calls.length){ logBody.innerHTML='<div class="logempty">还没有对话纪录。<br>跟陈端倪通一次话就会出现在这里。</div>'; return; }
+      if(!calls.length){ logBody.innerHTML='<div class="logempty">还没有对话记录。<br>跟陈端倪通一次话就会出现在这里。</div>'; return; }
       logBody.innerHTML='';
       calls.forEach(c=>{
         const el=document.createElement('button'); el.className='callitem';
@@ -1991,7 +1991,7 @@
     else logPanel.classList.add('hidden');                      // 列表 → 关闭
   });
 
-  // ── 版本纪录 ──
+  // ── 版本记录 ──
   const verPanel=$('verPanel'), verBody=$('verBody'), verBack=$('verBack');
   const VERTYPE={'新功能':'#3aa86a','修复':'#e0a52e','调整':'#5b9bd5','介面':'#9b7fd5','部署':'#8a8f98'};
   async function loadVer(){
@@ -1999,7 +1999,7 @@
     try{
       const r=await fetch('/yuling_changelog.json?t='+Date.now());
       const items=(await r.json()).entries||[];
-      if(!items.length){ verBody.innerHTML='<div class="logempty">还没有版本纪录。</div>'; return; }
+      if(!items.length){ verBody.innerHTML='<div class="logempty">还没有版本记录。</div>'; return; }
       verBody.innerHTML='';
       items.forEach(e=>{
         const c=VERTYPE[e.type]||'#8a8f98';

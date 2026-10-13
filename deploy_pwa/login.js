@@ -16,7 +16,7 @@ form.addEventListener('submit', async (event) => {
     return;
   }
   submit.disabled = true;
-  submit.textContent = '登入中…';
+  submit.textContent = '登录中…';
   try {
     const response = await fetch('/api/login', {
       method: 'POST',
@@ -26,16 +26,16 @@ form.addEventListener('submit', async (event) => {
       body: JSON.stringify({username, password, remember: rememberInput.checked})
     });
     if (!response.ok) {
-      throw new Error(response.status === 401 ? '帐号或密码不正确。' : '目前无法登入，请稍后再试。');
+      throw new Error(response.status === 401 ? '帐号或密码不正确。' : '目前无法登录，请稍后再试。');
     }
     passwordInput.value = '';
     const next = new URLSearchParams(window.location.search).get('next');
     window.location.replace(next === '/call' ? '/call' : '/');
   } catch (cause) {
-    error.textContent = cause.message || '目前无法登入，请稍后再试。';
+    error.textContent = cause.message || '目前无法登录，请稍后再试。';
     error.hidden = false;
     passwordInput.value = '';
     submit.disabled = false;
-    submit.innerHTML = '登入语灵 <span aria-hidden="true">↗</span>';
+    submit.innerHTML = '登录语灵 <span aria-hidden="true">↗</span>';
   }
 });

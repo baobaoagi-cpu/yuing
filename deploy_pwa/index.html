@@ -17,14 +17,14 @@
   <main class="shell">
     <header class="topbar">
       <div class="brand" aria-label="YULING 语灵"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M5 18h4l3-8 5 16 4-12 3 4h7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word">YULING <small>语灵 · 陈端倪</small></span></div>
-      <div class="topbar-actions"><span class="version">iPhone PWA · 内部测试</span><button class="logout-button" id="logout-button" type="button">登出</button></div>
+      <div class="topbar-actions"><span class="version">iPhone PWA · 内部测试</span><button class="logout-button" id="logout-button" type="button">退出登录</button></div>
     </header>
 
     <section class="assistant-panel" aria-labelledby="assistant-title">
-      <div class="section-heading"><div><p class="eyebrow">陪伴与教练</p><h2 id="assistant-title">跟端倪说说话</h2></div><span class="live-badge" id="connection-badge">检查连线</span></div>
-      <p class="panel-intro" id="connection-note">正在检查此网址已接通的能力。只有通过连线检查的入口才能使用。</p>
+      <div class="section-heading"><div><p class="eyebrow">陪伴与教练</p><h2 id="assistant-title">跟端倪说说话</h2></div><span class="live-badge" id="connection-badge">检查连接</span></div>
+      <p class="panel-intro" id="connection-note">正在检查此网址已接通的能力。只有通过连接检查的入口才能使用。</p>
       <div class="capability-strip" id="capability-strip" aria-label="能力状态">
-        <span data-capability="text">文字 · 检查中</span><span data-capability="turn_voice">回合语音 · 检查中</span><span data-capability="live_voice">即时通话 · 检查中</span><span data-capability="image">图片 · 检查中</span><span data-capability="files">档案 · 检查中</span>
+        <span data-capability="text">文字 · 检查中</span><span data-capability="turn_voice">回合语音 · 检查中</span><span data-capability="live_voice">实时通话 · 检查中</span><span data-capability="image">图片 · 检查中</span><span data-capability="files">文件 · 检查中</span>
       </div>
       <div class="conversation" id="conversation" role="log" aria-live="polite"><p class="conversation-empty">接通后，可以在这里用文字或语音开始一回合对话。</p></div>
       <form class="composer" id="chat-form">
@@ -35,10 +35,10 @@
       <div class="input-actions">
         <button type="button" id="voice-button" disabled>录一段话</button>
         <label class="upload-action disabled" id="image-label" for="image-input">看图片</label><input id="image-input" type="file" accept="image/*" disabled>
-        <label class="upload-action disabled" id="document-label" for="document-input">读档案文字</label><input id="document-input" type="file" accept=".pdf,.docx,.pptx,application/pdf" disabled>
+        <label class="upload-action disabled" id="document-label" for="document-input">读文件文字</label><input id="document-input" type="file" accept=".pdf,.docx,.pptx,application/pdf" disabled>
       </div>
       <p class="action-status" id="action-status" role="status">等待能力检查。</p>
-      <div class="network-check"><div><strong>区域型流畅性监督</strong><small>从目前这支手机测量；不代表上海朋友的实测结果。</small></div><button type="button" id="latency-button">测试连线</button></div>
+      <div class="network-check"><div><strong>区域型流畅性监督</strong><small>从目前这支手机测量；不代表上海朋友的实测结果。</small></div><button type="button" id="latency-button">测试连接</button></div>
       <p class="network-result" id="latency-result" role="status">尚未测量。</p>
     </section>
 
@@ -57,7 +57,7 @@
     </section>
 
     <section class="results" aria-labelledby="results-title">
-      <div class="section-heading"><div><p class="eyebrow">感知纪录</p><h2 id="results-title">刚刚发生了什么</h2></div><span class="live-badge" id="live-badge">待机</span></div>
+      <div class="section-heading"><div><p class="eyebrow">感知记录</p><h2 id="results-title">刚刚发生了什么</h2></div><span class="live-badge" id="live-badge">待机</span></div>
       <div id="event-list" class="event-list"><p class="empty-state">开始聆听后，辨识到的候选事件会出现在这里。</p></div>
       <div class="test-input">
         <div><strong>用录音检查</strong><span>选择手机上的音档，检查同一个分类器的结果。</span></div>
@@ -71,7 +71,7 @@
       <div class="scope-grid">
         <article><span class="scope-index">01</span><h3>听生活声</h3><p>对咳嗽、喷嚏、哭声、车声、碰撞声与音乐提供分类候选及分数。</p><span class="tag ready">可测试</span></article>
         <article><span class="scope-index">02</span><h3>自然回应</h3><p>在高把握度事件后显示预写的关心语句；尚非端倪模型生成。</p><span class="tag limited">预写回应</span></article>
-        <article><span class="scope-index">03</span><h3>人格与对话</h3><p>上方入口会向伺服器检查文字、回合语音、图片与档案能力。只有实际接通的能力可以操作。</p><span class="tag pending">依连线状态</span></article>
+        <article><span class="scope-index">03</span><h3>人格与对话</h3><p>上方入口会向伺服器检查文字、回合语音、图片与文件能力。只有实际接通的能力可以操作。</p><span class="tag pending">依连接状态</span></article>
       </div>
     </section>
 

@@ -1,7 +1,7 @@
 {
   "name": "陈端倪 · 语灵手机测试",
   "short_name": "端倪语灵",
-  "description": "端倪语灵内部测试入口；各项能力依伺服器连线状态开放。",
+  "description": "端倪语灵内部测试入口；各项能力依伺服器连接状态开放。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

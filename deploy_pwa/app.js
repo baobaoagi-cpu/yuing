@@ -98,7 +98,7 @@ function addResult(result,sourceLabel){
   const observed=candidate && candidate.score>=SHOW_SCORE;
   const key=observed?candidate.id:'other';
   const now=Date.now();
-  if(sourceLabel==='即时麦克风' && now-(lastShown.get(key)||0)<9000) return;
+  if(sourceLabel==='实时麦克风' && now-(lastShown.get(key)||0)<9000) return;
   lastShown.set(key,now);
   const title=observed?candidate.title:'尚未辨识出指定事件';
   const detail=observed?`模型候选：${candidate.label} · 原始分数 ${candidate.score.toFixed(2)}`:`最高候选：${result.top.label||'未知'} · 原始分数 ${result.top.score.toFixed(2)}`;
@@ -162,7 +162,7 @@ async function startListening(){
     if(pcm.length>=48000 && Date.now()-lastAnalysisAt>=2500 && !busy){
       lastAnalysisAt=Date.now();
       const wave=Float32Array.from(pcm.slice(-48000));
-      analyze(wave,'即时麦克风');
+      analyze(wave,'实时麦克风');
     }
   };
   ui.button.textContent='停止聆听';
@@ -214,12 +214,12 @@ document.querySelector('#logout-button')?.addEventListener('click', async (event
   button.disabled = true;
   try {
     const response = await fetch('/api/logout', {method: 'POST', credentials: 'same-origin', cache: 'no-store'});
-    if(!response.ok) throw new Error('登出请求失败');
+    if(!response.ok) throw new Error('退出登录请求失败');
     window.location.replace('/login');
   } catch (_) {
     button.disabled = false;
     const status = document.querySelector('#action-status');
-    if(status) status.textContent='登出未完成，请检查连线后再试。';
+    if(status) status.textContent='退出登录未完成，请检查连接后再试。';
   }
 });
 
@@ -232,7 +232,7 @@ const assistantUi = {
   document:$('document-input'), documentLabel:$('document-label'), status:$('action-status'),
   latency:$('latency-button'), latencyResult:$('latency-result')
 };
-const CAP_NAMES={text:'文字',turn_voice:'回合语音',live_voice:'即时通话',image:'图片',files:'档案'};
+const CAP_NAMES={text:'文字',turn_voice:'回合语音',live_voice:'实时通话',image:'图片',files:'文件'};
 let activeCaps={};
 let voiceCapture=null;
 
@@ -257,8 +257,8 @@ function renderCapabilities(caps){
   assistantUi.documentLabel.classList.toggle('disabled',assistantUi.document.disabled);
   assistantUi.badge.textContent=Object.values(CAP_NAMES).some((_,i)=>caps[Object.keys(CAP_NAMES)[i]]===true)?'部分接通':'尚未接通';
   assistantUi.badge.classList.toggle('on',textReady);
-  assistantUi.note.textContent=textReady?'能力来自目前伺服器的即时检查；语音转文字后会先让你确认，再送出对话。':caps.files===true?'目前可读取 PDF、DOCX、PPTX 的文字；对话和图片仍待接通。下方也可测试生活声辨识。':'目前可继续测试下方的生活声辨识；对话、图片与档案入口会在接通后开放。';
-  setActionStatus(textReady?'文字对话已接通。':caps.files===true?'档案文字抽取可测；对话服务尚未接通。':'对话服务尚未接通。');
+  assistantUi.note.textContent=textReady?'能力来自目前伺服器的实时检查；语音转文字后会先让你确认，再送出对话。':caps.files===true?'目前可读取 PDF、DOCX、PPTX 的文字；对话和图片仍待接通。下方也可测试生活声辨识。':'目前可继续测试下方的生活声辨识；对话、图片与文件入口会在接通后开放。';
+  setActionStatus(textReady?'文字对话已接通。':caps.files===true?'文件文字抽取可测；对话服务尚未接通。':'对话服务尚未接通。');
 }
 async function refreshCapabilities(){
   try{
@@ -344,15 +344,15 @@ async function analyzeUpload(file,kind){
   if(!file||activeCaps[kind]!==true)return;
   const input=kind==='image'?assistantUi.image:assistantUi.document;
   const limit=kind==='image'?4_000_000:5_000_000;
-  if(file.size>limit){setActionStatus(`档案超过 ${kind==='image'?'4':'5'} MB，请选择较小的档案。`);input.value='';return;}
-  input.disabled=true;setActionStatus(`正在分析${kind==='image'?'图片':'档案'}：${file.name}`);
+  if(file.size>limit){setActionStatus(`文件超过 ${kind==='image'?'4':'5'} MB，请选择较小的文件。`);input.value='';return;}
+  input.disabled=true;setActionStatus(`正在分析${kind==='image'?'图片':'文件'}：${file.name}`);
   try{
     const data=new FormData();data.append('file',file,file.name);
     const response=await fetch('./api/analyze',{method:'POST',body:data});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const body=await response.json();
     if(typeof body.summary!=='string'||!body.summary.trim())throw new Error('分析结果无效');
-    addMessage('user',`请看${kind==='image'?'图片':'档案'}：${file.name}`);addMessage('assistant',body.summary);
+    addMessage('user',`请看${kind==='image'?'图片':'文件'}：${file.name}`);addMessage('assistant',body.summary);
     setActionStatus(body.note||'分析完成。');
   }catch(error){setActionStatus(`分析未完成：${error.message}`);await refreshCapabilities();}
   finally{input.value='';input.disabled=activeCaps[kind]!==true;}
@@ -366,7 +366,7 @@ assistantUi.latency.addEventListener('click',async()=>{
   for(const path of ['./healthz','./api/capabilities']){
     const started=performance.now();
     try{const response=await fetch(path,{cache:'no-store'});checks.push(`${path}: ${response.ok?'成功':'失败 HTTP '+response.status} · ${Math.round(performance.now()-started)} ms`);}
-    catch(error){checks.push(`${path}: 连线失败 · ${Math.round(performance.now()-started)} ms`);}
+    catch(error){checks.push(`${path}: 连接失败 · ${Math.round(performance.now()-started)} ms`);}
   }
   const time=new Date().toLocaleString('zh-CN',{hour12:false});
   assistantUi.latencyResult.textContent=`${time}（本装置）｜${checks.join('｜')}`;
