@@ -145,7 +145,8 @@ def _same_origin():
 def _headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    if request.path.startswith("/api/") or response.mimetype == "text/html":
+    if (request.path.startswith("/api/") or response.mimetype == "text/html" or
+            request.path in {"/chat.css", "/chat.js", "/update.js"}):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -191,6 +192,7 @@ def conversation_page():
 
 @app.get("/chat.css")
 @app.get("/chat.js")
+@app.get("/update.js")
 def conversation_asset():
     guard = _require_login()
     if guard:
@@ -321,6 +323,24 @@ def _v2_guard(write=False):
     if write and not _same_origin():
         return jsonify(error="来源不符"), 403
     return None
+
+
+@app.get("/api/v2/version")
+def deployed_version():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    # Railway provides these values for the running deployment.  A Docker
+    # build does not include .git, so never display the checkout's local SHA.
+    deployment = os.environ.get("RAILWAY_DEPLOYMENT_ID", "").strip()
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip().lower()
+    deployment = deployment if _uuid(deployment) else ""
+    commit = commit if re.fullmatch(r"[0-9a-f]{40}", commit) else ""
+    version = ("v" + deployment[:8] if deployment else
+               "v" + commit[:8] if commit else None)
+    return jsonify(version=version,
+                   cache_key=deployment or commit or None,
+                   commit=commit[:8] if commit else None)
 
 
 @app.get("/api/v2/status")

@@ -4,11 +4,13 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 import zipfile
 from unittest.mock import patch
 
 from PIL import Image
 from openpyxl import Workbook
+from pypdf import PdfWriter
 
 
 _tmp = tempfile.TemporaryDirectory()
@@ -148,6 +150,31 @@ class ChatV2Test(unittest.TestCase):
             self.assertEqual(other.post("/api/v2/chat", base_url=self.base,
                                         headers=self.headers,
                                         json={"text": "读别人的文件", "document_id": did}).status_code, 404)
+
+    def test_pdf_upload_survives_stale_session_retry(self):
+        self._login()
+        pdf = io.BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=100, height=100)
+        writer.write(pdf)
+        pdf.seek(0)
+        uploaded = self.client.post("/api/v2/upload-document", base_url=self.base,
+                                    headers=self.headers,
+                                    data={"file": (pdf, "sample.pdf")})
+        self.assertEqual(uploaded.status_code, 201)
+        did = uploaded.json["document_id"]
+        stale = self.client.post("/api/v2/chat", base_url=self.base,
+                                 headers=self.headers,
+                                 json={"text": "看看这份 PDF", "document_id": did,
+                                       "session_id": str(uuid.uuid4())})
+        self.assertEqual(stale.status_code, 404)
+        self.assertEqual(stale.json["error"], "会话不存在")
+        with patch("deploy_pwa.server.reply_to", return_value="这份 PDF 没有可抽取文字。"):
+            recovered = self.client.post("/api/v2/chat", base_url=self.base,
+                                         headers=self.headers,
+                                         json={"text": "看看这份 PDF", "document_id": did})
+        self.assertEqual(recovered.status_code, 200)
+        self.assertEqual(recovered.json["user_event"]["document_id"], did)
 
     def test_document_rejects_unsupported_invalid_and_oversize(self):
         self._login()

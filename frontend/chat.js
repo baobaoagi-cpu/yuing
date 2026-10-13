@@ -463,6 +463,7 @@ async function jsonResponse(response) {
 
 async function loadHistory() {
   if (!sessionId) return;
+  const requestedSessionId = sessionId;
   try {
     try {
       const knowledge = await jsonResponse(await fetch("/api/v2/knowledge", { credentials: "same-origin" }));
@@ -470,7 +471,7 @@ async function loadHistory() {
         if (item.source_event_id) savedKnowledgeEventIds.add(item.source_event_id);
       }
     } catch { /* History remains usable if the optional knowledge list is unavailable. */ }
-    const response = await fetch(`/api/v2/history?session_id=${encodeURIComponent(sessionId)}`, { credentials: "same-origin" });
+    const response = await fetch(`/api/v2/history?session_id=${encodeURIComponent(requestedSessionId)}`, { credentials: "same-origin" });
     const payload = await jsonResponse(response);
     const events = Array.isArray(payload.events) ? payload.events : [];
     for (const event of events) {
@@ -486,8 +487,10 @@ async function loadHistory() {
     if (events.length) showStatus("");
   } catch (error) {
     if (error.httpStatus === 404) {
-      sessionId = "";
-      localStorage.removeItem(SESSION_KEY);
+      if (sessionId === requestedSessionId) {
+        sessionId = "";
+        localStorage.removeItem(SESSION_KEY);
+      }
       showStatus("之前的会话未找到，可以开始新对话。");
     } else {
       showStatus(`暂时无法读取对话记录：${error.message}`);
@@ -553,9 +556,23 @@ form.addEventListener("submit", async (event) => {
     if (documentId) requestBody.document_id = documentId;
     if (url) requestBody.url = url.href;
     if (pageReadId) requestBody.page_read_id = pageReadId;
-    const result = await jsonResponse(await fetch("/api/v2/chat", {
+    const postChat = () => fetch("/api/v2/chat", {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
-    }));
+    });
+    let response = await postChat();
+    // A Railway redeploy can erase the temporary SQLite session while this PWA
+    // stays open. The server rejects an unknown session before saving an event,
+    // so retry once with the already-uploaded file in a fresh session.
+    if (response.status === 404 && requestBody.session_id && !pageReadId) {
+      const failure = await response.clone().json().catch(() => null);
+      if (failure?.error === "会话不存在") {
+        sessionId = "";
+        localStorage.removeItem(SESSION_KEY);
+        delete requestBody.session_id;
+        response = await postChat();
+      }
+    }
+    const result = await jsonResponse(response);
     if (typeof result.reply !== "string") throw new Error("对话服务没有返回回复");
     if (result.session_id) {
       sessionId = String(result.session_id);

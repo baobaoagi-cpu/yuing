@@ -24,6 +24,9 @@
         <button class="install-button" id="install-button" type="button" aria-label="安装 Dunni 到手机" aria-expanded="false" aria-controls="install-panel" title="安装到手机">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
+        <button class="refresh-button call-link" id="refresh-button" type="button" aria-label="刷新并获取最新版本" title="刷新并获取最新版本">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.7 9a7 7 0 0 1 12.3-2L20 12M4 12l2 5a7 7 0 0 0 12.3-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <a class="call-link" href="/call" aria-label="进入语音通话" title="语音通话">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7.4 3.7-2.3 1a2.3 2.3 0 0 0-1.3 2.6A17.8 17.8 0 0 0 16.7 20a2.3 2.3 0 0 0 2.6-1.3l1-2.3a1.6 1.6 0 0 0-.8-2.1l-2.8-1.2a1.6 1.6 0 0 0-1.8.4l-1.1 1.1a13.3 13.3 0 0 1-4.4-4.4l1.1-1.1a1.6 1.6 0 0 0 .4-1.8L9.5 4.5a1.6 1.6 0 0 0-2.1-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         </a>
@@ -70,9 +73,10 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3.1-5.9L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m19 5-7.1 8.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </form>
-      <p class="composer-footnote">按回车发送 · 图片 4 MB 内；文件 5 MB 内，旧版 Office、WPS、OFD 暂不解析内容</p>
+      <p class="composer-footnote" id="deployment-version" role="status" aria-live="polite">版本确认中…</p>
     </div>
   </div>
   <script type="module" src="/chat.js"></script>
+  <script src="/update.js" defer></script>
 </body>
 </html>
