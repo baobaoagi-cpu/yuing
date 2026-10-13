@@ -321,7 +321,7 @@
 <div class="top callpane" id="callTop">
   <div class="clock" id="clock" aria-label="时间">—</div>
   <div class="name">陈端倪</div>
-  <div class="status" id="status">点下面绿色按钮开始通话</div>
+  <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true">点下面绿色按钮开始通话</div>
 </div>
 
 <div class="stage callpane" id="callStage"></div>
@@ -1117,28 +1117,36 @@
     renderMeetingLists();
   }
 
-  function setStatus(t){ statusEl.textContent=t; }
-  // 陈端倪当下真实状态 (LiveKit lk.agent.state) → 人话
-  const AGENT_STATE={ initializing:'接通中…', listening:'收音待命', thinking:'思考中', speaking:'说话中', idle:'空闲待命' };
+  function setStatus(t){ if(statusEl.textContent!==t) statusEl.textContent=t; }
+  // Each label is backed by a browser, LiveKit room, or Agent event. A joined
+  // room alone does not prove the Agent has answered or audio is playing.
+  const CALL_STATUS={idle:'点下面绿色按钮开始通话',dialing:'拨号中…',
+    joining:'连接房间中…',waiting:'已入房 · 等待端倪',connected:'已接通',
+    initializing:'端倪接通中…',listening:'收音中',thinking:'端倪思考中',
+    speaking:'端倪回应中',muted:'已静音',reconnecting:'连接中断 · 正在重连',
+    disconnected:'已断线',ended:'已挂断',error:'通话出错'};
+  let callPhase='idle';
+  function setCallPhase(phase, detail){
+    if(!Object.prototype.hasOwnProperty.call(CALL_STATUS,phase)) return;
+    callPhase=phase;
+    statusEl.dataset.callState=phase;
+    setStatus(detail||CALL_STATUS[phase]);
+  }
+  // Agent status comes from LiveKit lk.agent.state, never a local timer.
+  const AGENT_STATE={initializing:'initializing',listening:'listening',
+    thinking:'thinking',speaking:'speaking',idle:'connected'};
   let agentState='', agentStateAt=0, lastUserVoiceAt=0, lastBaoVoiceAt=0;
   function applyAgentState(s){
-    const label=AGENT_STATE[s];
-    if(!label || !room) return;
-    agentState=s; agentStateAt=performance.now(); setStatus(label);
+    const phase=AGENT_STATE[s];
+    if(!phase || !room || callPhase==='reconnecting' || audioRetryHandler) return;
+    agentState=s; agentStateAt=performance.now();
+    setCallPhase(muted && phase==='listening'?'muted':phase);
   }
   function checkStandbyReason(){
-    if(!room || !agentState) return;
-    const now=performance.now(), label=AGENT_STATE[agentState];
-    if(agentState==='listening'){
-      const silentFor=now-Math.max(lastUserVoiceAt,lastBaoVoiceAt,agentStateAt);
-      if(silentFor>15000) setStatus('收音待命偏久');
-      else if(silentFor>8000) setStatus('收音待命（正常等待）');
-      else setStatus(label);
-    }else if(agentState==='idle'){
-      const idleFor=now-agentStateAt;
-      if(idleFor>15000) setStatus('空闲待命偏久');
-      else setStatus(label);
-    }
+    // Do not overwrite disconnect, audio-blocked, or transcript-save warnings.
+    if(!room || callPhase!=='listening' || muted ||
+        ![CALL_STATUS.listening,'你在说话'].includes(statusEl.textContent)) return;
+    setStatus(performance.now()-lastUserVoiceAt<1800?'你在说话':CALL_STATUS.listening);
   }
 
   const motionFX={bound:false,enabled:false,x:0,y:0,tx:0,ty:0,shake:0,lastShake:0,
@@ -1810,6 +1818,9 @@
   function syncAgentLamp(callRoom){
     const present=Array.from(callRoom.remoteParticipants.values()).some(isAgentParticipant);
     setLamp('agent',present?'ok':'warn');
+    if(room===callRoom && !present && callPhase!=='reconnecting'){
+      agentState=''; setCallPhase('waiting');
+    }
     return present;
   }
 
@@ -1890,7 +1901,7 @@
       failedTranscriptCalls.add(callId);
       // The call stays usable if the chat store is down. Never claim a failed
       // browser-side receipt was written to the conversation history.
-      setStatus('通话中 · 逐字稿未能保存');
+      if(room && callPhase!=='reconnecting') setStatus('通话中 · 逐字稿未能保存');
     });
   }
 
@@ -1903,7 +1914,8 @@
     const attempt=++callAttemptId;
     let pendingRoom=null;
     let roomJoined=false;
-    connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
+    connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
+    setCallPhase('dialing'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
     setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
     muteBtn.classList.add('show');   // 连接中→静音钮慢慢从挂断球长出来
@@ -1914,10 +1926,11 @@
         body:JSON.stringify({ identity:'coach', name:'使用者' })
       });
       if(attempt!==callAttemptId) return;
-      if(res.status===403){ stopRing(); setStatus('通话权限未开放'); resetCallLampsAfterFailure('通话凭证被拒绝，尚未入房'); uiIdle(); return; }
-      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); resetCallLampsAfterFailure('无法取得通话凭证，尚未入房'); uiIdle(); return; }
+      if(res.status===403){ stopRing(); setCallPhase('error','通话权限未开放'); resetCallLampsAfterFailure('通话凭证被拒绝，尚未入房'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setCallPhase('error','通话服务无法签发凭证（'+res.status+'）'); resetCallLampsAfterFailure('无法取得通话凭证，尚未入房'); uiIdle(); return; }
       const d=await res.json();
       if(attempt!==callAttemptId) return;
+      setCallPhase('joining');
       currentCallId=d.room||'';
 
       room=pendingRoom=new LK.Room({ adaptiveStream:true, dynacast:true });
@@ -1954,13 +1967,13 @@
           }).catch(()=>{
             if(room!==callRoom) return;
             setLamp('audio','bad','已收到音轨，但浏览器阻止播放；请点屏幕重试或用外部浏览器打开');
-            setStatus('已收到声音，但浏览器阻止播放；请点屏幕重试');
+            setCallPhase('error','声音被浏览器阻止，请点屏幕重试');
             clearAudioRetry();
             audioRetryHandler=()=>{
               audioRetryHandler=null;
               if(room!==callRoom) return;
               Promise.resolve(el.play()).then(()=>{
-                if(room===callRoom) setLamp('audio','ok');
+                if(room===callRoom){ setLamp('audio','ok'); if(agentState) applyAgentState(agentState); else setCallPhase('connected'); }
               }).catch(()=>{});
             };
             document.addEventListener('pointerdown',audioRetryHandler,{once:true});
@@ -1978,19 +1991,38 @@
         if(!isAgentParticipant(p)) return;
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
-        if(s) applyAgentState(s); else setStatus('通话中');
+        if(s) applyAgentState(s); else setCallPhase('connected');
       });
       room.on(LK.RoomEvent.ParticipantDisconnected,()=>syncAgentLamp(callRoom));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
+        if(!isAgentParticipant(participant)) return;
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
       });
-      room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已挂断'); });
+      room.on(LK.RoomEvent.Reconnecting,()=>{
+        if(room!==callRoom) return;
+        setLamp('room','warn','房间连接中断，正在重连');
+        setCallPhase('reconnecting');
+      });
+      room.on(LK.RoomEvent.Reconnected,()=>{
+        if(room!==callRoom) return;
+        setLamp('room','ok');
+        if(!syncAgentLamp(callRoom)){ setCallPhase('waiting'); return; }
+        const agent=Array.from(callRoom.remoteParticipants.values()).find(isAgentParticipant);
+        const state=agent&&agent.attributes&&agent.attributes['lk.agent.state'];
+        if(state && AGENT_STATE[state]){
+          callPhase='connected'; applyAgentState(state);
+        }else setCallPhase('connected');
+      });
+      room.on(LK.RoomEvent.Disconnected,()=>{
+        if(room===callRoom && attempt===callAttemptId) cleanup('已断线');
+      });
 
       await room.connect(d.url, d.token);
       if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
       roomJoined=true;
       setLamp('room','ok');
+      setCallPhase('waiting');
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
         if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
@@ -2005,8 +2037,8 @@
         throw new Error('麦克风无法启用。请允许麦克风权限，并用手机外部浏览器重新拨打');
       }
       connecting=false; uiInCall();
-      const others=room.numParticipants||0;
-      setStatus(others>0?'通话中':'陈端倪接通中…');
+      const agentPresent=syncAgentLamp(callRoom);
+      setCallPhase(agentPresent?'connected':'waiting');
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ if(!isAgentParticipant(p)) return; setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
@@ -2014,7 +2046,8 @@
       stopRing();
       clearAudioRetry();
       try{ await pendingRoom?.disconnect(); }catch(_){}
-      setStatus('出错了：'+(e&&e.message?e.message:e));
+      setCallPhase('error',String(e&&e.message||'').startsWith('麦克风无法启用')?
+        '麦克风无法启用，请允许权限后重试':'连接失败，请重试');
       resetCallLampsAfterFailure(roomJoined?'本次已离开房间':'无法加入 LiveKit 房间',roomJoined);
       if(String(e&&e.message||'').startsWith('麦克风无法启用')) setMic('bad');
       uiIdle(); room=null;
@@ -2028,8 +2061,8 @@
     try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
-    room=null; muted=false; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
-    setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setStatus(msg||'已挂断');
+    room=null; muted=false; agentState=''; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
+    setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setCallPhase(msg==='已断线'?'disconnected':'ended');
     if(finishedCallId){
       // The server reads only this authenticated owner's saved final events.
       // No transcript text travels in this request. Never auto-retry a paid call.
@@ -2059,6 +2092,7 @@
     muteCircle.style.background=muted?'rgba(216,90,48,.25)':'';
     muteLabel.textContent=muted?'已静音':'静音';
     setMic(muted?'warn':'ok');
+    if(agentState==='listening') setCallPhase(muted?'muted':'listening');
   }
 
   callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
