@@ -230,7 +230,12 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
   body.textContent = text;
   bubble.append(body);
   const parsed = url instanceof URL ? url : firstUrl(url || text);
-  if (parsed) bubble.append(linkCard(parsed));
+  let citedUrl = null;
+  try { if (sourceCitation?.url) citedUrl = new URL(sourceCitation.url); } catch { /* Citation is optional. */ }
+  if (parsed && !(role === "assistant" && citedUrl &&
+      parsed.origin === citedUrl.origin && parsed.pathname === citedUrl.pathname)) {
+    bubble.append(linkCard(parsed));
+  }
   if (role === "assistant") addSourceCitation(bubble, sourceCitation);
   const meta = document.createElement("div");
   meta.className = "message-meta";
