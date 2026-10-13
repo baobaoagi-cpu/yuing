@@ -25,7 +25,7 @@ DATA_DIR = os.environ.get("DATA_DIR", "data")
 
 yuling_bp = Blueprint("yuling", __name__)
 
-AGENT_NAME = "ailivex-realtime-v9"
+AGENT_NAME = os.environ.get("YULING_AGENT_NAME", "ailivex-realtime-v9").strip()
 TOKEN_TTL_SEC = 6 * 3600  # 6 小時, 一通電話夠久
 SECRETS_FILE = os.path.join(os.path.expanduser("~"), ".ailivex_secrets.env")
 AGENT_LOG = os.path.join(os.path.expanduser("~"), "yuling-agent.log")
