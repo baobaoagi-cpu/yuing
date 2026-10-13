@@ -168,6 +168,13 @@ class ChatV2Test(unittest.TestCase):
                                      headers=self.headers,
                                      json={"text": "私人的记忆"})
             self.assertEqual(saved.status_code, 201)
+            buffer = io.BytesIO()
+            Image.new("RGB", (4, 4), "blue").save(buffer, "PNG")
+            buffer.seek(0)
+            uploaded = self.client.post("/api/v2/upload-image", base_url=self.base,
+                                        headers=self.headers,
+                                        data={"file": (buffer, "private.png")})
+            self.assertEqual(uploaded.status_code, 201)
             with patch("deploy_pwa.server.USERNAME", "friend"), patch(
                     "deploy_pwa.server.PASSWORD", "friend-password"):
                 other = app.test_client()
@@ -182,6 +189,8 @@ class ChatV2Test(unittest.TestCase):
                                  .json["sessions"], [])
                 self.assertEqual(other.get("/api/v2/memories", base_url=self.base)
                                  .json["memories"], [])
+                self.assertEqual(other.get(uploaded.json["url"], base_url=self.base)
+                                 .status_code, 404)
 
 
 if __name__ == "__main__":
