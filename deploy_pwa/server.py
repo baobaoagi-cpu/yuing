@@ -1115,7 +1115,9 @@ def files(filename=""):
             return guard
         return redirect("/chat", code=303)
     public = {"style.css", "login.js", "assets/icon.svg", "assets/icon-180.png",
-              "assets/icon-192.png", "assets/icon-512.png"}
+              "assets/icon-192.png", "assets/icon-512.png",
+              "assets/dunni-icon-v1-180.png", "assets/dunni-icon-v1-192.png",
+              "assets/dunni-icon-v1-512.png"}
     if filename not in public:
         guard = _require_login()
         if guard:

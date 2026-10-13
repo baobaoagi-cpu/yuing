@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#000000" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-<meta name="apple-mobile-web-app-title" content="YULING" />
+<meta name="apple-mobile-web-app-title" content="Dunni" />
 <title>YULING · 语灵通话</title>
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/icon-180.png" />
+<link rel="icon" type="image/png" href="/assets/dunni-icon-v1-192.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/dunni-icon-v1-180.png" />
 <style>
   :root{ --ink:#000; --light:#fff; --dim:rgba(255,255,255,.55); --faint:rgba(255,255,255,.12);
          --live:#1d9e75; --warn:#d85a30; }
@@ -34,7 +34,10 @@
     object-fit:contain; background:#000; user-select:none; -webkit-user-drag:none; }
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:3; }
-  .menu-toggle, .lamps, .panel{ z-index:4; }
+  .call-toolbar{ position:fixed; top:max(8px,env(safe-area-inset-top)); left:12px; right:12px;
+    z-index:4; height:48px; display:grid; grid-template-columns:44px minmax(0,1fr) 44px;
+    align-items:center; gap:5px; }
+  .panel{ z-index:5; }
 
   .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
   .btn{ border:none; background:none; color:var(--light); cursor:pointer;
@@ -54,15 +57,15 @@
   .btn[disabled]{ opacity:.3; pointer-events:none; }
   .hidden{ display:none !important; }
 
-  .nav-control{ position:absolute; top:max(4vh,18px); display:grid; place-items:center;
+  .nav-control{ display:grid; place-items:center;
     width:44px; height:44px; padding:0; border:1px solid rgba(255,255,255,.15);
     border-radius:12px; background:rgba(0,0,0,.56); color:rgba(255,255,255,.82);
     cursor:pointer; backdrop-filter:blur(8px); }
   .nav-control svg{ width:22px; height:22px; }
   .nav-control:hover{ border-color:rgba(255,255,255,.38); color:#fff; }
   .nav-control:focus-visible,.panel-close:focus-visible{ outline:2px solid #1d9e75; outline-offset:3px; }
-  .chat-return{ left:20px; z-index:4; }
-  .menu-toggle{ right:20px; }
+  .chat-return{ grid-column:1; }
+  .menu-toggle{ grid-column:3; }
   .panel-close{ position:absolute; top:max(4vh,18px); right:20px; display:grid; place-items:center;
     width:44px; height:44px; border:1px solid var(--faint); border-radius:12px;
     background:rgba(255,255,255,.04); color:var(--light); font-size:24px; cursor:pointer; }
@@ -78,11 +81,11 @@
   .leave-actions .leave-confirm{ border-color:#1d9e75; background:#1d9e75; }
 
   /* Only components observable on the deployed call path are shown. */
-  .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
-    flex-wrap:wrap; justify-content:center; gap:7px 12px; margin:auto; padding:0 8px; }
-  .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
+  .lamps{ grid-column:2; grid-row:1; min-width:0; display:flex; align-items:center;
+    justify-content:center; gap:2px; overflow:hidden; white-space:nowrap; }
+  .lamp{ display:flex; align-items:center; gap:2px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
-  .lamp .dot{ width:9px; height:9px; border-radius:50%; background:var(--faint);
+  .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
     flex:none; transition:background .3s, box-shadow .3s; }
   .lamp.ok   .dot{ background:var(--live); box-shadow:0 0 9px rgba(29,158,117,.9); }
   .lamp.bad  .dot{ background:var(--warn); box-shadow:0 0 6px rgba(216,90,48,.7); }
@@ -141,7 +144,7 @@
   .detailmeta{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
   .timelinecard{ display:flex; flex-direction:column; gap:12px; min-height:0; }
   .turnlist{ display:flex; flex-direction:column; gap:12px; min-height:0; }
-  .verlink{ position:relative; z-index:3; background:none; border:none; color:rgba(255,255,255,.34); font-size:11px;
+  .verlink{ display:none !important; position:relative; z-index:3; background:none; border:none; color:rgba(255,255,255,.34); font-size:11px;
     letter-spacing:.1em; cursor:pointer; padding:6px 12px; }
   .verlink:hover{ color:var(--dim); }
   .veritem{ border:1px solid var(--faint); border-radius:12px; padding:12px 14px; }
@@ -243,13 +246,9 @@
   @media (max-width:700px){
     body{ --phone-top:max(14px,env(safe-area-inset-top)); }
     .controls.callpane{ align-self:center; width:100%; margin-left:0; }
-    .lamps{ top:var(--phone-top); display:grid;
-      grid-template-columns:repeat(5,max-content); gap:7px 9px;
-      justify-content:center; max-width:100%; }
-    .chat-return{ top:calc(var(--phone-top) + 52px); left:12px; }
-    .menu-toggle{ top:calc(var(--phone-top) + 52px); right:12px; }
-    .panel-close{ top:calc(var(--phone-top) + 52px); right:12px; }
-    .top.callpane{ margin-top:calc(76px + max(0px,env(safe-area-inset-top) - 14px)); }
+    .call-toolbar{ top:var(--phone-top); left:8px; right:8px; gap:4px; }
+    .panel-close{ top:var(--phone-top); right:8px; }
+    .top.callpane{ margin-top:calc(50px + max(0px,env(safe-area-inset-top) - 14px)); }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }
@@ -271,6 +270,11 @@
     .meetbtn{ min-height:40px; font-size:13px; }
     .recordbtn{ width:74px; height:74px; font-size:11px; gap:5px; }
   }
+  @media (max-width:340px){
+    .lamp{ font-size:9px; gap:1px; }
+    .lamp .dot{ width:6px; height:6px; }
+    .lamps{ gap:2px; }
+  }
 </style>
 </head>
 <body>
@@ -281,23 +285,10 @@
   poster="/yuling-media/chen-dunni-poster.jpg" autoplay muted loop playsinline
   preload="metadata" aria-hidden="true"></video>
 
-<button class="nav-control menu-toggle" id="menuToggle" type="button" aria-label="打开菜单" aria-controls="panel" aria-expanded="false">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-</button>
+<div class="call-toolbar">
 <button class="nav-control chat-return" id="chatReturn" type="button" aria-label="返回上一页，文字聊天">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg>
 </button>
-
-<div class="leave-dialog hidden" id="leaveDialog" role="dialog" aria-modal="true" aria-labelledby="leaveTitle" aria-describedby="leaveText">
-  <div class="leave-dialog-card">
-    <h2 id="leaveTitle">要返回聊天吗？</h2>
-    <p id="leaveText">返回后会结束这次通话，麦克风也会关闭。</p>
-    <div class="leave-actions">
-      <button id="leaveCancel" type="button">继续通话</button>
-      <button class="leave-confirm" id="leaveConfirm" type="button">挂断并返回</button>
-    </div>
-  </div>
-</div>
 
 <div class="lamps" id="lamps" aria-label="系统健康状态">
   <span class="lamp" id="lamp-service"><i class="dot"></i>S</span>
@@ -309,6 +300,21 @@
   <span class="lamp" id="lamp-stt"><i class="dot"></i>STT</span>
   <span class="lamp" id="lamp-llm"><i class="dot"></i>LLM</span>
   <span class="lamp" id="lamp-tts"><i class="dot"></i>TTS</span>
+</div>
+<button class="nav-control menu-toggle" id="menuToggle" type="button" aria-label="打开菜单" aria-controls="panel" aria-expanded="false">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+</button>
+</div>
+
+<div class="leave-dialog hidden" id="leaveDialog" role="dialog" aria-modal="true" aria-labelledby="leaveTitle" aria-describedby="leaveText">
+  <div class="leave-dialog-card">
+    <h2 id="leaveTitle">要返回聊天吗？</h2>
+    <p id="leaveText">返回后会结束这次通话，麦克风也会关闭。</p>
+    <div class="leave-actions">
+      <button id="leaveCancel" type="button">继续通话</button>
+      <button class="leave-confirm" id="leaveConfirm" type="button">挂断并返回</button>
+    </div>
+  </div>
 </div>
 
 <div class="top callpane" id="callTop">
@@ -331,7 +337,7 @@
     </span>
     <span id="callLabel">拨打</span>
   </button>
-  <button class="verlink" id="verLink">版本记录</button>
+  <button class="verlink" id="verLink" hidden aria-hidden="true" tabindex="-1">版本记录</button>
 </div>
 
 <section class="meetingview" id="meetingView" aria-label="录音同时做记录">

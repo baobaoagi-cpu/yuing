@@ -1,6 +1,6 @@
 {
-  "name": "陈端倪 · 语灵手机测试",
-  "short_name": "端倪语灵",
+  "name": "Dunni",
+  "short_name": "Dunni",
   "description": "端倪语灵内部测试入口；各项能力依伺服器连接状态开放。",
   "start_url": "./index.html",
   "scope": "./",
@@ -8,7 +8,7 @@
   "background_color": "#f3efe7",
   "theme_color": "#f3efe7",
   "icons": [
-    {"src":"./assets/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"./assets/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"./assets/dunni-icon-v1-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"./assets/dunni-icon-v1-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }
