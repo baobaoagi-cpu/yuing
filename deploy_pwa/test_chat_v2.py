@@ -154,6 +154,35 @@ class ChatV2Test(unittest.TestCase):
             self.assertEqual(saved[0]["label"], "cough")
             self.assertEqual(saved[0]["source_kind"], "browser_candidate")
 
+    def test_separate_account_cannot_read_existing_account_data(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {"POC_CHAT_DB_PATH": os.path.join(directory, "chat.sqlite3")}
+        ):
+            self._login()
+            with patch("deploy_pwa.server.reply_to", return_value="你好。"):
+                posted = self.client.post("/api/v2/chat", base_url=self.base,
+                                          headers=self.headers, json={"text": "私人的文字"})
+            self.assertEqual(posted.status_code, 200)
+            sid = posted.json["session_id"]
+            saved = self.client.post("/api/v2/memories", base_url=self.base,
+                                     headers=self.headers,
+                                     json={"text": "私人的记忆"})
+            self.assertEqual(saved.status_code, 201)
+            with patch("deploy_pwa.server.USERNAME", "friend"), patch(
+                    "deploy_pwa.server.PASSWORD", "friend-password"):
+                other = app.test_client()
+                signed_in = other.post("/api/login", base_url=self.base,
+                                       headers=self.headers,
+                                       json={"username": "friend", "password": "friend-password"})
+                self.assertEqual(signed_in.status_code, 200)
+                history = other.get("/api/v2/history?session_id=" + sid,
+                                    base_url=self.base)
+                self.assertEqual(history.status_code, 404)
+                self.assertEqual(other.get("/api/v2/history", base_url=self.base)
+                                 .json["sessions"], [])
+                self.assertEqual(other.get("/api/v2/memories", base_url=self.base)
+                                 .json["memories"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

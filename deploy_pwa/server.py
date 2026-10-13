@@ -246,7 +246,11 @@ def _bridge(path, body=None, content_type=None):
 
 def _chat_store():
     try:
-        return ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""))
+        owner_id = session.get("account")
+        if not isinstance(owner_id, str) or not owner_id:
+            return None
+        return ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""), owner_id,
+                         legacy_owner_id=os.environ.get("POC_LEGACY_OWNER", USERNAME))
     except (StoreUnavailable, OSError):
         return None
 
