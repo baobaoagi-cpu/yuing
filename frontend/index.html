@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hans">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <meta name="apple-mobile-web-app-title" content="YULING" />
-<title>YULING · 語靈通話</title>
+<title>YULING · 语灵通话</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon-180.png" />
@@ -28,7 +28,7 @@
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
-  /* 去背陳端倪: 鎖定右下角, 各裝置自適應, 不擋點擊 */
+  /* 去背陈端倪: 锁定右下角, 各装置自适应, 不挡点击 */
   #bao-bg{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
     width:min(40vw,260px); height:auto; opacity:.92; user-select:none;
     -webkit-user-drag:none; }
@@ -39,7 +39,7 @@
   .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
   .btn{ border:none; background:none; color:var(--light); cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:8px; font-size:13px; color:var(--dim); }
-  /* 靜音鈕過場: 待機縮在掛斷球中心(scale.2/透明), 連線滑出左側長大 */
+  /* 静音钮过场: 待机缩在挂断球中心(scale.2/透明), 连线滑出左侧长大 */
   .mutefab{ position:absolute; left:50%; top:10px;
     transform:translateX(-50%) scale(.2); opacity:0; pointer-events:none;
     transition:transform .5s cubic-bezier(.34,1.25,.5,1), opacity .4s ease; }
@@ -82,7 +82,7 @@
   .panel .linkbtn{ background:none; border:1px solid var(--faint); color:var(--dim);
     border-radius:12px; padding:11px 26px; font-size:15px; cursor:pointer; }
   .panel .linkbtn:hover{ color:var(--light); border-color:var(--dim); }
-  /* 對話紀錄面板 */
+  /* 对话纪录面板 */
   .logpanel{ justify-content:flex-start; padding:0; background:#090a05; }
   .logbar{ display:flex; align-items:center; gap:14px; width:100%;
     padding:max(4vh,18px) 20px 14px; border-bottom:1px solid var(--faint); }
@@ -249,26 +249,26 @@
 </style>
 </head>
 <body>
-<h2 class="sr-only">Voice Companion：點中間的綠色按鈕就能跟陳端倪即時語音通話。中央光球會隨聲音呼吸。</h2>
+<h2 class="sr-only">Voice Companion：点中间的绿色按钮就能跟陈端倪即时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
 
-<button class="gear" id="gear" aria-label="設定">
+<button class="gear" id="gear" aria-label="设定">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 </button>
 
-<div class="lamps" id="lamps" aria-label="系統健康狀態">
-  <span class="lamp" id="lamp-service"><i class="dot"></i>服務</span>
+<div class="lamps" id="lamps" aria-label="系统健康状态">
+  <span class="lamp" id="lamp-service"><i class="dot"></i>服务</span>
   <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
-  <span class="lamp" id="lamp-livekit"><i class="dot"></i>連線</span>
-  <span class="lamp" id="lamp-agent"><i class="dot"></i>語靈</span>
-  <span class="lamp" id="lamp-audio"><i class="dot"></i>音軌</span>
+  <span class="lamp" id="lamp-livekit"><i class="dot"></i>连线</span>
+  <span class="lamp" id="lamp-agent"><i class="dot"></i>语灵</span>
+  <span class="lamp" id="lamp-audio"><i class="dot"></i>音轨</span>
 </div>
 
 <div class="top callpane" id="callTop">
-  <div class="clock" id="clock" aria-label="台北時間">—</div>
-  <div class="name">陳端倪</div>
-  <div class="status" id="status">點下面綠色按鈕開始通話</div>
+  <div class="clock" id="clock" aria-label="时间">—</div>
+  <div class="name">陈端倪</div>
+  <div class="status" id="status">点下面绿色按钮开始通话</div>
 </div>
 
 <div class="stage callpane" id="callStage"></div>
@@ -276,87 +276,85 @@
 <div class="controls callpane" id="callControls">
   <button class="btn mutefab" id="muteBtn">
     <span class="circle" id="muteCircle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></span>
-    <span id="muteLabel">靜音</span>
+    <span id="muteLabel">静音</span>
   </button>
 
   <button class="btn" id="callBtn">
     <span class="circle call go" id="callCircle">
       <svg id="callIcon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
     </span>
-    <span id="callLabel">撥打</span>
+    <span id="callLabel">拨打</span>
   </button>
-  <button class="verlink" id="verLink">版本紀錄</button>
+  <button class="verlink" id="verLink">版本纪录</button>
 </div>
 
-<section class="meetingview" id="meetingView" aria-label="錄音同時做記錄">
+<section class="meetingview" id="meetingView" aria-label="录音同时做记录">
   <div class="meetingsheet">
     <div class="meetinghead">
       <div class="meetingtopwave">
-        <canvas class="recordwave" id="meetingWave" width="640" height="72" aria-label="錄音波紋"></canvas>
+        <canvas class="recordwave" id="meetingWave" width="640" height="72" aria-label="录音波纹"></canvas>
       </div>
     </div>
     <div class="meetingbody" id="meetingBody">
       <div class="recordcard">
         <div class="recordmeta">
-          <span class="recordbadge idle" id="meetingBadge">未開始</span>
+          <span class="recordbadge idle" id="meetingBadge">未开始</span>
           <span class="recordtimer" id="meetingTimer">00:00</span>
-          <span class="recordhint grow" id="meetingChunkMeta">尚未開始即時字幕</span>
-          <label class="recordtoggle"><input id="meetingSaveAudioToggle" type="checkbox" /><span>保存音訊</span></label>
-          <button class="expandbtn" id="meetingExpandBtn" type="button" aria-label="放大錄音轉文字區" aria-pressed="false">⤢</button>
+          <span class="recordhint grow" id="meetingChunkMeta">尚未开始即时字幕</span>
+          <label class="recordtoggle"><input id="meetingSaveAudioToggle" type="checkbox" /><span>保存音讯</span></label>
+          <button class="expandbtn" id="meetingExpandBtn" type="button" aria-label="放大录音转文字区" aria-pressed="false">⤢</button>
         </div>
         <div class="transportbar" id="meetingTransportBar">
           <span class="transportpill idle" id="meetingTransportBadge">待命中</span>
-          <span class="transportdetail" id="meetingTransportDetail">錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。</span>
+          <span class="transportdetail" id="meetingTransportDetail">录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。</span>
         </div>
-        <div class="meetingstatus" id="meetingStatus" hidden>開始錄音後，後端即時字幕會貼著你的聲音往下長。</div>
+        <div class="meetingstatus" id="meetingStatus" hidden>开始录音后，后端即时字幕会贴著你的声音往下长。</div>
         <div class="chunkrail" id="meetingChunkRail">
-          <div class="meetingempty">開始錄音後，字幕會貼著你的聲音往下長。</div>
+          <div class="meetingempty">开始录音后，字幕会贴著你的声音往下长。</div>
         </div>
       </div>
       <div class="meetingactionbar">
         <div class="actionmeta">
-          <span class="actiontitle">會議整理</span>
-          <span class="actionstatus" id="meetingDraftState">等待錄音</span>
+          <span class="actiontitle">会议整理</span>
+          <span class="actionstatus" id="meetingDraftState">等待录音</span>
         </div>
         <button class="actionbtn" id="meetingFormalBtn" type="button">
-          再次整理成專業的會議記錄
+          再次整理成专业的会议记录
         </button>
       </div>
     </div>
     <div class="meetingcontrols">
       <button class="meetbtn" id="meetingDiscardBtn" disabled>清空</button>
-      <button class="recordbtn" id="meetingRecordBtn" aria-label="開始錄音">
-        <span id="meetingRecordLabel">錄音</span>
+      <button class="recordbtn" id="meetingRecordBtn" aria-label="开始录音">
+        <span id="meetingRecordLabel">录音</span>
       </button>
-      <button class="meetbtn" id="meetingPauseBtn" disabled>暫停</button>
+      <button class="meetbtn" id="meetingPauseBtn" disabled>暂停</button>
     </div>
   </div>
 </section>
 
-<div class="swipehint" id="swipeHint" role="button" tabindex="0" aria-label="開啟錄音同時做記錄">向右滑開啟錄音</div>
+<div class="swipehint" id="swipeHint" role="button" tabindex="0" aria-label="开启录音同时做记录">向右滑开启录音</div>
 
 
 <div class="panel hidden logpanel" id="verPanel">
   <div class="logbar">
     <button id="verBack" aria-label="返回">‹</button>
-    <span class="ttl">版本紀錄</span>
+    <span class="ttl">版本纪录</span>
   </div>
   <div class="logbody" id="verBody"></div>
 </div>
 
 <div class="panel hidden" id="panel">
-  <label for="accessInput">通話密語（使用者設定的 access secret，沒設就留空）</label>
-  <input id="accessInput" type="password" placeholder="留空 = 不需要" autocomplete="off" />
-  <button class="save" id="saveBtn">儲存</button>
-  <button class="linkbtn" id="logOpenBtn">📜 對話紀錄</button>
-  <button class="linkbtn" id="innerOpenBtn">🤍 內心獨白</button>
-  <div class="hint">密語存在這台裝置的瀏覽器裡，不會上傳。換裝置要重設。</div>
+  <button class="linkbtn" id="logOpenBtn">📜 对话纪录</button>
+  <button class="linkbtn" id="innerOpenBtn">🤍 内心独白</button>
+  <div class="hint" id="historyHealth">对话纪录：检查中</div>
+  <div class="hint" id="innerHealth">内心独白：检查中</div>
 </div>
 
 <div class="panel hidden logpanel" id="innerPanel">
   <div class="logbar">
     <button id="innerBack" aria-label="返回">‹</button>
-    <span class="ttl">內心獨白</span>
+    <span class="ttl">内心独白</span>
   </div>
   <div class="logbody" id="innerBody"></div>
 </div>
@@ -364,7 +362,7 @@
 <div class="panel hidden logpanel" id="logPanel">
   <div class="logbar">
     <button id="logBack" aria-label="返回">‹</button>
-    <span class="ttl" id="logTitle">對話紀錄</span>
+    <span class="ttl" id="logTitle">对话纪录</span>
   </div>
   <div class="logbody" id="logBody"></div>
 </div>
@@ -377,7 +375,7 @@
   const statusEl=$('status');
   const callBtn=$('callBtn'), callCircle=$('callCircle'), callIcon=$('callIcon'), callLabel=$('callLabel');
   const muteBtn=$('muteBtn'), muteCircle=$('muteCircle'), muteLabel=$('muteLabel');
-  const gear=$('gear'), panel=$('panel'), accessInput=$('accessInput'), saveBtn=$('saveBtn');
+  const gear=$('gear'), panel=$('panel');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
   const meetingView=$('meetingView'), swipeHint=$('swipeHint');
   const meetingStatus=$('meetingStatus'), meetingBadge=$('meetingBadge'), meetingTimer=$('meetingTimer');
@@ -393,7 +391,6 @@
 
   let room=null, connecting=false, muted=false, currentCallId='';
   const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
-  const ACCESS_KEY='yuling_access';
   const API_ROOT=(location.protocol==='file:')
     ? 'http://127.0.0.1:8080'
     : (location.port==='3000' ? `${location.protocol}//${location.hostname}:8080` : '');
@@ -415,7 +412,7 @@
     backendLiveActive:false, fallbackTimer:0,
     speechStartedAt:0, speechLastEventAt:0, speechCycleTimer:0,
     formalizing:false, formalizedAt:0,
-    streamState:'idle', streamStateNote:'錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。', streamStateAt:0, streamEvents:[]
+    streamState:'idle', streamStateNote:'录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。', streamStateAt:0, streamEvents:[]
   };
   const SPEECH_RECYCLE_MS=45000;
   const SPEECH_STALL_MS=8000;
@@ -445,10 +442,10 @@
   function refreshSwipeHint(){
     if(!swipeHint) return;
     const isOpen=meetingProgress>0.5;
-    swipeHint.textContent=isOpen?'向左滑關閉錄音':'向右滑開啟錄音';
-    swipeHint.setAttribute('aria-label', isOpen?'關閉錄音同時做記錄':'開啟錄音同時做記錄');
+    swipeHint.textContent=isOpen?'向左滑关闭录音':'向右滑开启录音';
+    swipeHint.setAttribute('aria-label', isOpen?'关闭录音同时做记录':'开启录音同时做记录');
     swipeHint.setAttribute('aria-pressed', isOpen?'true':'false');
-    swipeHint.title=isOpen?'點一下也可關閉錄音':'點一下也可開啟錄音';
+    swipeHint.title=isOpen?'点一下也可关闭录音':'点一下也可开启录音';
   }
   function openMeetingView(){ if(MEETING_ENABLED) setMeetingProgress(1,true); }
   function closeMeetingView(){ setMeetingProgress(0,true); }
@@ -462,7 +459,7 @@
     if(meetingBody) meetingBody.classList.toggle('expanded', meetingTranscriptExpanded);
     if(meetingExpandBtn){
       meetingExpandBtn.setAttribute('aria-pressed', meetingTranscriptExpanded ? 'true' : 'false');
-      meetingExpandBtn.setAttribute('aria-label', meetingTranscriptExpanded ? '收起錄音轉文字區' : '放大錄音轉文字區');
+      meetingExpandBtn.setAttribute('aria-label', meetingTranscriptExpanded ? '收起录音转文字区' : '放大录音转文字区');
       meetingExpandBtn.textContent=meetingTranscriptExpanded ? '⤡' : '⤢';
     }
   }
@@ -517,11 +514,11 @@
     const hasNotes=meetingRec.minuteNotes.some(note=>(note.summary||note.transcript||'').trim());
     const noteUploading=meetingRec.minuteNotes.some(note=>note.uploading && !note.done);
     const ready=!!meetingFormalSummary();
-    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready};
-    if(meetingRec.formalizedAt) return {phase:'done', label:'已產出', status:'正式會議已產出，已收進歷史會議紀錄。', canFormalize:ready, ready};
-    if(noteUploading) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready};
-    if(!hasNotes) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready:false};
-    return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:true, ready};
+    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready};
+    if(meetingRec.formalizedAt) return {phase:'done', label:'已产出', status:'正式会议已产出，已收进历史会议纪录。', canFormalize:ready, ready};
+    if(noteUploading) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready};
+    if(!hasNotes) return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:false, ready:false};
+    return {phase:'working', label:'整理中', status:'陈端倪正在整理会议纪录', canFormalize:true, ready};
   }
   async function finalizeMeetingFormalNotes(){
     const loop=getMeetingLoopState();
@@ -637,16 +634,16 @@
   function meetingStreamUi(){
     const state=meetingRec.streamState||'idle';
     const map={
-      idle:{label:'待命中', cls:'idle', detail:'錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。'},
-      connecting:{label:'接通中', cls:'connecting', detail:'後端即時字幕正在建立長連線。'},
-      'backend-open':{label:'後端已接通', cls:'connecting', detail:'後端字幕已在線，正在等第一段真正的語音。'},
-      'backend-live':{label:'後端逐字中', cls:'backend-live', detail:'後端即時字幕正在跟著你的聲音出字。'},
-      'append-reconnect':{label:'重接中', cls:'append-reconnect', detail:'後端流剛斷過一次，正在補開新線接回主路徑。'},
-      'stream-dead':{label:'串流中斷', cls:'stream-dead', detail:'後端字幕流剛剛斷線，正在等待重接或切到備援逐字。'},
-      rollover:{label:'換流中', cls:'rollover', detail:'長會議到換流點，正在無縫接到下一條後端字幕流。'},
-      'fallback-active':{label:'備援逐字中', cls:'fallback-active', detail:'目前先用這台裝置的即時字幕頂住，後端恢復後會切回主路徑。'},
-      error:{label:'異常', cls:'error', detail:'即時字幕鏈路出現錯誤，需要看最近事件與後端紀錄。'},
-      closed:{label:'已停止', cls:'closed', detail:'這段錄音已停止；字幕與陳端倪作業停在目前內容。'}
+      idle:{label:'待命中', cls:'idle', detail:'录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。'},
+      connecting:{label:'接通中', cls:'connecting', detail:'后端即时字幕正在建立长连线。'},
+      'backend-open':{label:'后端已接通', cls:'connecting', detail:'后端字幕已在线，正在等第一段真正的语音。'},
+      'backend-live':{label:'后端逐字中', cls:'backend-live', detail:'后端即时字幕正在跟著你的声音出字。'},
+      'append-reconnect':{label:'重接中', cls:'append-reconnect', detail:'后端流刚断过一次，正在补开新线接回主路径。'},
+      'stream-dead':{label:'串流中断', cls:'stream-dead', detail:'后端字幕流刚刚断线，正在等待重接或切到备援逐字。'},
+      rollover:{label:'换流中', cls:'rollover', detail:'长会议到换流点，正在无缝接到下一条后端字幕流。'},
+      'fallback-active':{label:'备援逐字中', cls:'fallback-active', detail:'目前先用这台装置的即时字幕顶住，后端恢复后会切回主路径。'},
+      error:{label:'异常', cls:'error', detail:'即时字幕链路出现错误，需要看最近事件与后端纪录。'},
+      closed:{label:'已停止', cls:'closed', detail:'这段录音已停止；字幕与陈端倪作业停在目前内容。'}
     };
     const base=map[state]||map.idle;
     return {
@@ -661,7 +658,7 @@
       meetingRec.fallbackTimer=0;
       if(!meetingRec.isRecording || meetingRec.isPaused) return;
       if(meetingRec.backendLiveActive || meetingRec.speechRunning) return;
-      setMeetingStreamState('fallback-active', '後端即時字幕暫時沒出字，先切到裝置端逐字避免整片空白。');
+      setMeetingStreamState('fallback-active', '后端即时字幕暂时没出字，先切到装置端逐字避免整片空白。');
       startMeetingSpeechRecognition();
       setMeetingUi();
     }, Math.max(0, Number(delayMs||0)));
@@ -672,20 +669,20 @@
       const status=(payload&&payload.status)||'';
       if(status==='stream-open'){
         const detail=(payload&&payload.base_start_ms)>0
-          ? `後端字幕已重接，從 ${fmtClock(payload.base_start_ms||0)} 接回主路徑。`
-          : '後端即時字幕已接通，正在等第一段真正的語音。';
+          ? `后端字幕已重接，从 ${fmtClock(payload.base_start_ms||0)} 接回主路径。`
+          : '后端即时字幕已接通，正在等第一段真正的语音。';
         setMeetingStreamState('backend-open', detail);
       }else if(status==='append-reconnect'){
         meetingRec.backendLiveActive=false;
-        setMeetingStreamState('append-reconnect', '後端流剛斷過一次，正在補開新線接回主路徑。');
+        setMeetingStreamState('append-reconnect', '后端流刚断过一次，正在补开新线接回主路径。');
       }else if(status==='stream-dead'){
         meetingRec.backendLiveActive=false;
         const reason=(payload&&payload.reason)||'';
-        setMeetingStreamState('stream-dead', reason ? `後端字幕流中斷：${reason}` : '後端字幕流中斷，正在等待重接或備援逐字。');
+        setMeetingStreamState('stream-dead', reason ? `后端字幕流中断：${reason}` : '后端字幕流中断，正在等待重接或备援逐字。');
         scheduleMeetingSpeechFallback(120);
       }else if(status==='rollover'){
         meetingRec.backendLiveActive=false;
-        setMeetingStreamState('rollover', '長會議到換流點，正在接下一條後端字幕流。');
+        setMeetingStreamState('rollover', '长会议到换流点，正在接下一条后端字幕流。');
       }
       setMeetingUi();
       return;
@@ -693,7 +690,7 @@
     if(type==='interim'){
       meetingRec.backendLiveActive=true;
       clearMeetingFallbackTimer();
-      setMeetingStreamState('backend-live', '後端即時字幕正在跟著你的聲音出字。');
+      setMeetingStreamState('backend-live', '后端即时字幕正在跟著你的声音出字。');
       meetingRec.interimText=(payload&&payload.transcript)||'';
       setMeetingUi();
       return;
@@ -701,7 +698,7 @@
     if(type==='final'){
       meetingRec.backendLiveActive=true;
       clearMeetingFallbackTimer();
-      setMeetingStreamState('backend-live', '後端即時字幕正在穩定吐字。');
+      setMeetingStreamState('backend-live', '后端即时字幕正在稳定吐字。');
       meetingRec.interimText='';
       appendMeetingTranscript((payload&&payload.transcript)||'', payload&&payload.start_ms, payload&&payload.end_ms, 'backend');
       meetingRec.lastFinalMs=Math.max(meetingRec.lastFinalMs||0, (payload&&payload.end_ms)||0);
@@ -712,7 +709,7 @@
     if(type==='error'){
       meetingRec.backendLiveActive=false;
       meetingRec.speechError=(payload&&payload.message)||'stream-error';
-      setMeetingStreamState('error', `後端字幕錯誤：${meetingRec.speechError}`);
+      setMeetingStreamState('error', `后端字幕错误：${meetingRec.speechError}`);
       scheduleMeetingSpeechFallback(120);
       setMeetingUi();
       return;
@@ -720,7 +717,7 @@
     if(type==='closed'){
       meetingRec.backendLiveActive=false;
       meetingRec.interimText='';
-      setMeetingStreamState('closed', '這段錄音已停止；字幕與陳端倪作業停在目前內容。');
+      setMeetingStreamState('closed', '这段录音已停止；字幕与陈端倪作业停在目前内容。');
       setMeetingUi();
     }
   }
@@ -753,7 +750,7 @@
       });
       if(!res.ok || !res.body) throw new Error('events '+res.status);
       meetingRec.streamConnected=true;
-      setMeetingStreamState('connecting', '後端事件流已連上，正在等字幕事件開始進來。');
+      setMeetingStreamState('connecting', '后端事件流已连上，正在等字幕事件开始进来。');
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
       meetingRec.streamReader=reader;
@@ -768,7 +765,7 @@
       meetingRec.streamConnected=false;
       meetingRec.backendLiveActive=false;
       meetingRec.speechError=String((err&&err.message)||err||'events-failed');
-      setMeetingStreamState('stream-dead', `後端事件流失聯：${meetingRec.speechError}`);
+      setMeetingStreamState('stream-dead', `后端事件流失联：${meetingRec.speechError}`);
       if(!meetingRec.backendLiveActive) startMeetingSpeechRecognition();
       setMeetingUi();
     }
@@ -801,10 +798,10 @@
       if(next.tries>3){
         meetingRec.pcmQueue.shift();
         meetingRec.speechError=String((err&&err.message)||err||'append-failed');
-        setMeetingStreamState('error', `送音訊到後端失敗：${meetingRec.speechError}`);
+        setMeetingStreamState('error', `送音讯到后端失败：${meetingRec.speechError}`);
       }
       if(next.tries>=2 && !meetingRec.backendLiveActive && !meetingRec.speechRunning){
-        setMeetingStreamState('fallback-active', '後端音訊追加不穩，先切到裝置端逐字避免整片空白。');
+        setMeetingStreamState('fallback-active', '后端音讯追加不稳，先切到装置端逐字避免整片空白。');
         startMeetingSpeechRecognition();
       }
     }finally{
@@ -907,7 +904,7 @@
     if(!Ctor || !meetingRec.isRecording || meetingRec.isPaused) return false;
     stopMeetingSpeechRecognition(false);
     const rec=new Ctor();
-    rec.lang='zh-TW';
+    rec.lang='zh-CN';
     rec.continuous=true;
     rec.interimResults=true;
     rec.maxAlternatives=1;
@@ -940,7 +937,7 @@
       if(code!=='no-speech') meetingRec.speechError=code;
       if(code==='not-allowed' || code==='service-not-allowed' || code==='audio-capture'){
         meetingRec.speechSupported=false;
-        meetingStatus.textContent='瀏覽器沒有開放即時字幕權限，先退回背景錄音保存。';
+        meetingStatus.textContent='浏览器没有开放即时字幕权限，先退回背景录音保存。';
       }
     };
     rec.onend=()=>{
@@ -959,7 +956,7 @@
       meetingRec.speechRunning=true;
       meetingRec.speechError='';
       meetingRec.speechSupported=true;
-      if(!meetingRec.backendLiveActive) setMeetingStreamState('fallback-active', '目前先用這台裝置的即時字幕頂住，等後端恢復會切回主路徑。');
+      if(!meetingRec.backendLiveActive) setMeetingStreamState('fallback-active', '目前先用这台装置的即时字幕顶住，等后端恢复会切回主路径。');
       scheduleMeetingSpeechRecycle();
       return true;
     }catch(_){
@@ -1050,8 +1047,8 @@
   }
 
   function setStatus(t){ statusEl.textContent=t; }
-  // 陳端倪當下真實狀態 (LiveKit lk.agent.state) → 人話
-  const AGENT_STATE={ initializing:'接通中…', listening:'收音待命', thinking:'思考中', speaking:'說話中', idle:'空閒待命' };
+  // 陈端倪当下真实状态 (LiveKit lk.agent.state) → 人话
+  const AGENT_STATE={ initializing:'接通中…', listening:'收音待命', thinking:'思考中', speaking:'说话中', idle:'空闲待命' };
   let agentState='', agentStateAt=0, lastUserVoiceAt=0, lastBaoVoiceAt=0;
   function applyAgentState(s){
     const label=AGENT_STATE[s];
@@ -1068,7 +1065,7 @@
       else setStatus(label);
     }else if(agentState==='idle'){
       const idleFor=now-agentStateAt;
-      if(idleFor>15000) setStatus('空閒待命偏久');
+      if(idleFor>15000) setStatus('空闲待命偏久');
       else setStatus(label);
     }
   }
@@ -1118,7 +1115,7 @@
     }catch(_){ return false; }
   }
 
-  // ═══════════ 螺旋丸 · 聲浪光球 (audio-reactive viz) ═══════════
+  // ═══════════ 螺旋丸 · 声浪光球 (audio-reactive viz) ═══════════
   const cv=$('viz'), cx=cv.getContext('2d');
   let VW=0,VH=0,DPR=1;
   function vizResize(){
@@ -1128,27 +1125,27 @@
   }
   vizResize(); addEventListener('resize', vizResize);
 
-  let micCalc=null, baoCalc=null;   // 即時聲浪 0..1 (track 就緒才接)
+  let micCalc=null, baoCalc=null;   // 即时声浪 0..1 (track 就绪才接)
   let boostedAudioNodes=[];
-  let mLvl=0, bLvl=0;               // 平滑後的等級 (禪意: 緩起緩落)
+  let mLvl=0, bLvl=0;               // 平滑后的等级 (禅意: 缓起缓落)
   const lerp=(a,b,k)=>a+(b-a)*k;
 
-  // 鳥群 (彗星/V 隊形): 領頭鳥飛, 後面的鳥沿「領頭走過的軌跡」一隻接一隻跟進。
-  // 每隻取領頭歷史上的一個過去點(age=延遲) + 側向偏移(往尾巴變寬=V) → 自然彗星尾。
+  // 鸟群 (彗星/V 队形): 领头鸟飞, 后面的鸟沿「领头走过的轨迹」一只接一只跟进。
+  // 每只取领头历史上的一个过去点(age=延迟) + 侧向偏移(往尾巴变宽=V) → 自然彗星尾。
   const FN = innerWidth<700 ? 420 : 760;
   const fage=new Float32Array(FN), flat=new Float32Array(FN),
         fper=new Float32Array(FN), fph=new Float32Array(FN), fsz=new Float32Array(FN);
   for(let i=0;i<FN;i++){
-    fage[i]=Math.pow(Math.random(), 0.7);    // 沿尾巴位置 0=頭 1=尾 (偏頭密)
-    flat[i]=Math.random()*2-1;               // 側向偏移 → V 擴散
-    fper[i]=1+Math.floor(Math.random()*3);   // 閃爍週期 1/2/3 秒
-    fph[i]=Math.random()*6.2832;             // 閃爍相位
+    fage[i]=Math.pow(Math.random(), 0.7);    // 沿尾巴位置 0=头 1=尾 (偏头密)
+    flat[i]=Math.random()*2-1;               // 侧向偏移 → V 扩散
+    fper[i]=1+Math.floor(Math.random()*3);   // 闪烁周期 1/2/3 秒
+    fph[i]=Math.random()*6.2832;             // 闪烁相位
     fsz[i]=0.5+Math.random()*0.7;            // 大小微差
   }
-  const HIST=600;                            // 領頭軌跡環形緩衝 (幀)
+  const HIST=600;                            // 领头轨迹环形缓冲 (帧)
   const hx=new Float32Array(HIST), hy=new Float32Array(HIST);
   let hidx=0, histSeeded=false;
-  let lx=0, ly=0, lvx=0, lvy=0, lhead=0, prevGv=0, armRot=0;  // 領頭鳥 + 航向
+  let lx=0, ly=0, lvx=0, lvy=0, lhead=0, prevGv=0, armRot=0;  // 领头鸟 + 航向
 
   const ripples=[]; let lastRip=0, t0=null;
 
@@ -1165,9 +1162,9 @@
     motionFX.shake*=0.88;
     motionFX.colorGlow*=0.975;
     const vol = Math.max(mLvl, bLvl);
-    const gv = vol<0.06 ? 0 : (vol-0.06)/0.94;          // 噪聲門檻: 真安靜→0 (擋麥克風底噪)
-    const bao = bLvl>=mLvl;                               // 誰在發聲 → 配色
-    const baseHue = bao ? 158 : 192;                      // 陳端倪=青綠, 使用者=冷白藍
+    const gv = vol<0.06 ? 0 : (vol-0.06)/0.94;          // 噪声门槛: 真安静→0 (挡麦克风底噪)
+    const bao = bLvl>=mLvl;                               // 谁在发声 → 配色
+    const baseHue = bao ? 158 : 192;                      // 陈端倪=青绿, 使用者=冷白蓝
     const hue = motionFX.hue===null ? baseHue : lerp(baseHue,motionFX.hue,Math.min(1,motionFX.colorGlow));
     const sat = 20 + vol*38, lit = 62 + vol*16;
     const motionPush=motionFX.enabled ? (1+vol*.8) : 0;
@@ -1179,7 +1176,7 @@
     cx.clearRect(0,0,VW,VH);
     cx.globalCompositeOperation='lighter';
 
-    // 全畫面氣暈 (極淡)
+    // 全画面气晕 (极淡)
     let g=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(VW,VH)*0.6);
     const aA=0.01+vol*0.05;
     g.addColorStop(0,`hsla(${hue},${sat}%,${lit}%,${aA})`);
@@ -1187,14 +1184,14 @@
     g.addColorStop(1,'hsla(0,0%,0%,0)');
     cx.fillStyle=g; cx.fillRect(0,0,VW,VH);
 
-    // 光球外暈 (薄霧)
+    // 光球外晕 (薄雾)
     g=cx.createRadialGradient(cxp,cyp,R*0.3,cxp,cyp,R*2.6);
     g.addColorStop(0,`hsla(${hue},${sat}%,${lit}%,${0.045+vol*0.11})`);
     g.addColorStop(0.45,`hsla(${hue},${sat}%,${lit}%,${0.015+vol*0.05})`);
     g.addColorStop(1,'hsla(0,0%,0%,0)');
     cx.fillStyle=g; cx.beginPath(); cx.arc(cxp,cyp,R*2.6,0,6.2832); cx.fill();
 
-    // (螺旋臂層已移除 — 使用者 2026-06-15)
+    // (螺旋臂层已移除 — 使用者 2026-06-15)
 
     // 核 (柔, 不刺眼)
     g=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,R*1.1);
@@ -1203,33 +1200,33 @@
     g.addColorStop(1,'hsla(0,0%,0%,0)');
     cx.fillStyle=g; cx.beginPath(); cx.arc(cxp,cyp,R*1.1,0,6.2832); cx.fill();
 
-    // 鳥群 (彗星/V): 領頭鳥飛, 後面沿領頭軌跡一隻接一隻跟進
+    // 鸟群 (彗星/V): 领头鸟飞, 后面沿领头轨迹一只接一只跟进
     if(!histSeeded){ for(let i=0;i<HIST;i++){ hx[i]=cxp; hy[i]=cyp; } lx=cxp; ly=cyp; histSeeded=true; }
-    // 新聲音進來 → 領頭隨機改變方向 (rising edge)
+    // 新声音进来 → 领头随机改变方向 (rising edge)
     if(gv>0.16 && prevGv<=0.16) lhead=Math.random()*6.2832;
     prevGv=gv;
-    lhead += Math.sin(t*0.8+7.1)*0.03;                        // 平滑緩轉 (非每幀亂跳, 才不像蚊子)
-    const spd=Math.min(VW,VH)*0.0085*gv;                      // 速度隨聲浪 (靜止=0)
+    lhead += Math.sin(t*0.8+7.1)*0.03;                        // 平滑缓转 (非每帧乱跳, 才不像蚊子)
+    const spd=Math.min(VW,VH)*0.0085*gv;                      // 速度随声浪 (静止=0)
     lvx = lvx*0.85 + Math.cos(lhead)*spd*0.15;
     lvy = lvy*0.85 + Math.sin(lhead)*spd*0.15;
-    const cpull = gv>0.04 ? 0.003 : 0.03;                     // 有聲弱回中; 靜止→慢慢回正中央
+    const cpull = gv>0.04 ? 0.003 : 0.03;                     // 有声弱回中; 静止→慢慢回正中央
     lvx += (cxp-lx)*cpull; lvy += (cyp-ly)*cpull;
     lx+=lvx; ly+=lvy;
-    hidx=(hidx+1)%HIST; hx[hidx]=lx; hy[hidx]=ly;             // 推進領頭軌跡
-    const trail=220;                                          // 尾巴長度(幀)
+    hidx=(hidx+1)%HIST; hx[hidx]=lx; hy[hidx]=ly;             // 推进领头轨迹
+    const trail=220;                                          // 尾巴长度(帧)
     for(let i=0;i<FN;i++){
       const back=(fage[i]*trail)|0;
       const j=(hidx-back+HIST)%HIST, j2=(j-3+HIST)%HIST;
       let dx=hx[j]-hx[j2], dy=hy[j]-hy[j2];
-      const dl=Math.sqrt(dx*dx+dy*dy)||1; dx/=dl; dy/=dl;     // 該軌跡點的行進方向
-      const cone=R*(0.04+fage[i]*1.25);                       // 越往尾巴越寬 → V 擴散
+      const dl=Math.sqrt(dx*dx+dy*dy)||1; dx/=dl; dy/=dl;     // 该轨迹点的行进方向
+      const cone=R*(0.04+fage[i]*1.25);                       // 越往尾巴越宽 → V 扩散
       const px=hx[j] + (-dy)*flat[i]*cone, py=hy[j] + dx*flat[i]*cone;
-      const tw=0.2+0.8*(0.5+0.5*Math.sin(t*6.2832/fper[i]+fph[i]));  // 一閃一閃 1/2/3 秒
+      const tw=0.2+0.8*(0.5+0.5*Math.sin(t*6.2832/fper[i]+fph[i]));  // 一闪一闪 1/2/3 秒
       cx.fillStyle=`hsla(${hue},${sat+10}%,${lit+16}%,${(0.1+gv*0.3)*tw})`;
       cx.fillRect(px, py, DPR*fsz[i]*1.4, DPR*fsz[i]*1.4);
     }
 
-    // 漣漪 (極淡細圈)
+    // 涟漪 (极淡细圈)
     if(vol>0.18 && ts-lastRip>Math.max(220,560-vol*380)){ ripples.push({r:R*1.05,a:0.08+vol*0.13}); lastRip=ts; }
     for(let i=ripples.length-1;i>=0;i--){ const rp=ripples[i]; rp.r+=DPR*(1.6+vol*5.5); rp.a*=0.968;
       if(rp.a<0.012){ ripples.splice(i,1); continue; }
@@ -1242,7 +1239,7 @@
   requestAnimationFrame(vizFrame);
   setInterval(checkStandbyReason, 2000);
 
-  // 從 LiveKit track 取即時聲浪 (0..1)。優先用 LK 內建, 退 Web Audio。
+  // 从 LiveKit track 取即时声浪 (0..1)。优先用 LK 内建, 退 Web Audio。
   function makeVol(track){
     try{
       if(LK.createAudioAnalyser){
@@ -1385,7 +1382,7 @@
         livePad.appendChild(flow);
       }
       if(meetingRec.speechError){
-        livePad.title=`即時字幕連線異常：${meetingRec.speechError}`;
+        livePad.title=`即时字幕连线异常：${meetingRec.speechError}`;
       }
       stream.appendChild(livePad);
       meetingChunkRail.appendChild(stream);
@@ -1414,7 +1411,7 @@
       meetingTransportBar.title=meetingRec.streamEvents
         .slice()
         .reverse()
-        .map(item=>`${new Date(item.at).toLocaleTimeString('zh-TW',{hour12:false})} ${item.state} ${item.note||''}`.trim())
+        .map(item=>`${new Date(item.at).toLocaleTimeString('zh-CN',{hour12:false})} ${item.state} ${item.note||''}`.trim())
         .join('\n');
     }
     if(meetingSaveAudioToggle){
@@ -1424,58 +1421,58 @@
     if(meetingFormalBtn){
       meetingFormalBtn.disabled=!loop.canFormalize || !!meetingRec.formalizedAt || !!meetingRec.formalizing;
       meetingFormalBtn.textContent=meetingRec.formalizedAt
-        ? '專業會議記錄已整理完成'
-        : '再次整理成專業的會議記錄';
+        ? '专业会议记录已整理完成'
+        : '再次整理成专业的会议记录';
     }
     if(meetingRec.isRecording && !meetingRec.isPaused){
       meetingBadge.className='recordbadge live';
-      meetingBadge.textContent='錄音中';
+      meetingBadge.textContent='录音中';
       meetingRecordBtn.className='recordbtn stop';
       meetingRecordLabel.textContent='停止';
-      meetingPauseBtn.textContent='暫停';
+      meetingPauseBtn.textContent='暂停';
       const currentElapsed=meetingElapsedMs();
-      meetingDraftState.textContent=currentElapsed<NOTE_ROLLUP_MS?'先累積上下文，滿 1 分鐘後可整理':'錄音持續中，隨時可在結束後再整理';
+      meetingDraftState.textContent=currentElapsed<NOTE_ROLLUP_MS?'先累积上下文，满 1 分钟后可整理':'录音持续中，随时可在结束后再整理';
       meetingChunkMeta.textContent=meetingRec.saveAudio
-        ? '後端即時字幕會跟著你的聲音往下長；音訊保存已開啟，後端會自動長連線 rollover。'
-        : '後端即時字幕會跟著你的聲音往下長；目前只保存逐字稿。';
+        ? '后端即时字幕会跟著你的声音往下长；音讯保存已开启，后端会自动长连线 rollover。'
+        : '后端即时字幕会跟著你的声音往下长；目前只保存逐字稿。';
       meetingStatus.textContent=currentElapsed<NOTE_ROLLUP_MS
-        ? '上半段持續長出後端即時字幕；下半段會先累積上下文，滿 1 分鐘才開始第一段陳端倪作業。'
-        : '上半段持續長出後端即時字幕；下半段會開始把上下文整理成陳端倪作業。';
+        ? '上半段持续长出后端即时字幕；下半段会先累积上下文，满 1 分钟才开始第一段陈端倪作业。'
+        : '上半段持续长出后端即时字幕；下半段会开始把上下文整理成陈端倪作业。';
     }else if(meetingRec.isRecording && meetingRec.isPaused){
       meetingBadge.className='recordbadge pause';
-      meetingBadge.textContent='已暫停';
+      meetingBadge.textContent='已暂停';
       meetingRecordBtn.className='recordbtn pause';
       meetingRecordLabel.textContent='停止';
-      meetingPauseBtn.textContent='繼續';
-      meetingDraftState.textContent='錄音暫停中';
-      meetingChunkMeta.textContent='錄音已暫停';
-      meetingStatus.textContent='目前暫停收音；逐字與陳端倪作業都會停在這裡。';
+      meetingPauseBtn.textContent='继续';
+      meetingDraftState.textContent='录音暂停中';
+      meetingChunkMeta.textContent='录音已暂停';
+      meetingStatus.textContent='目前暂停收音；逐字与陈端倪作业都会停在这里。';
     }else{
       meetingBadge.className='recordbadge idle';
       const hasStoredAudio=meetingRec.segments.length>0;
       const hasTranscript=meetingRec.liveSlices.length>0;
-      meetingBadge.textContent=(hasStoredAudio || hasTranscript)?'已停止':'未開始';
+      meetingBadge.textContent=(hasStoredAudio || hasTranscript)?'已停止':'未开始';
       meetingRecordBtn.className='recordbtn';
-      meetingRecordLabel.textContent=(hasStoredAudio || hasTranscript)?'重錄':'錄音';
-      meetingPauseBtn.textContent='暫停';
+      meetingRecordLabel.textContent=(hasStoredAudio || hasTranscript)?'重录':'录音';
+      meetingPauseBtn.textContent='暂停';
       meetingDraftState.textContent=meetingRec.formalizing
-        ? '正在整理成正式會議記錄'
+        ? '正在整理成正式会议记录'
         : (meetingRec.formalizedAt
-          ? '正式會議記錄已整理完成'
-          : ((hasStoredAudio || hasTranscript) ? '錄音已停止，可手動整理成正式會議記錄' : '等待錄音'));
+          ? '正式会议记录已整理完成'
+          : ((hasStoredAudio || hasTranscript) ? '录音已停止，可手动整理成正式会议记录' : '等待录音'));
       meetingChunkMeta.textContent=meetingRec.saveAudio
-        ? (hasStoredAudio?`這次另外保存了 ${meetingRec.segments.length} 段音訊。`:'尚未開始錄音')
-        : (hasTranscript?'本次只保存逐字稿。':'尚未開始錄音');
+        ? (hasStoredAudio?`这次另外保存了 ${meetingRec.segments.length} 段音讯。`:'尚未开始录音')
+        : (hasTranscript?'本次只保存逐字稿。':'尚未开始录音');
       meetingStatus.textContent=(hasStoredAudio || hasTranscript)
-        ? '錄音已停止。上半段保留逐字流，下半段保留每分鐘的陳端倪作業。'
-        : '開始錄音後，後端即時字幕會貼著你的聲音往下長。';
+        ? '录音已停止。上半段保留逐字流，下半段保留每分钟的陈端倪作业。'
+        : '开始录音后，后端即时字幕会贴著你的声音往下长。';
     }
     renderMeetingLists();
   }
   async function startMeetingRecording(){
     if(meetingRec.isRecording) return;
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      meetingStatus.textContent='這台裝置不支援錄音。';
+      meetingStatus.textContent='这台装置不支援录音。';
       return;
     }
     try{
@@ -1510,7 +1507,7 @@
       meetingRec.formalizing=false;
       meetingRec.formalizedAt=0;
       meetingRec.streamState='connecting';
-      meetingRec.streamStateNote='後端即時字幕正在建立長連線。';
+      meetingRec.streamStateNote='后端即时字幕正在建立长连线。';
       meetingRec.streamStateAt=Date.now();
       meetingRec.streamEvents=[];
       pushMeetingStreamEvent(meetingRec.streamState, meetingRec.streamStateNote);
@@ -1529,8 +1526,8 @@
       drawMeetingWave();
       setMeetingUi();
     }catch(err){
-      meetingStatus.textContent='麥克風沒有成功開啟。';
-      meetingDraftState.textContent='錄音失敗';
+      meetingStatus.textContent='麦克风没有成功开启。';
+      meetingDraftState.textContent='录音失败';
     }
   }
   async function stopMeetingRecording(){
@@ -1599,7 +1596,7 @@
     meetingRec.analyser=null;
     if(meetingRec.source) try{ meetingRec.source.disconnect(); }catch(_){}
     meetingRec.source=null;
-    setMeetingStreamState('closed', '這段錄音已停止；字幕與陳端倪作業停在目前內容。');
+    setMeetingStreamState('closed', '这段录音已停止；字幕与陈端倪作业停在目前内容。');
     stopMeetingWave();
     setMeetingUi();
     loadMeetingHistory();
@@ -1624,7 +1621,7 @@
     meetingRec.pcmCursorMs=0;
     meetingRec.streamConnected=false;
     meetingRec.streamEvents=[];
-    setMeetingStreamState('idle', '錄音開始後，這裡會顯示後端字幕、重連或備援逐字的真實狀態。');
+    setMeetingStreamState('idle', '录音开始后，这里会显示后端字幕、重连或备援逐字的真实状态。');
     meetingRec.saveAudio=!!(meetingSaveAudioToggle&&meetingSaveAudioToggle.checked);
     setMeetingUi();
   }
@@ -1705,14 +1702,14 @@
     el.classList.remove('ok','bad','warn');
     if(state) el.classList.add(state);
     const meanings={
-      service:{ok:'Railway API 已回應',bad:'Railway API 無法回應'},
-      mic:{ok:'麥克風已啟用',bad:'麥克風無法啟用',warn:'麥克風已靜音'},
-      livekit:{ok:'已加入 LiveKit 房間',bad:'無法連接 LiveKit 房間或缺少設定',warn:'正在連接 LiveKit 房間'},
-      agent:{ok:'語靈 Agent 已加入房間',bad:'語靈 Agent 無法加入房間',warn:'等待語靈 Agent 加入'},
-      audio:{ok:'已收到遠端音軌',bad:'未能收到遠端音軌',warn:'等待遠端音軌'}
+      service:{ok:'Railway API 已回应',bad:'Railway API 无法回应'},
+      mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
+      livekit:{ok:'已加入 LiveKit 房间',bad:'无法连接 LiveKit 房间或缺少设定',warn:'正在连接 LiveKit 房间'},
+      agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
+      audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'}
     };
     const label=el.textContent.trim();
-    const meaning=(meanings[id]&&meanings[id][state])||'尚未開始測試';
+    const meaning=(meanings[id]&&meanings[id][state])||'尚未开始测试';
     el.setAttribute('aria-label',`${label}：${meaning}`);
     el.title=`${label}：${meaning}`;
   }
@@ -1726,8 +1723,12 @@
       const h=await r.json();
       setLamp('service','ok');
       if(!room && !connecting) setLamp('livekit',h.call_config==='missing'?'bad':'');
+      $('historyHealth').textContent=`对话纪录：${h.history_health==='ok'?'正常':'未接入'}`;
+      $('innerHealth').textContent=`内心独白：${h.inner_health==='ok'?'正常':'未接入'}`;
     }catch(_){
       setLamp('service','bad');
+      $('historyHealth').textContent='对话纪录：无法检查';
+      $('innerHealth').textContent='内心独白：无法检查';
     }
   }
 
@@ -1735,33 +1736,32 @@
     connecting=false;
     callCircle.className='circle call go';
     callIcon.setAttribute('stroke','#fff');
-    callLabel.textContent='撥打';
-    muteBtn.classList.remove('show');   // 掛斷→靜音鈕慢慢縮回掛斷球
+    callLabel.textContent='拨打';
+    muteBtn.classList.remove('show');   // 挂断→静音钮慢慢缩回挂断球
   }
   function uiInCall(){
     callCircle.className='circle call end';
-    callLabel.textContent='掛斷';
-    muteBtn.classList.add('show');      // 確保通話中靜音鈕在外面
+    callLabel.textContent='挂断';
+    muteBtn.classList.add('show');      // 确保通话中静音钮在外面
   }
 
-  // 等待接聽鈴聲 (撥打 → 陳端倪接聽之間的過渡期循環播放)
+  // 等待接听铃声 (拨打 → 陈端倪接听之间的过渡期循环播放)
   const ringback=new Audio(); ringback.loop=true; ringback.volume=0.55;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
 
   async function startCall(){
     if(connecting||room) return;
-    connecting=true; setStatus('撥號中…'); callLabel.textContent='連線中';
+    connecting=true; setStatus('拨号中…'); callLabel.textContent='连线中';
     setLamp('livekit','warn'); setLamp('agent','warn'); setLamp('audio','');
-    muteBtn.classList.add('show');   // 連線中→靜音鈕慢慢從掛斷球長出來
-    ringback.currentTime=0; ringback.play().catch(()=>{});   // 開始播等待接聽音效
+    muteBtn.classList.add('show');   // 连线中→静音钮慢慢从挂断球长出来
+    ringback.currentTime=0; ringback.play().catch(()=>{});   // 开始播等待接听音效
     try{
-      const access=localStorage.getItem(ACCESS_KEY)||'';
       const res=await fetch(apiUrl('/api/yuling/token'),{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ identity:'coach', name:'使用者', access })
+        body:JSON.stringify({ identity:'coach', name:'使用者' })
       });
-      if(res.status===403){ stopRing(); setStatus('密語錯誤，點右上齒輪設定'); uiIdle(); return; }
-      if(!res.ok){ stopRing(); setStatus('通話服務無法簽發憑證（'+res.status+'）'); setLamp('livekit','bad'); uiIdle(); return; }
+      if(res.status===403){ stopRing(); setStatus('通话权限未开放'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); setLamp('livekit','bad'); uiIdle(); return; }
       const d=await res.json();
       currentCallId=d.room||'';
 
@@ -1769,25 +1769,25 @@
       room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
         if(track.kind===LK.Track.Kind.Audio){
           setLamp('audio','ok');
-          stopRing();                       // 陳端倪接聽了 → 停等待鈴聲
+          stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
           el.play&&el.play().catch(()=>{});
           boostRemoteAudio(track, el);
-          baoCalc=makeVol(track);          // 陳端倪發聲 → 光球反應
+          baoCalc=makeVol(track);          // 陈端倪发声 → 光球反应
         }
       });
       room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
-        if(s) applyAgentState(s); else setStatus('通話中');
+        if(s) applyAgentState(s); else setStatus('通话中');
       });
       room.on(LK.RoomEvent.ParticipantDisconnected,()=>setLamp('agent','warn'));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
       });
-      room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已掛斷'); });
+      room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已挂断'); });
 
       await room.connect(d.url, d.token);
       setLamp('livekit','ok');
@@ -1796,19 +1796,19 @@
         setMic('ok');
         const mp=room.localParticipant.getTrackPublication(LK.Track.Source.Microphone);
         if(mp&&mp.track){
-          micCalc=makeVol(mp.track);   // 你發聲 → 光球反應
+          micCalc=makeVol(mp.track);   // 你发声 → 光球反应
           bindAudioEventDetector(mp.track);
         }
       }catch(micErr){
-        setMic('bad'); setStatus('麥克風被擋，請允許權限');
+        setMic('bad'); setStatus('麦克风被挡，请允许权限');
       }
       connecting=false; uiInCall();
       const others=room.numParticipants||0;
-      setStatus(others>0?'通話中':'陳端倪接通中…');
-      // 陳端倪已在房且已有狀態 → 立刻反映 (避免錯過第一個狀態)
+      setStatus(others>0?'通话中':'陈端倪接通中…');
+      // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
-      stopRing(); setStatus('出錯了：'+(e&&e.message?e.message:e)); setLamp('livekit','bad'); uiIdle(); room=null;
+      stopRing(); setStatus('出错了：'+(e&&e.message?e.message:e)); setLamp('livekit','bad'); uiIdle(); room=null;
     }
   }
 
@@ -1817,19 +1817,19 @@
     try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
     try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
-    micCalc=null; baoCalc=null;       // 聲浪源歸零 → 光球回待機呼吸
-    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio',''); uiIdle(); setStatus(msg||'已掛斷');
+    micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
+    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio',''); uiIdle(); setStatus(msg||'已挂断');
   }
   async function endCall(){
     if(room){ try{ await room.disconnect(); }catch(_){} }
-    cleanup('已掛斷');
+    cleanup('已挂断');
   }
   function toggleMute(){
     if(!room) return;
     muted=!muted;
     room.localParticipant.setMicrophoneEnabled(!muted);
     muteCircle.style.background=muted?'rgba(216,90,48,.25)':'';
-    muteLabel.textContent=muted?'已靜音':'靜音';
+    muteLabel.textContent=muted?'已静音':'静音';
     setMic(muted?'warn':'ok');
   }
 
@@ -1843,53 +1843,50 @@
       if(!activeOverlayOpen()) toggleMeetingView();
     }
   });
-  gear.addEventListener('click',()=>{ accessInput.value=localStorage.getItem(ACCESS_KEY)||''; panel.classList.remove('hidden'); });
-  saveBtn.addEventListener('click',()=>{
-    const v=accessInput.value.trim();
-    if(v) localStorage.setItem(ACCESS_KEY,v); else localStorage.removeItem(ACCESS_KEY);
-    panel.classList.add('hidden'); setStatus('密語已更新');
-  });
+  gear.addEventListener('click',()=>panel.classList.remove('hidden'));
   panel.addEventListener('click',e=>{ if(e.target===panel) panel.classList.add('hidden'); });
 
-  // ── 對話紀錄 ──
+  // ── 对话纪录 ──
   const logPanel=$('logPanel'), logBody=$('logBody'), logTitle=$('logTitle'), logBack=$('logBack');
   function logHeaders(){
-    const a=localStorage.getItem(ACCESS_KEY)||'';
-    return a?{'X-Yuling-Access':a}:{};
+    return {};
   }
-  function fmtWhen(ts){            // "2026-06-15 21:00:05" → "6/15（週日）21:00"
+  function fmtWhen(ts){            // "2026-06-15 21:00:05" → "6/15（周日）21:00"
     if(!ts) return '';
     const m=ts.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
     if(!m) return ts;
     const wd='日一二三四五六'[new Date(+m[1],+m[2]-1,+m[3]).getDay()];
-    return `${+m[2]}/${+m[3]}（週${wd}）${m[4]}:${m[5]}`;
+    return `${+m[2]}/${+m[3]}（周${wd}）${m[4]}:${m[5]}`;
   }
   function esc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
   async function loadCallList(){
     logBody.classList.remove('detail');
-    logTitle.textContent='對話紀錄'; logBack.dataset.mode='close';
-    logBody.innerHTML='<div class="logempty">載入中…</div>';
+    logTitle.textContent='对话纪录'; logBack.dataset.mode='close';
+    logBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
       const r=await fetch(apiUrl('/api/yuling/calls'),{headers:logHeaders()});
-      if(r.status===403){ logBody.innerHTML='<div class="logempty">需要通話密語才能看紀錄，<br>請先到設定輸入密語。</div>'; return; }
-      const calls=(await r.json()).calls||[];
-      if(!calls.length){ logBody.innerHTML='<div class="logempty">還沒有對話紀錄。<br>跟陳端倪通一次話就會出現在這裡。</div>'; return; }
+      if(r.status===403){ logBody.innerHTML='<div class="logempty">目前没有读取权限。</div>'; return; }
+      if(!r.ok) throw new Error('history request failed');
+      const payload=await r.json();
+      if(payload.available===false){ logBody.innerHTML='<div class="logempty">对话纪录尚未接入保存服务。</div>'; return; }
+      const calls=payload.calls||[];
+      if(!calls.length){ logBody.innerHTML='<div class="logempty">还没有对话纪录。<br>跟陈端倪通一次话就会出现在这里。</div>'; return; }
       logBody.innerHTML='';
       calls.forEach(c=>{
         const el=document.createElement('button'); el.className='callitem';
         const audit=c.audit||{};
-        const aq=audit.status==='bad'?'⚠️ 異常':(audit.status==='warn'?'△ 待檢':'✓ 正常');
-        const ltag=c.latency_events?`⏱ ${c.latency_events}點`:'';
-        const etag=c.audio_events?`👂 ${c.audio_events}聲`:'';
-        const badges=[c.audio?'🔊 有錄音':'', c.kept?'⭐ 已保存':'', aq, ltag, etag].filter(Boolean).join('　');
+        const aq=audit.status==='bad'?'⚠️ 异常':(audit.status==='warn'?'△ 待检':'✓ 正常');
+        const ltag=c.latency_events?`⏱ ${c.latency_events}点`:'';
+        const etag=c.audio_events?`👂 ${c.audio_events}声`:'';
+        const badges=[c.audio?'🔊 有录音':'', c.kept?'⭐ 已保存':'', aq, ltag, etag].filter(Boolean).join('　');
         el.innerHTML=`<div class="when">${esc(fmtWhen(c.started))}</div>`+
-          `<div class="meta">${c.turns} 句 · 起 ${esc((c.started||'').slice(11,19))} 訖 ${esc((c.ended||'').slice(11,19))}</div>`+
+          `<div class="meta">${c.turns} 句 · 起 ${esc((c.started||'').slice(11,19))} 讫 ${esc((c.ended||'').slice(11,19))}</div>`+
           (badges?`<div class="badges">${badges}</div>`:'')+
           `<div class="prev">${esc(c.preview)}</div>`;
         el.addEventListener('click',()=>openCall(c.call_id, fmtWhen(c.started)));
         logBody.appendChild(el);
       });
-    }catch(e){ logBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+    }catch(e){ logBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
   const audioObjectUrls = new Set();
   function revokeAudioUrls(){
@@ -1905,8 +1902,8 @@
   }
   async function openCall(id, title){
     logBody.classList.add('detail');
-    logTitle.textContent=title||'對話'; logBack.dataset.mode='list';
-    logBody.innerHTML='<div class="logempty">載入中…</div>';
+    logTitle.textContent=title||'对话'; logBack.dataset.mode='list';
+    logBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
       const r=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(id)),{headers:logHeaders()});
       const d=await r.json(); const turns=d.turns||[];
@@ -1915,17 +1912,17 @@
       const meta=document.createElement('div'); meta.className='detailmeta';
       const timeline=document.createElement('div'); timeline.className='timelinecard';
       const turnList=document.createElement('div'); turnList.className='turnlist';
-      // 聲音條: 播放 + 正式保存
+      // 声音条: 播放 + 正式保存
       const bar=document.createElement('div'); bar.className='audiobar primary';
       if(d.audio){
         const au=document.createElement('audio'); au.controls=true; au.preload='none';
-        loadAudioSrc(au,id).catch(()=>{ bar.innerHTML='<div class="noaud">錄音讀取失敗</div>'; });
+        loadAudioSrc(au,id).catch(()=>{ bar.innerHTML='<div class="noaud">录音读取失败</div>'; });
         bar.appendChild(au);
         const row=document.createElement('div'); row.className='keeprow';
         const kb=document.createElement('button');
         const st=document.createElement('span'); st.className='keepstatus';
         const paint=k=>{ kb.className='keepbtn'+(k?' on':''); kb.textContent=k?'✓ 已正式保存':'正式保存';
-          st.textContent=k?'永久保留':'未保存 · 3天後自動刪除錄音'; };
+          st.textContent=k?'永久保留':'未保存 · 3天后自动删除录音'; };
         paint(d.kept);
         kb.addEventListener('click',async()=>{
           const next=!kb.classList.contains('on'); kb.disabled=true;
@@ -1938,71 +1935,71 @@
           kb.disabled=false;
         });
         row.appendChild(kb); row.appendChild(st); bar.appendChild(row);
-      } else { bar.innerHTML='<div class="noaud">（這通沒有錄音）</div>'; }
+      } else { bar.innerHTML='<div class="noaud">（这通没有录音）</div>'; }
       detail.appendChild(bar);
       const audit=d.audit||{};
       const issues=audit.issues||[];
       const ab=document.createElement('div'); ab.className='audiobar';
-      const title=audit.status==='bad'?'通話檢查：異常':(audit.status==='warn'?'通話檢查：待檢':'通話檢查：正常');
-      ab.innerHTML='<div class="keepstatus">'+esc(title)+'　分數 '+esc(String(audit.score??100))+'</div>'+
+      const title=audit.status==='bad'?'通话检查：异常':(audit.status==='warn'?'通话检查：待检':'通话检查：正常');
+      ab.innerHTML='<div class="keepstatus">'+esc(title)+'　分数 '+esc(String(audit.score??100))+'</div>'+
         (issues.length?'<div class="keepstatus">'+issues.map(i=>esc(i.message)).join('<br>')+'</div>':'');
       meta.appendChild(ab);
       const latency=d.latency||[];
       const lb=document.createElement('div'); lb.className='audiobar';
       if(latency.length){
-        lb.innerHTML='<div class="keepstatus">延遲儀表</div>'+
+        lb.innerHTML='<div class="keepstatus">延迟仪表</div>'+
           '<div class="keepstatus">'+latency.map(e=>{
             const dt=Number.isFinite(e.delta_ms)?` +${e.delta_ms}ms`:'';
             return esc((e.stage||'')+dt);
           }).join('<br>')+'</div>';
       }else{
-        lb.innerHTML='<div class="keepstatus">延遲儀表：這通尚無打點</div>';
+        lb.innerHTML='<div class="keepstatus">延迟仪表：这通尚无打点</div>';
       }
       meta.appendChild(lb);
       const events=d.audio_events||[];
       const eb=document.createElement('div'); eb.className='audiobar';
       if(events.length){
-        const names={cough:'咳嗽',sneeze:'噴嚏',impact:'撞擊'};
-        eb.innerHTML='<div class="keepstatus">現場聲音</div>'+
+        const names={cough:'咳嗽',sneeze:'喷嚏',impact:'撞击'};
+        eb.innerHTML='<div class="keepstatus">现场声音</div>'+
           '<div class="keepstatus">'+events.map(e=>{
             const pct=Math.round((e.confidence||0)*100);
-            return esc((names[e.label]||e.label||'聲音')+' '+pct+'%');
+            return esc((names[e.label]||e.label||'声音')+' '+pct+'%');
           }).join('<br>')+'</div>';
       }else{
-        eb.innerHTML='<div class="keepstatus">現場聲音：這通尚無事件</div>';
+        eb.innerHTML='<div class="keepstatus">现场声音：这通尚无事件</div>';
       }
       meta.appendChild(eb);
       detail.appendChild(meta);
-      // 逐句氣泡
-      if(!turns.length){ const e=document.createElement('div'); e.className='logempty'; e.textContent='這通沒有逐字內容。'; timeline.appendChild(e); }
+      // 逐句气泡
+      if(!turns.length){ const e=document.createElement('div'); e.className='logempty'; e.textContent='这通没有逐字内容。'; timeline.appendChild(e); }
       turns.forEach(t=>{
         const bao=t.role==='assistant';
         const el=document.createElement('div');
         el.className='turn '+(bao?'bao':'coach');
-        el.innerHTML=`<span class="tts">${bao?'陳端倪':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
+        el.innerHTML=`<span class="tts">${bao?'陈端倪':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
         turnList.appendChild(el);
       });
       timeline.appendChild(turnList);
       detail.appendChild(timeline);
       logBody.appendChild(detail);
-    }catch(e){ logBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+    }catch(e){ logBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
   $('logOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); logPanel.classList.remove('hidden'); loadCallList(); });
   logBack.addEventListener('click',()=>{
     revokeAudioUrls();
-    if(logBack.dataset.mode==='list') loadCallList();          // 詳情 → 回列表
-    else logPanel.classList.add('hidden');                      // 列表 → 關閉
+    if(logBack.dataset.mode==='list') loadCallList();          // 详情 → 回列表
+    else logPanel.classList.add('hidden');                      // 列表 → 关闭
   });
 
-  // ── 版本紀錄 ──
+  // ── 版本纪录 ──
   const verPanel=$('verPanel'), verBody=$('verBody'), verBack=$('verBack');
-  const VERTYPE={'新功能':'#3aa86a','修復':'#e0a52e','調整':'#5b9bd5','介面':'#9b7fd5','部署':'#8a8f98'};
+  const VERTYPE={'新功能':'#3aa86a','修复':'#e0a52e','调整':'#5b9bd5','介面':'#9b7fd5','部署':'#8a8f98'};
   async function loadVer(){
-    verBody.innerHTML='<div class="logempty">載入中…</div>';
+    verBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
       const r=await fetch('/yuling_changelog.json?t='+Date.now());
       const items=(await r.json()).entries||[];
-      if(!items.length){ verBody.innerHTML='<div class="logempty">還沒有版本紀錄。</div>'; return; }
+      if(!items.length){ verBody.innerHTML='<div class="logempty">还没有版本纪录。</div>'; return; }
       verBody.innerHTML='';
       items.forEach(e=>{
         const c=VERTYPE[e.type]||'#8a8f98';
@@ -2012,28 +2009,31 @@
           (e.desc?`<div class="vdesc">${esc(e.desc)}</div>`:'');
         verBody.appendChild(el);
       });
-    }catch(err){ verBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+    }catch(err){ verBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
   $('verLink').addEventListener('click',()=>{ verPanel.classList.remove('hidden'); loadVer(); });
   verBack.addEventListener('click',()=>verPanel.classList.add('hidden'));
   verPanel.addEventListener('click',e=>{ if(e.target===verPanel) verPanel.classList.add('hidden'); });
 
-  // ── 內心獨白 ──
+  // ── 内心独白 ──
   const innerPanel=$('innerPanel'), innerBody=$('innerBody'), innerBack=$('innerBack');
   async function loadInner(){
-    innerBody.innerHTML='<div class="logempty">載入中…</div>';
+    innerBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
       const r=await fetch(apiUrl('/api/yuling/inner'),{headers:logHeaders()});
-      if(r.status===403){ innerBody.innerHTML='<div class="logempty">需要通話密語才能看，<br>請先到設定輸入密語。</div>'; return; }
-      const items=(await r.json()).inner||[];
-      if(!items.length){ innerBody.innerHTML='<div class="logempty">還沒有內心獨白。<br>通一次話、掛斷後，陳端倪這通的內心話會出現在這裡。</div>'; return; }
+      if(r.status===403){ innerBody.innerHTML='<div class="logempty">目前没有读取权限。</div>'; return; }
+      if(!r.ok) throw new Error('inner request failed');
+      const payload=await r.json();
+      if(payload.available===false){ innerBody.innerHTML='<div class="logempty">内心独白尚未接入保存服务。</div>'; return; }
+      const items=payload.inner||[];
+      if(!items.length){ innerBody.innerHTML='<div class="logempty">还没有内心独白。<br>通一次话、挂断后，陈端倪这通的内心话会出现在这里。</div>'; return; }
       innerBody.innerHTML='';
       items.forEach(e=>{
         const el=document.createElement('div'); el.className='inneritem';
         el.innerHTML=`<div class="it">🤍 ${esc(fmtWhen(e.ts))}</div><div class="ix">${esc(e.text)}</div>`;
         innerBody.appendChild(el);
       });
-    }catch(err){ innerBody.innerHTML='<div class="logempty">讀取失敗，請稍後再試。</div>'; }
+    }catch(err){ innerBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
   $('innerOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); innerPanel.classList.remove('hidden'); loadInner(); });
   innerBack.addEventListener('click',()=>innerPanel.classList.add('hidden'));
@@ -2139,7 +2139,7 @@
     if(e.key==='ArrowLeft') closeMeetingView();
   });
 
-  if(!LK){ setStatus('語音元件載入失敗，請重新整理'); callBtn.disabled=true; }
+  if(!LK){ setStatus('语音元件载入失败，请重新整理'); callBtn.disabled=true; }
   else uiIdle();
 
   setMeetingProgress(0,true);
@@ -2153,11 +2153,11 @@
   });
   if(MEETING_ENABLED) setInterval(tickMeetingRecording, 250);
 
-  setMic('');                       // MIC 待機灰
-  pollHealth();                     // 開機先點亮一次
+  setMic('');                       // MIC 待机灰
+  pollHealth();                     // 开机先点亮一次
   setInterval(pollHealth, 20000);   // 每 20 秒巡一次
 
-  // 台北時鐘 (跟陳端倪 prompt 同一套時間/時段, 視覺呈現)
+  // 本地时钟 (跟陈端倪 prompt 同一套时间/时段, 视觉呈现)
   const clockEl=$('clock');
   function updateClock(){
     const t=new Date(Date.now()+ (new Date().getTimezoneOffset()*60000) + 8*3600000); // → UTC+8
@@ -2165,7 +2165,7 @@
     const seg = h<5?'半夜':h<8?'清晨':h<11?'早上':h<13?'中午':h<17?'下午':h<19?'傍晚':h<23?'晚上':'半夜';
     const wd='日一二三四五六'[t.getDay()];
     const mm=String(t.getMinutes()).padStart(2,'0');
-    clockEl.textContent=`${t.getFullYear()}/${t.getMonth()+1}/${t.getDate()} 週${wd} · ${seg} ${t.getHours()}:${mm}　台北`;
+    clockEl.textContent=`${t.getFullYear()}/${t.getMonth()+1}/${t.getDate()} 周${wd} · ${seg} ${t.getHours()}:${mm}`;
   }
   updateClock(); setInterval(updateClock, 15000);
 })();

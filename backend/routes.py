@@ -256,10 +256,13 @@ def api_yuling_health():
         # that the preview API responds and that LiveKit credentials are set.
         # Provider and Agent health require actual call events or LiveKit-side checks.
         configured = all((creds["url"], creds["key"], creds["secret"]))
+        from storage import CALL_HISTORY_HEALTH, INNER_MONOLOGUE_HEALTH
         data = {"service": "ok", "mode": "hosted_builder",
                 "call_config": "configured" if configured else "missing",
                 "agent": AGENT_NAME,
                 "provider_health": "not_observable_from_preview",
+                "history_health": CALL_HISTORY_HEALTH,
+                "inner_health": INNER_MONOLOGUE_HEALTH,
                 "integrations": {"hermes": "not_connected", "memory": "not_connected",
                                  "knowledge": "not_connected", "graph": "not_connected",
                                  "mcp": "not_connected"}}
@@ -315,12 +318,13 @@ def api_yuling_calls():
     """列出所有通話紀錄 (最新在前)。每通含起訖時間、句數、開頭預覽。"""
     if not _access_ok():
         return jsonify({"error": "forbidden"}), 403
-    from storage import list_calls
+    from storage import list_calls, CALL_HISTORY_HEALTH
     try:
         limit = min(int(request.args.get("limit", 50)), 200)
     except (TypeError, ValueError):
         limit = 50
-    return jsonify({"calls": list_calls(limit=limit)})
+    return jsonify({"calls": list_calls(limit=limit),
+                    "available": CALL_HISTORY_HEALTH == "ok"})
 
 
 @yuling_bp.route("/api/yuling/calls/<call_id>", methods=["GET"])
@@ -342,12 +346,13 @@ def api_yuling_inner():
     """AI 夥伴的內心獨白集 (最新在前)。她講話時不會說出口, 只在這裡保存。"""
     if not _access_ok():
         return jsonify({"error": "forbidden"}), 403
-    from storage import list_inner
+    from storage import list_inner, INNER_MONOLOGUE_HEALTH
     try:
         limit = min(int(request.args.get("limit", 100)), 300)
     except (TypeError, ValueError):
         limit = 100
-    return jsonify({"inner": list_inner(limit=limit)})
+    return jsonify({"inner": list_inner(limit=limit),
+                    "available": INNER_MONOLOGUE_HEALTH == "ok"})
 
 
 @yuling_bp.route("/api/yuling/calls/<call_id>/audio", methods=["GET"])

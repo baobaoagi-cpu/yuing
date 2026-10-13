@@ -4,12 +4,12 @@ const ui = {button:$('listen-button'),note:$('button-note'),stage:$('sound-stage
 // The first classifier is deliberately independent from DUANNI HOME.
 // Replace classifyWaveform() when the owner's sound-sensing implementation is available.
 const GROUPS = [
-  {id:'sneeze',title:'疑似打噴嚏',icon:'✳',labels:['Sneeze'],reply:'剛剛好像有一聲噴嚏。還好嗎？'},
-  {id:'cough',title:'疑似咳嗽',icon:'◌',labels:['Cough'],reply:'我好像聽到你咳了一下。要不要先喝點水？'},
-  {id:'cry',title:'疑似哭聲',icon:'◍',labels:['Baby cry, infant cry','Crying, sobbing'],reply:'我好像聽到哭聲。你需要我陪你一下嗎？'},
-  {id:'car',title:'疑似車聲',icon:'↗',labels:['Car passing by','Traffic noise, roadway noise','Car','Motor vehicle (road)'],reply:'旁邊好像有車聲，先留意周圍。'},
-  {id:'impact',title:'疑似碰撞聲',icon:'◆',labels:['Thump, thud','Bang','Slap, smack','Crash'],reply:'剛剛有一聲比較大的聲響，還好嗎？'},
-  {id:'music',title:'疑似音樂',icon:'♫',labels:['Music','Background music','Musical instrument'],reply:'我好像聽見音樂了。你正在聽什麼？'}
+  {id:'sneeze',title:'疑似打喷嚏',icon:'✳',labels:['Sneeze'],reply:'刚刚好像有一声喷嚏。还好吗？'},
+  {id:'cough',title:'疑似咳嗽',icon:'◌',labels:['Cough'],reply:'我好像听到你咳了一下。要不要先喝点水？'},
+  {id:'cry',title:'疑似哭声',icon:'◍',labels:['Baby cry, infant cry','Crying, sobbing'],reply:'我好像听到哭声。你需要我陪你一下吗？'},
+  {id:'car',title:'疑似车声',icon:'↗',labels:['Car passing by','Traffic noise, roadway noise','Car','Motor vehicle (road)'],reply:'旁边好像有车声，先留意周围。'},
+  {id:'impact',title:'疑似碰撞声',icon:'◆',labels:['Thump, thud','Bang','Slap, smack','Crash'],reply:'刚刚有一声比较大的声响，还好吗？'},
+  {id:'music',title:'疑似音乐',icon:'♫',labels:['Music','Background music','Musical instrument'],reply:'我好像听见音乐了。你正在听什么？'}
 ];
 const RESPOND_SCORE = .48;
 const SHOW_SCORE = .18;
@@ -30,27 +30,27 @@ function setStage(title, subtitle, mode='idle') {
   ui.title.textContent=title;
   ui.subtitle.textContent=subtitle;
   ui.stage.classList.toggle('listening',mode==='listening');
-  ui.badge.textContent=mode==='listening'?'聆聽中':mode==='busy'?'處理中':'待機';
+  ui.badge.textContent=mode==='listening'?'聆听中':mode==='busy'?'处理中':'待机';
   ui.badge.classList.toggle('on',mode==='listening');
 }
 
 async function loadModel(){
   if(session) return session;
-  if(!window.ort) throw new Error('聲音推論程式未載入。');
-  setStage('正在準備聲音模型','第一次開啟需載入本機附帶的模型。','busy');
+  if(!window.ort) throw new Error('声音推论程式未载入。');
+  setStage('正在准备声音模型','第一次开启需载入本机附带的模型。','busy');
   ort.env.wasm.numThreads=1;
   ort.env.wasm.wasmPaths=new URL('./assets/',location.href).href;
   const [mapResponse,model] = await Promise.all([
     fetch('./assets/yamnet_class_map.csv'),
     ort.InferenceSession.create('./assets/yamnet.onnx',{executionProviders:['wasm']})
   ]);
-  if(!mapResponse.ok) throw new Error('聲音類別表載入失敗。');
+  if(!mapResponse.ok) throw new Error('声音类别表载入失败。');
   const csv=await mapResponse.text();
   labels=csv.trim().split(/\r?\n/).slice(1).map(line=>{
     const match=line.match(/^\d+,[^,]+,(.*)$/);
     return match ? match[1].replace(/^"|"$/g,'').replace(/""/g,'"') : '';
   });
-  if(labels.length!==521) throw new Error('聲音類別表不完整。');
+  if(labels.length!==521) throw new Error('声音类别表不完整。');
   session=model;
   return session;
 }
@@ -98,10 +98,10 @@ function addResult(result,sourceLabel){
   const observed=candidate && candidate.score>=SHOW_SCORE;
   const key=observed?candidate.id:'other';
   const now=Date.now();
-  if(sourceLabel==='即時麥克風' && now-(lastShown.get(key)||0)<9000) return;
+  if(sourceLabel==='即时麦克风' && now-(lastShown.get(key)||0)<9000) return;
   lastShown.set(key,now);
-  const title=observed?candidate.title:'尚未辨識出指定事件';
-  const detail=observed?`模型候選：${candidate.label} · 原始分數 ${candidate.score.toFixed(2)}`:`最高候選：${result.top.label||'未知'} · 原始分數 ${result.top.score.toFixed(2)}`;
+  const title=observed?candidate.title:'尚未辨识出指定事件';
+  const detail=observed?`模型候选：${candidate.label} · 原始分数 ${candidate.score.toFixed(2)}`:`最高候选：${result.top.label||'未知'} · 原始分数 ${result.top.score.toFixed(2)}`;
   const reply=observed && candidate.score>=RESPOND_SCORE?candidate.reply:null;
   if(ui.events.querySelector('.empty-state')) ui.events.replaceChildren();
   const article=document.createElement('article');article.className='event';
@@ -110,22 +110,22 @@ function addResult(result,sourceLabel){
   const h=document.createElement('h3');h.textContent=title;
   const p=document.createElement('p');p.textContent=detail;
   body.append(h,p);
-  if(reply){const small=document.createElement('small');small.textContent=`預寫回應：「${reply}」`;body.append(small);}
+  if(reply){const small=document.createElement('small');small.textContent=`预写回应：「${reply}」`;body.append(small);}
   const meta=document.createElement('div');meta.className='event-meta';
   const strong=document.createElement('strong');strong.textContent=observed?candidate.score.toFixed(2):'—';
-  const time=document.createElement('span');time.textContent=`${new Date(now).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})} · ${sourceLabel}`;
+  const time=document.createElement('span');time.textContent=`${new Date(now).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})} · ${sourceLabel}`;
   meta.append(strong,time);article.append(symbol,body,meta);
   ui.events.prepend(article);
   while(ui.events.children.length>8) ui.events.lastElementChild.remove();
-  if(observed) setStage(title,reply||'聲音事件候選，分數不足以觸發回應。',running?'listening':'idle');
-  else setStage(running?'正在聆聽生活聲':'分析完成',observed?'':`目前最高候選：${result.top.label||'未知'}`,running?'listening':'idle');
+  if(observed) setStage(title,reply||'声音事件候选，分数不足以触发回应。',running?'listening':'idle');
+  else setStage(running?'正在聆听生活声':'分析完成',observed?'':`目前最高候选：${result.top.label||'未知'}`,running?'listening':'idle');
 }
 
 async function analyze(wave,sourceLabel){
   if(busy) return;
   busy=true;
   try{const result=await classifyWaveform(wave);addResult(result,sourceLabel);}
-  catch(error){setStage('辨識未完成',error.message||'無法分析聲音。');}
+  catch(error){setStage('辨识未完成',error.message||'无法分析声音。');}
   finally{busy=false;}
 }
 
@@ -138,13 +138,13 @@ function stopListening(){
   if(audioContext) audioContext.close().catch(()=>{});
   processor=source=silentOutput=stream=audioContext=null;
   pcm=[];
-  ui.button.textContent='開始聆聽';
-  ui.note.textContent='麥克風已關閉。';
-  setStage('聆聽已結束','按下開始，可再次測試。');
+  ui.button.textContent='开始聆听';
+  ui.note.textContent='麦克风已关闭。';
+  setStage('聆听已结束','按下开始，可再次测试。');
 }
 
 async function startListening(){
-  if(!navigator.mediaDevices?.getUserMedia) throw new Error('此頁需要 HTTPS 才能取得麥克風。');
+  if(!navigator.mediaDevices?.getUserMedia) throw new Error('此页需要 HTTPS 才能取得麦克风。');
   stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false},video:false});
   audioContext=new (window.AudioContext||window.webkitAudioContext)();
   await audioContext.resume();
@@ -162,12 +162,12 @@ async function startListening(){
     if(pcm.length>=48000 && Date.now()-lastAnalysisAt>=2500 && !busy){
       lastAnalysisAt=Date.now();
       const wave=Float32Array.from(pcm.slice(-48000));
-      analyze(wave,'即時麥克風');
+      analyze(wave,'即时麦克风');
     }
   };
-  ui.button.textContent='停止聆聽';
-  ui.note.textContent='正在使用麥克風 · 離開頁面或按停止即關閉';
-  setStage('正在聆聽生活聲','聲音在此裝置上分析；高把握度事件才顯示預寫回應。','listening');
+  ui.button.textContent='停止聆听';
+  ui.note.textContent='正在使用麦克风 · 离开页面或按停止即关闭';
+  setStage('正在聆听生活声','声音在此装置上分析；高把握度事件才显示预写回应。','listening');
 }
 
 ui.button.addEventListener('click',async()=>{
@@ -176,17 +176,17 @@ ui.button.addEventListener('click',async()=>{
   try{await startListening();}
   catch(error){
     stopListening();
-    const detail=error.name==='NotAllowedError'?'請在 Safari 允許此網站使用麥克風。':
-      error.name==='NotFoundError'?'找不到可用的麥克風。':
-      error.message||'無法開啟麥克風。';
-    setStage('尚未開始聆聽',detail);
+    const detail=error.name==='NotAllowedError'?'请在 Safari 允许此网站使用麦克风。':
+      error.name==='NotFoundError'?'找不到可用的麦克风。':
+      error.message||'无法开启麦克风。';
+    setStage('尚未开始聆听',detail);
   }
   finally{ui.button.disabled=false;}
 });
 
 ui.file.addEventListener('change',async()=>{
   const file=ui.file.files?.[0];if(!file)return;
-  setStage('正在分析音檔',file.name,'busy');
+  setStage('正在分析音档',file.name,'busy');
   let context=null;
   try{
     context=new (window.AudioContext||window.webkitAudioContext)();
@@ -199,9 +199,9 @@ ui.file.addEventListener('change',async()=>{
       for(let i=0;i<count;i++) mono[i]+=samples[i]/decoded.numberOfChannels;
     }
     const wave=resample(mono,decoded.sampleRate);
-    if(wave.length<16000) throw new Error('音檔需至少 1 秒。');
-    await analyze(wave,'音檔');
-  }catch(error){setStage('音檔分析失敗',error.message||'無法讀取此音檔。');}
+    if(wave.length<16000) throw new Error('音档需至少 1 秒。');
+    await analyze(wave,'音档');
+  }catch(error){setStage('音档分析失败',error.message||'无法读取此音档。');}
   finally{if(context) await context.close().catch(()=>{});ui.file.value='';}
 });
 
@@ -214,12 +214,12 @@ document.querySelector('#logout-button')?.addEventListener('click', async (event
   button.disabled = true;
   try {
     const response = await fetch('/api/logout', {method: 'POST', credentials: 'same-origin', cache: 'no-store'});
-    if(!response.ok) throw new Error('登出請求失敗');
+    if(!response.ok) throw new Error('登出请求失败');
     window.location.replace('/login');
   } catch (_) {
     button.disabled = false;
     const status = document.querySelector('#action-status');
-    if(status) status.textContent='登出未完成，請檢查連線後再試。';
+    if(status) status.textContent='登出未完成，请检查连线后再试。';
   }
 });
 
@@ -232,7 +232,7 @@ const assistantUi = {
   document:$('document-input'), documentLabel:$('document-label'), status:$('action-status'),
   latency:$('latency-button'), latencyResult:$('latency-result')
 };
-const CAP_NAMES={text:'文字',turn_voice:'回合語音',live_voice:'即時通話',image:'圖片',files:'檔案'};
+const CAP_NAMES={text:'文字',turn_voice:'回合语音',live_voice:'即时通话',image:'图片',files:'档案'};
 let activeCaps={};
 let voiceCapture=null;
 
@@ -243,7 +243,7 @@ function renderCapabilities(caps){
     const item=assistantUi.strip.querySelector(`[data-capability="${key}"]`);
     if(!item)continue;
     const on=caps[key]===true;
-    item.textContent=`${label} · ${on?'可測試':'待接通'}`;
+    item.textContent=`${label} · ${on?'可测试':'待接通'}`;
     item.classList.toggle('available',on);
     item.classList.toggle('unavailable',!on);
   }
@@ -257,17 +257,17 @@ function renderCapabilities(caps){
   assistantUi.documentLabel.classList.toggle('disabled',assistantUi.document.disabled);
   assistantUi.badge.textContent=Object.values(CAP_NAMES).some((_,i)=>caps[Object.keys(CAP_NAMES)[i]]===true)?'部分接通':'尚未接通';
   assistantUi.badge.classList.toggle('on',textReady);
-  assistantUi.note.textContent=textReady?'能力來自目前伺服器的即時檢查；語音轉文字後會先讓你確認，再送出對話。':caps.files===true?'目前可讀取 PDF、DOCX、PPTX 的文字；對話和圖片仍待接通。下方也可測試生活聲辨識。':'目前可繼續測試下方的生活聲辨識；對話、圖片與檔案入口會在接通後開放。';
-  setActionStatus(textReady?'文字對話已接通。':caps.files===true?'檔案文字抽取可測；對話服務尚未接通。':'對話服務尚未接通。');
+  assistantUi.note.textContent=textReady?'能力来自目前伺服器的即时检查；语音转文字后会先让你确认，再送出对话。':caps.files===true?'目前可读取 PDF、DOCX、PPTX 的文字；对话和图片仍待接通。下方也可测试生活声辨识。':'目前可继续测试下方的生活声辨识；对话、图片与档案入口会在接通后开放。';
+  setActionStatus(textReady?'文字对话已接通。':caps.files===true?'档案文字抽取可测；对话服务尚未接通。':'对话服务尚未接通。');
 }
 async function refreshCapabilities(){
   try{
     const response=await fetch('./api/capabilities',{cache:'no-store'});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const body=await response.json();
-    if(!body||typeof body!=='object')throw new Error('能力回應無效');
+    if(!body||typeof body!=='object')throw new Error('能力回应无效');
     renderCapabilities(body);
-  }catch(error){renderCapabilities({});assistantUi.note.textContent=`能力檢查失敗：${error.message}。可測試下方的生活聲辨識。`;}
+  }catch(error){renderCapabilities({});assistantUi.note.textContent=`能力检查失败：${error.message}。可测试下方的生活声辨识。`;}
 }
 function addMessage(role,value){
   const empty=assistantUi.log.querySelector('.conversation-empty');if(empty)empty.remove();
@@ -278,14 +278,14 @@ assistantUi.form.addEventListener('submit',async event=>{
   event.preventDefault();
   if(activeCaps.text!==true)return;
   const message=assistantUi.input.value.trim();if(!message)return;
-  assistantUi.send.disabled=true;assistantUi.input.disabled=true;setActionStatus('正在等待端倪回應…');
+  assistantUi.send.disabled=true;assistantUi.input.disabled=true;setActionStatus('正在等待端倪回应…');
   try{
     const response=await fetch('./api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const body=await response.json();
-    if(typeof body.reply!=='string'||!body.reply.trim())throw new Error('回應內容無效');
-    addMessage('user',message);addMessage('assistant',body.reply);assistantUi.input.value='';setActionStatus('對話完成。');
-  }catch(error){setActionStatus(`對話未完成：${error.message}`);await refreshCapabilities();}
+    if(typeof body.reply!=='string'||!body.reply.trim())throw new Error('回应内容无效');
+    addMessage('user',message);addMessage('assistant',body.reply);assistantUi.input.value='';setActionStatus('对话完成。');
+  }catch(error){setActionStatus(`对话未完成：${error.message}`);await refreshCapabilities();}
   finally{assistantUi.input.disabled=activeCaps.text!==true;assistantUi.send.disabled=activeCaps.text!==true;}
 });
 
@@ -304,27 +304,27 @@ function closeVoiceCapture(){
   const capture=voiceCapture;voiceCapture=null;
   capture.processor.disconnect();capture.source.disconnect();capture.silent.disconnect();
   capture.stream.getTracks().forEach(track=>track.stop());capture.context.close().catch(()=>{});
-  assistantUi.voice.textContent='錄一段話';return capture;
+  assistantUi.voice.textContent='录一段话';return capture;
 }
 async function finishVoiceCapture(){
   const capture=closeVoiceCapture();if(!capture)return;
-  if(capture.samples.length<16000){setActionStatus('請至少錄 1 秒，再試一次。');return;}
-  assistantUi.voice.disabled=true;setActionStatus('正在將語音轉成文字…');
+  if(capture.samples.length<16000){setActionStatus('请至少录 1 秒，再试一次。');return;}
+  assistantUi.voice.disabled=true;setActionStatus('正在将语音转成文字…');
   try{
     const wave=wavFromSamples(capture.samples,16000);
     const response=await fetch('./api/transcribe',{method:'POST',headers:{'Content-Type':'audio/wav'},body:wave});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const body=await response.json();
-    if(typeof body.text!=='string'||!body.text.trim())throw new Error('未辨識出語句');
-    assistantUi.input.value=body.text.trim();assistantUi.input.focus();setActionStatus('語音已轉成文字。確認內容後，按「送出」。');
-  }catch(error){setActionStatus(`語音未完成：${error.message}`);await refreshCapabilities();}
+    if(typeof body.text!=='string'||!body.text.trim())throw new Error('未辨识出语句');
+    assistantUi.input.value=body.text.trim();assistantUi.input.focus();setActionStatus('语音已转成文字。确认内容后，按「送出」。');
+  }catch(error){setActionStatus(`语音未完成：${error.message}`);await refreshCapabilities();}
   finally{assistantUi.voice.disabled=activeCaps.turn_voice!==true;}
 }
 assistantUi.voice.addEventListener('click',async()=>{
   if(voiceCapture){await finishVoiceCapture();return;}
   if(activeCaps.turn_voice!==true)return;
   if(running)stopListening();
-  if(!navigator.mediaDevices?.getUserMedia){setActionStatus('此頁需要 HTTPS 才能錄音。');return;}
+  if(!navigator.mediaDevices?.getUserMedia){setActionStatus('此页需要 HTTPS 才能录音。');return;}
   assistantUi.voice.disabled=true;
   try{
     const mic=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
@@ -334,9 +334,9 @@ assistantUi.voice.addEventListener('click',async()=>{
     sourceNode.connect(processorNode);processorNode.connect(silent);silent.connect(context.destination);
     processorNode.onaudioprocess=event=>{if(voiceCapture){for(const sample of resample(event.inputBuffer.getChannelData(0),context.sampleRate))samples.push(sample);}};
     voiceCapture={stream:mic,context,source:sourceNode,processor:processorNode,silent,samples};
-    assistantUi.voice.textContent='停止並轉文字';setActionStatus('正在錄音，最多 8 秒。');
+    assistantUi.voice.textContent='停止并转文字';setActionStatus('正在录音，最多 8 秒。');
     setTimeout(()=>{if(voiceCapture?.stream===mic)finishVoiceCapture();},8000);
-  }catch(error){setActionStatus(error.name==='NotAllowedError'?'請允許此網站使用麥克風。':`錄音失敗：${error.message}`);}
+  }catch(error){setActionStatus(error.name==='NotAllowedError'?'请允许此网站使用麦克风。':`录音失败：${error.message}`);}
   finally{assistantUi.voice.disabled=false;}
 });
 
@@ -344,15 +344,15 @@ async function analyzeUpload(file,kind){
   if(!file||activeCaps[kind]!==true)return;
   const input=kind==='image'?assistantUi.image:assistantUi.document;
   const limit=kind==='image'?4_000_000:5_000_000;
-  if(file.size>limit){setActionStatus(`檔案超過 ${kind==='image'?'4':'5'} MB，請選擇較小的檔案。`);input.value='';return;}
-  input.disabled=true;setActionStatus(`正在分析${kind==='image'?'圖片':'檔案'}：${file.name}`);
+  if(file.size>limit){setActionStatus(`档案超过 ${kind==='image'?'4':'5'} MB，请选择较小的档案。`);input.value='';return;}
+  input.disabled=true;setActionStatus(`正在分析${kind==='image'?'图片':'档案'}：${file.name}`);
   try{
     const data=new FormData();data.append('file',file,file.name);
     const response=await fetch('./api/analyze',{method:'POST',body:data});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const body=await response.json();
-    if(typeof body.summary!=='string'||!body.summary.trim())throw new Error('分析結果無效');
-    addMessage('user',`請看${kind==='image'?'圖片':'檔案'}：${file.name}`);addMessage('assistant',body.summary);
+    if(typeof body.summary!=='string'||!body.summary.trim())throw new Error('分析结果无效');
+    addMessage('user',`请看${kind==='image'?'图片':'档案'}：${file.name}`);addMessage('assistant',body.summary);
     setActionStatus(body.note||'分析完成。');
   }catch(error){setActionStatus(`分析未完成：${error.message}`);await refreshCapabilities();}
   finally{input.value='';input.disabled=activeCaps[kind]!==true;}
@@ -365,11 +365,11 @@ assistantUi.latency.addEventListener('click',async()=>{
   const checks=[];
   for(const path of ['./healthz','./api/capabilities']){
     const started=performance.now();
-    try{const response=await fetch(path,{cache:'no-store'});checks.push(`${path}: ${response.ok?'成功':'失敗 HTTP '+response.status} · ${Math.round(performance.now()-started)} ms`);}
-    catch(error){checks.push(`${path}: 連線失敗 · ${Math.round(performance.now()-started)} ms`);}
+    try{const response=await fetch(path,{cache:'no-store'});checks.push(`${path}: ${response.ok?'成功':'失败 HTTP '+response.status} · ${Math.round(performance.now()-started)} ms`);}
+    catch(error){checks.push(`${path}: 连线失败 · ${Math.round(performance.now()-started)} ms`);}
   }
-  const time=new Date().toLocaleString('zh-TW',{hour12:false});
-  assistantUi.latencyResult.textContent=`${time}（本裝置）｜${checks.join('｜')}`;
+  const time=new Date().toLocaleString('zh-CN',{hour12:false});
+  assistantUi.latencyResult.textContent=`${time}（本装置）｜${checks.join('｜')}`;
   assistantUi.latency.disabled=false;
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&voiceCapture)closeVoiceCapture();});

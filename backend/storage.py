@@ -17,6 +17,10 @@ _MEET = os.path.join(DATA_DIR, "meetings")
 _CALL = os.path.join(DATA_DIR, "calls")
 _KEPT = os.path.join(DATA_DIR, "kept.json")
 
+# Open-source skeleton: the hosted preview has no persistent call/inner store.
+CALL_HISTORY_HEALTH = "not_connected"
+INNER_MONOLOGUE_HEALTH = "not_connected"
+
 
 def _safe(s) -> str:
     return "".join(c for c in str(s) if c.isalnum() or c in "-_") or "x"

@@ -1,81 +1,81 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hans">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f3efe7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="端倪語靈">
+  <meta name="apple-mobile-web-app-title" content="端倪语灵">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icon-180.png">
   <link rel="stylesheet" href="./style.css">
-  <title>端倪語靈 · 手機測試</title>
+  <title>端倪语灵 · 手机测试</title>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <div class="brand" aria-label="YULING 語靈"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M5 18h4l3-8 5 16 4-12 3 4h7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word">YULING <small>語靈 · 陳端倪</small></span></div>
-      <div class="topbar-actions"><span class="version">iPhone PWA · 內部測試</span><button class="logout-button" id="logout-button" type="button">登出</button></div>
+      <div class="brand" aria-label="YULING 语灵"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M5 18h4l3-8 5 16 4-12 3 4h7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word">YULING <small>语灵 · 陈端倪</small></span></div>
+      <div class="topbar-actions"><span class="version">iPhone PWA · 内部测试</span><button class="logout-button" id="logout-button" type="button">登出</button></div>
     </header>
 
     <section class="assistant-panel" aria-labelledby="assistant-title">
-      <div class="section-heading"><div><p class="eyebrow">陪伴與教練</p><h2 id="assistant-title">跟端倪說說話</h2></div><span class="live-badge" id="connection-badge">檢查連線</span></div>
-      <p class="panel-intro" id="connection-note">正在檢查此網址已接通的能力。只有通過連線檢查的入口才能使用。</p>
-      <div class="capability-strip" id="capability-strip" aria-label="能力狀態">
-        <span data-capability="text">文字 · 檢查中</span><span data-capability="turn_voice">回合語音 · 檢查中</span><span data-capability="live_voice">即時通話 · 檢查中</span><span data-capability="image">圖片 · 檢查中</span><span data-capability="files">檔案 · 檢查中</span>
+      <div class="section-heading"><div><p class="eyebrow">陪伴与教练</p><h2 id="assistant-title">跟端倪说说话</h2></div><span class="live-badge" id="connection-badge">检查连线</span></div>
+      <p class="panel-intro" id="connection-note">正在检查此网址已接通的能力。只有通过连线检查的入口才能使用。</p>
+      <div class="capability-strip" id="capability-strip" aria-label="能力状态">
+        <span data-capability="text">文字 · 检查中</span><span data-capability="turn_voice">回合语音 · 检查中</span><span data-capability="live_voice">即时通话 · 检查中</span><span data-capability="image">图片 · 检查中</span><span data-capability="files">档案 · 检查中</span>
       </div>
-      <div class="conversation" id="conversation" role="log" aria-live="polite"><p class="conversation-empty">接通後，可以在這裡用文字或語音開始一回合對話。</p></div>
+      <div class="conversation" id="conversation" role="log" aria-live="polite"><p class="conversation-empty">接通后，可以在这里用文字或语音开始一回合对话。</p></div>
       <form class="composer" id="chat-form">
-        <label class="sr-only" for="chat-input">輸入訊息</label>
+        <label class="sr-only" for="chat-input">输入讯息</label>
         <textarea id="chat-input" rows="2" placeholder="先用文字和端倪聊聊…" disabled></textarea>
         <button type="submit" id="send-button" disabled>送出</button>
       </form>
       <div class="input-actions">
-        <button type="button" id="voice-button" disabled>錄一段話</button>
-        <label class="upload-action disabled" id="image-label" for="image-input">看圖片</label><input id="image-input" type="file" accept="image/*" disabled>
-        <label class="upload-action disabled" id="document-label" for="document-input">讀檔案文字</label><input id="document-input" type="file" accept=".pdf,.docx,.pptx,application/pdf" disabled>
+        <button type="button" id="voice-button" disabled>录一段话</button>
+        <label class="upload-action disabled" id="image-label" for="image-input">看图片</label><input id="image-input" type="file" accept="image/*" disabled>
+        <label class="upload-action disabled" id="document-label" for="document-input">读档案文字</label><input id="document-input" type="file" accept=".pdf,.docx,.pptx,application/pdf" disabled>
       </div>
-      <p class="action-status" id="action-status" role="status">等待能力檢查。</p>
-      <div class="network-check"><div><strong>區域型流暢性監督</strong><small>從目前這支手機測量；不代表上海朋友的實測結果。</small></div><button type="button" id="latency-button">測試連線</button></div>
-      <p class="network-result" id="latency-result" role="status">尚未測量。</p>
+      <p class="action-status" id="action-status" role="status">等待能力检查。</p>
+      <div class="network-check"><div><strong>区域型流畅性监督</strong><small>从目前这支手机测量；不代表上海朋友的实测结果。</small></div><button type="button" id="latency-button">测试连线</button></div>
+      <p class="network-result" id="latency-result" role="status">尚未测量。</p>
     </section>
 
     <section class="hero" aria-labelledby="hero-title">
-      <p class="eyebrow">生活聲感知</p>
-      <h1 id="hero-title">我聽見的，<br><em>不只是你說的話。</em></h1>
-      <p class="intro">咳嗽、噴嚏、哭聲、車聲、碰撞與音樂會在手機瀏覽器上分類。結果是聲音事件候選，請用真實情境驗收。</p>
+      <p class="eyebrow">生活声感知</p>
+      <h1 id="hero-title">我听见的，<br><em>不只是你说的话。</em></h1>
+      <p class="intro">咳嗽、喷嚏、哭声、车声、碰撞与音乐会在手机浏览器上分类。结果是声音事件候选，请用真实情境验收。</p>
       <div class="hero-rule"></div>
       <div class="sound-stage" id="sound-stage" aria-live="polite">
         <div class="sound-orbit"><div class="sound-core"><svg viewBox="0 0 80 80" aria-hidden="true"><path d="M9 42c7 0 7-12 14-12s7 23 14 23 7-42 14-42 7 58 14 58 7-27 14-27"/></svg></div></div>
-        <p id="stage-title" class="stage-title">尚未開始聆聽</p>
-        <p id="stage-subtitle" class="stage-subtitle">聲音只在本機瀏覽器分類，不上傳錄音。</p>
+        <p id="stage-title" class="stage-title">尚未开始聆听</p>
+        <p id="stage-subtitle" class="stage-subtitle">声音只在本机浏览器分类，不上传录音。</p>
       </div>
-      <button class="primary-button" id="listen-button" type="button">開始聆聽</button>
-      <p class="button-note" id="button-note">需要麥克風權限 · 僅在此頁開啟期間使用</p>
+      <button class="primary-button" id="listen-button" type="button">开始聆听</button>
+      <p class="button-note" id="button-note">需要麦克风权限 · 仅在此页开启期间使用</p>
     </section>
 
     <section class="results" aria-labelledby="results-title">
-      <div class="section-heading"><div><p class="eyebrow">感知紀錄</p><h2 id="results-title">剛剛發生了什麼</h2></div><span class="live-badge" id="live-badge">待機</span></div>
-      <div id="event-list" class="event-list"><p class="empty-state">開始聆聽後，辨識到的候選事件會出現在這裡。</p></div>
+      <div class="section-heading"><div><p class="eyebrow">感知纪录</p><h2 id="results-title">刚刚发生了什么</h2></div><span class="live-badge" id="live-badge">待机</span></div>
+      <div id="event-list" class="event-list"><p class="empty-state">开始聆听后，辨识到的候选事件会出现在这里。</p></div>
       <div class="test-input">
-        <div><strong>用錄音檢查</strong><span>選擇手機上的音檔，檢查同一個分類器的結果。</span></div>
-        <label class="file-button" for="audio-file">選擇音檔</label>
+        <div><strong>用录音检查</strong><span>选择手机上的音档，检查同一个分类器的结果。</span></div>
+        <label class="file-button" for="audio-file">选择音档</label>
         <input id="audio-file" type="file" accept="audio/*">
       </div>
     </section>
 
     <section class="scope" aria-labelledby="scope-title">
-      <p class="eyebrow">體驗範圍</p><h2 id="scope-title">這一版能做什麼</h2>
+      <p class="eyebrow">体验范围</p><h2 id="scope-title">这一版能做什么</h2>
       <div class="scope-grid">
-        <article><span class="scope-index">01</span><h3>聽生活聲</h3><p>對咳嗽、噴嚏、哭聲、車聲、碰撞聲與音樂提供分類候選及分數。</p><span class="tag ready">可測試</span></article>
-        <article><span class="scope-index">02</span><h3>自然回應</h3><p>在高把握度事件後顯示預寫的關心語句；尚非端倪模型生成。</p><span class="tag limited">預寫回應</span></article>
-        <article><span class="scope-index">03</span><h3>人格與對話</h3><p>上方入口會向伺服器檢查文字、回合語音、圖片與檔案能力。只有實際接通的能力可以操作。</p><span class="tag pending">依連線狀態</span></article>
+        <article><span class="scope-index">01</span><h3>听生活声</h3><p>对咳嗽、喷嚏、哭声、车声、碰撞声与音乐提供分类候选及分数。</p><span class="tag ready">可测试</span></article>
+        <article><span class="scope-index">02</span><h3>自然回应</h3><p>在高把握度事件后显示预写的关心语句；尚非端倪模型生成。</p><span class="tag limited">预写回应</span></article>
+        <article><span class="scope-index">03</span><h3>人格与对话</h3><p>上方入口会向伺服器检查文字、回合语音、图片与档案能力。只有实际接通的能力可以操作。</p><span class="tag pending">依连线状态</span></article>
       </div>
     </section>
 
-    <footer>模型輸出是聲音事件的候選分數，不是事實判定。聽見碰撞聲不代表確認有人跌倒。<br>語靈內部測試版 · 請以能力狀態與實際操作結果為準</footer>
+    <footer>模型输出是声音事件的候选分数，不是事实判定。听见碰撞声不代表确认有人跌倒。<br>语灵内部测试版 · 请以能力状态与实际操作结果为准</footer>
   </main>
   <script src="./assets/ort.min.js"></script>
   <script type="module" src="./app.js"></script>
