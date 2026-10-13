@@ -145,9 +145,11 @@ class Handler(SimpleHTTPRequestHandler):
             if BRIDGE:
                 status, payload = self._bridge("/api/status")
                 ready = status == 200 and bool(payload.get("ready"))
+            vision_ready = ready and os.path.exists("/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk")
             return self._json(200, {
                 "text": ready, "turn_voice": ready, "live_voice": False,
-                "image": False, "files": True, "sound_events": True,
+                "image": vision_ready, "files": True, "sound_events": True,
+                "image_mode": "本機 OCR 與粗分類" if vision_ready else "未接入",
                 "file_mode": "PDF/DOCX/PPTX 文字抽取預覽",
                 "mode": "local_bridge" if BRIDGE else "railway_preview",
                 "reason": "本機 Hermes/Whisper 已連線" if ready else "雲端尚未接入對話模型；生活聲辨識在手機端執行",
@@ -182,6 +184,20 @@ class Handler(SimpleHTTPRequestHandler):
                 data = part.get_payload(decode=True) or b""
                 if not 0 < len(data) <= MAX_FILE:
                     raise ValueError("檔案大小需在 5 MB 內")
+                content_type = part.get_content_type().lower()
+                if content_type in {"image/png", "image/jpeg", "image/webp"}:
+                    if not BRIDGE:
+                        return self._json(503, {"error": "此網址尚未接入圖片辨識"})
+                    if len(data) > 4_000_000:
+                        raise ValueError("圖片需在 4 MB 內")
+                    status, result = self._bridge("/api/analyze", data, content_type)
+                    if status != 200:
+                        return self._json(status, result)
+                    words = ", ".join(result.get("text", []))[:2000]
+                    labels = ", ".join(str(x.get("name", "")) for x in result.get("labels", [])[:3])
+                    preview = f"圖片文字：{words or '未辨識到'}。粗分類：{labels or '未辨識到'}。"
+                    return self._json(200, {"kind": "image", "summary": preview,
+                        "note": "本機 Vision OCR 與粗分類結果；尚非完整圖片問答。"})
                 return self._json(200, extract_document(filename, data))
             except (ValueError, zipfile.BadZipFile, ET.ParseError, ImportError) as exc:
                 return self._json(400, {"error": str(exc)})
@@ -210,4 +226,5 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    host = "127.0.0.1" if BRIDGE else "0.0.0.0"
+    ThreadingHTTPServer((host, port), Handler).serve_forever()

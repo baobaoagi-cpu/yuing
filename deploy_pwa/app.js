@@ -329,7 +329,8 @@ assistantUi.voice.addEventListener('click',async()=>{
 async function analyzeUpload(file,kind){
   if(!file||activeCaps[kind]!==true)return;
   const input=kind==='image'?assistantUi.image:assistantUi.document;
-  if(file.size>5*1024*1024){setActionStatus('檔案超過 5 MB，請選擇較小的檔案。');input.value='';return;}
+  const limit=kind==='image'?4_000_000:5_000_000;
+  if(file.size>limit){setActionStatus(`檔案超過 ${kind==='image'?'4':'5'} MB，請選擇較小的檔案。`);input.value='';return;}
   input.disabled=true;setActionStatus(`正在分析${kind==='image'?'圖片':'檔案'}：${file.name}`);
   try{
     const data=new FormData();data.append('file',file,file.name);

@@ -14,6 +14,7 @@ async function refresh(){
     ready=!!data.ready;status(ready?'本機模型與零工具設定已確認；可開始測試。':`本機服務未就緒：${JSON.stringify(data.checks||data.error)}`);
   }catch(error){ready=false;status(`無法確認本機服務：${error.message}`);}
   $('send').disabled=!ready;$('record').disabled=!ready;
+  $('pick-image').disabled=!ready;
 }
 async function send(text){
   text=text.trim();if(!text||busy||!ready)return;
@@ -55,5 +56,20 @@ $('record').addEventListener('click',async()=>{
     else status('沒有辨識到可用的語音；請重試或打字。');
   }catch(error){status(`錄音未完成：${error.message}`);}
   finally{if(processor)processor.disconnect();if(source)source.disconnect();if(sink)sink.disconnect();if(stream)stream.getTracks().forEach(t=>t.stop());if(context)await context.close().catch(()=>{});busy=false;$('record').disabled=!ready;$('send').disabled=!ready;}
+});
+$('pick-image').addEventListener('click',()=>{if(ready&&!busy)$('image').click();});
+$('image').addEventListener('change',async()=>{
+  const file=$('image').files[0];if(!file||busy||!ready)return;
+  $('image').value='';
+  if(file.size>4000000){status('圖片需低於 4 MB。');return;}
+  busy=true;$('pick-image').disabled=true;status('正在用這台 Mac 辨識圖片…');
+  try{
+    const response=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':file.type},body:file});
+    const data=await response.json();if(!response.ok)throw new Error(data.error||'圖片辨識失敗');
+    const lines=[`圖片：${file.name}`,`辨識文字：${data.text.length?data.text.join('／'):'無'}`,
+      `粗分類：${data.labels.length?data.labels.map(x=>`${x.name} (${Math.round(x.confidence*100)}%)`).join('、'):'無'}`];
+    bubble('assistant',lines.join('\n'));status('本機圖片辨識完成；分類僅供參考。');
+  }catch(error){status(`圖片辨識未完成：${error.message}`);}
+  finally{busy=false;$('pick-image').disabled=!ready;}
 });
 refresh();

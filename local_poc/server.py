@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import io
+import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
@@ -15,6 +18,7 @@ ALLOWED = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
            "/style.css": "style.css"}
 MAX_JSON = 16_384
 MAX_AUDIO = 2_000_000
+MAX_IMAGE = 4_000_000
 _whisper = None
 _whisper_lock = threading.Lock()
 _answer_lock = threading.Lock()
@@ -44,6 +48,40 @@ def transcribe_wav(data: bytes) -> str:
                 no_speech_threshold=0.6, log_prob_threshold=-0.8)
             result = "".join(segment.text for segment in segments).strip()
     return result[:500]
+
+
+def analyze_image(data: bytes) -> dict:
+    """Use macOS Vision locally; normalize pixels to discard image metadata."""
+    if sys.platform != "darwin":
+        raise RuntimeError("圖片辨識目前只支援這台 Mac 的 Vision。")
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    Image.MAX_IMAGE_PIXELS = 12_000_000
+    try:
+        with Image.open(io.BytesIO(data)) as source:
+            if source.format not in ("PNG", "JPEG", "WEBP"):
+                raise ValueError("只接受 PNG、JPEG 或 WebP 圖片。")
+            if source.width * source.height > 12_000_000:
+                raise ValueError("圖片像素過大。")
+            image = ImageOps.exif_transpose(source).convert("RGB")
+            image.thumbnail((2048, 2048))
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("無法讀取圖片。") from exc
+    sdk = "/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk"
+    if not Path(sdk).exists():
+        raise RuntimeError("找不到已驗證的 macOS Vision SDK。")
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as file:
+        image.save(file, format="PNG")
+        file.flush()
+        result = subprocess.run(
+            ["/usr/bin/swift", str(HERE / "vision.swift"), file.name],
+            capture_output=True, text=True, timeout=25,
+            env={**os.environ, "SDKROOT": sdk}, check=False,
+        )
+    if result.returncode:
+        raise RuntimeError("macOS Vision 未能完成圖片辨識。")
+    data = json.loads(result.stdout)
+    return {"text": data.get("text", []), "labels": data.get("labels", []),
+            "engine": "macOS Vision（本機 OCR 與粗分類）"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -92,7 +130,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._local_host() or not self._same_origin():
             return self._json(403, {"error": "forbidden origin"})
-        expected_type = {"/api/chat": "application/json", "/api/transcribe": "audio/wav"}.get(self.path)
+        expected_type = {"/api/chat": "application/json", "/api/transcribe": "audio/wav",
+                         "/api/analyze": "image/png"}.get(self.path)
+        if self.path == "/api/analyze":
+            expected_type = None
+            if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() not in (
+                "image/png", "image/jpeg", "image/webp"):
+                return self._json(415, {"error": "unsupported content type"})
         if expected_type and self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != expected_type:
             return self._json(415, {"error": "unsupported content type"})
         try:
@@ -108,6 +152,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not 44 <= length <= MAX_AUDIO:
                     raise ValueError("音訊大小不正確。")
                 return self._json(200, {"text": transcribe_wav(self.rfile.read(length))})
+            if self.path == "/api/analyze":
+                if not 32 <= length <= MAX_IMAGE:
+                    raise ValueError("圖片大小需低於 4 MB。")
+                return self._json(200, analyze_image(self.rfile.read(length)))
             return self._json(404, {"error": "not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             return self._json(400, {"error": str(exc)})
