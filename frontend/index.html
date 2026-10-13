@@ -60,7 +60,7 @@
 
   /* Only components observable on the deployed call path are shown. */
   .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
-    flex-wrap:nowrap; justify-content:center; gap:9px; padding:0 8px; }
+    flex-wrap:wrap; justify-content:center; gap:7px 12px; max-width:370px; margin:auto; padding:0 8px; }
   .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
   .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
@@ -223,8 +223,8 @@
   .swipehint.hide{ opacity:0; }
   @media (max-width:700px){
     .lamps{ top:14px; }
-    .gear{ top:40px; left:12px; }
-    .top.callpane{ margin-top:48px; }
+    .gear{ top:54px; left:12px; }
+    .top.callpane{ margin-top:62px; }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }
@@ -263,6 +263,9 @@
   <span class="lamp" id="lamp-livekit"><i class="dot"></i>连接</span>
   <span class="lamp" id="lamp-agent"><i class="dot"></i>语灵</span>
   <span class="lamp" id="lamp-audio"><i class="dot"></i>音轨</span>
+  <span class="lamp" id="lamp-stt"><i class="dot"></i>STT</span>
+  <span class="lamp" id="lamp-llm"><i class="dot"></i>LLM</span>
+  <span class="lamp" id="lamp-tts"><i class="dot"></i>TTS</span>
 </div>
 
 <div class="top callpane" id="callTop">
@@ -1154,7 +1157,10 @@
     const micRaw = micCalc ? Math.min(1, micCalc()*1.7) : 0;
     const baoRaw = baoCalc ? Math.min(1, baoCalc()*1.8) : 0;
     if(micRaw>0.08) lastUserVoiceAt=ts;
-    if(baoRaw>0.06) lastBaoVoiceAt=ts;
+    if(baoRaw>0.06){
+      lastBaoVoiceAt=ts;
+      if(room) setLamp('tts','ok'); // 只证实本次收到代理语音，不代表独立探测供应商
+    }
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
     motionFX.x=lerp(motionFX.x,motionFX.tx,0.08);
@@ -1706,7 +1712,10 @@
       mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
       livekit:{ok:'已加入 LiveKit 房间',bad:'无法连接 LiveKit 房间或缺少设置',warn:'正在连接 LiveKit 房间'},
       agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
-      audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'}
+      audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'},
+      stt:{ok:'本次已收到你的语音转写',warn:'等待本次语音转写'},
+      llm:{warn:'当前无法独立验证 LLM 响应'},
+      tts:{ok:'本次已检测到代理语音输出；未独立检测供应商',warn:'等待本次代理语音输出'}
     };
     const label=el.textContent.trim();
     const meaning=(meanings[id]&&meanings[id][state])||'尚未开始测试';
@@ -1753,6 +1762,7 @@
     if(connecting||room) return;
     connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
     setLamp('livekit','warn'); setLamp('agent','warn'); setLamp('audio','');
+    setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
     muteBtn.classList.add('show');   // 连接中→静音钮慢慢从挂断球长出来
     ringback.currentTime=0; ringback.play().catch(()=>{});   // 开始播等待接听音效
     try{
@@ -1766,6 +1776,10 @@
       currentCallId=d.room||'';
 
       room=new LK.Room({ adaptiveStream:true, dynacast:true });
+      room.on(LK.RoomEvent.TranscriptionReceived,(segments,participant)=>{
+        if(participant && participant.identity===room.localParticipant.identity &&
+           segments && segments.some(s=>s.final && String(s.text||'').trim())) setLamp('stt','ok');
+      });
       room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
         if(track.kind===LK.Track.Kind.Audio){
           setLamp('audio','ok');
@@ -1818,7 +1832,8 @@
     try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
-    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio',''); uiIdle(); setStatus(msg||'已挂断');
+    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio','');
+    setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setStatus(msg||'已挂断');
   }
   async function endCall(){
     if(room){ try{ await room.disconnect(); }catch(_){} }
