@@ -17,6 +17,13 @@ load_dotenv(".env.local")
 
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
+# Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
+# Mandarin, and Nova-3 supports a keyterm to bias this proper name.
+STT_OPTIONS = {
+    "model": "deepgram/nova-3",
+    "language": "zh-CN",
+    "extra_kwargs": {"keyterm": ["陈端倪"]},
+}
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
 PSET_PATH = Path(__file__).resolve().parent / "persona" / "pset_principles_v0.1.md"
@@ -57,7 +64,7 @@ async def phone_call(ctx: agents.JobContext) -> None:
         raise RuntimeError("MINIMAX_API_KEY is required")
 
     session = AgentSession(
-        stt=inference.STT(model="deepgram/nova-3", language="multi"),
+        stt=inference.STT(**STT_OPTIONS),
         llm=anthropic.LLM(
             model=os.environ.get("MINIMAX_LLM_MODEL", "MiniMax-M3"),
             api_key=api_key,

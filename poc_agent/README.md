@@ -4,6 +4,8 @@
 
 `手機 → LiveKit → Deepgram Nova-3 (LiveKit Inference) → MiniMax M3 → MiniMax Speech 2.8 Turbo → 手機`
 
+STT 固定使用 Nova-3 的 `zh-CN` 普通話模式，並提示專名 `陈端倪`。Deepgram 的 `multi` 模式不包含中文；此設定僅由 SDK 建構測試確認可用，專名辨識改善仍須真人通話比較逐字稿。切換為單語模式後，混合語言發話也須另測。
+
 LLM 與 TTS 共用同一把 `MINIMAX_API_KEY`，只放在 Agent 服務端。國際站測試使用 `https://api.minimax.io` 與 `https://api.minimax.io/anthropic`；已購點數的 Subscription Key 由使用者親自存入 Railway。沒有接入 Hermes、私人記憶、知識庫或圖資料庫。Agent 名稱固定為 `duanni-minimax-poc`，與現有 Builder Agent 隔離。
 
 聲音設計候選提示詞與試聽文案在 `voice_design/chen_dunni_v1.md`。產生的聲音需經實際聆聽，再設定 `MINIMAX_VOICE_ID`；不能以 API 成功取代音色驗收。
