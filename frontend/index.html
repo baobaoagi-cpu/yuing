@@ -58,7 +58,7 @@
     background:none; border:none; cursor:pointer; padding:8px; }
   .gear svg{ width:22px; height:22px; }
 
-  /* 整排置中、單行不換行 → 6 顆燈一行排得下 (記憶不掉到第二行) */
+  /* Only components observable on the deployed call path are shown. */
   .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
     flex-wrap:nowrap; justify-content:center; gap:9px; padding:0 8px; }
   .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
@@ -69,6 +69,7 @@
   .lamp.bad  .dot{ background:var(--warn); box-shadow:0 0 6px rgba(216,90,48,.7); }
   .lamp.warn .dot{ background:#e0a52e; box-shadow:0 0 6px rgba(224,165,46,.6); }
   .lamp.ok{ color:rgba(255,255,255,.8); }
+  #meetingView,#swipeHint{ display:none !important; }
   .panel{ position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.94);
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
     padding:32px; }
@@ -221,6 +222,9 @@
     cursor:pointer; user-select:none; -webkit-user-select:none; }
   .swipehint.hide{ opacity:0; }
   @media (max-width:700px){
+    .lamps{ top:14px; }
+    .gear{ top:40px; left:12px; }
+    .top.callpane{ margin-top:48px; }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }
@@ -254,17 +258,16 @@
 </button>
 
 <div class="lamps" id="lamps" aria-label="系統健康狀態">
-  <span class="lamp" id="lamp-llm"><i class="dot"></i>頭腦</span>
-  <span class="lamp" id="lamp-stt"><i class="dot"></i>聽聲</span>
-  <span class="lamp" id="lamp-tts"><i class="dot"></i>發聲</span>
+  <span class="lamp" id="lamp-service"><i class="dot"></i>服務</span>
   <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
   <span class="lamp" id="lamp-livekit"><i class="dot"></i>連線</span>
-  <span class="lamp" id="lamp-memory"><i class="dot"></i>記憶</span>
+  <span class="lamp" id="lamp-agent"><i class="dot"></i>語靈</span>
+  <span class="lamp" id="lamp-audio"><i class="dot"></i>音軌</span>
 </div>
 
 <div class="top callpane" id="callTop">
   <div class="clock" id="clock" aria-label="台北時間">—</div>
-  <div class="name">AI 夥伴</div>
+  <div class="name">語靈</div>
   <div class="status" id="status">點下面綠色按鈕開始通話</div>
 </div>
 
@@ -389,6 +392,7 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
   const ACCESS_KEY='yuling_access';
   const API_ROOT=(location.protocol==='file:')
     ? 'http://127.0.0.1:8080'
@@ -417,6 +421,7 @@
   const SPEECH_STALL_MS=8000;
 
   function setMeetingProgress(next, animate){
+    if(!MEETING_ENABLED) next=0;
     meetingProgress=Math.max(0,Math.min(1,next||0));
     const shift=Math.round(innerWidth*0.54*meetingProgress);
     callPanes.forEach(el=>{
@@ -445,9 +450,10 @@
     swipeHint.setAttribute('aria-pressed', isOpen?'true':'false');
     swipeHint.title=isOpen?'點一下也可關閉錄音':'點一下也可開啟錄音';
   }
-  function openMeetingView(){ setMeetingProgress(1,true); }
+  function openMeetingView(){ if(MEETING_ENABLED) setMeetingProgress(1,true); }
   function closeMeetingView(){ setMeetingProgress(0,true); }
   function toggleMeetingView(){
+    if(!MEETING_ENABLED) return;
     if(meetingProgress>0.5) closeMeetingView();
     else openMeetingView();
   }
@@ -1698,19 +1704,30 @@
     const el=$('lamp-'+id); if(!el) return;
     el.classList.remove('ok','bad','warn');
     if(state) el.classList.add(state);
+    const meanings={
+      service:{ok:'Railway API 已回應',bad:'Railway API 無法回應'},
+      mic:{ok:'麥克風已啟用',bad:'麥克風無法啟用',warn:'麥克風已靜音'},
+      livekit:{ok:'已加入 LiveKit 房間',bad:'無法連接 LiveKit 房間或缺少設定',warn:'正在連接 LiveKit 房間'},
+      agent:{ok:'語靈 Agent 已加入房間',bad:'語靈 Agent 無法加入房間',warn:'等待語靈 Agent 加入'},
+      audio:{ok:'已收到遠端音軌',bad:'未能收到遠端音軌',warn:'等待遠端音軌'}
+    };
+    const label=el.textContent.trim();
+    const meaning=(meanings[id]&&meanings[id][state])||'尚未開始測試';
+    el.setAttribute('aria-label',`${label}：${meaning}`);
+    el.title=`${label}：${meaning}`;
   }
   function setMic(state){ setLamp('mic', state); }
 
   async function pollHealth(){
-    // 後端回 ok/bad/unknown 字串 (真實檢測): 綠=確認運作, 紅=壞/缺, 黃=還沒驗證
-    const m = s => s==='ok' ? 'ok' : (s==='unknown' ? 'warn' : 'bad');
+    // This request proves the Railway API responds; provider status is verified in-call.
     try{
       const r=await fetch(apiUrl('/api/yuling/health'),{cache:'no-store'});
       if(!r.ok) throw 0;
       const h=await r.json();
-      ['llm','stt','tts','livekit','memory'].forEach(k=>setLamp(k, m(h[k])));
+      setLamp('service','ok');
+      if(!room && !connecting) setLamp('livekit',h.call_config==='missing'?'bad':'');
     }catch(_){
-      ['llm','stt','tts','livekit','memory'].forEach(k=>setLamp(k,'bad'));
+      setLamp('service','bad');
     }
   }
 
@@ -1734,6 +1751,7 @@
   async function startCall(){
     if(connecting||room) return;
     connecting=true; setStatus('撥號中…'); callLabel.textContent='連線中';
+    setLamp('livekit','warn'); setLamp('agent','warn'); setLamp('audio','');
     muteBtn.classList.add('show');   // 連線中→靜音鈕慢慢從掛斷球長出來
     ringback.currentTime=0; ringback.play().catch(()=>{});   // 開始播等待接聽音效
     try{
@@ -1743,13 +1761,14 @@
         body:JSON.stringify({ identity:'coach', name:'使用者', access })
       });
       if(res.status===403){ stopRing(); setStatus('密語錯誤，點右上齒輪設定'); uiIdle(); return; }
-      if(!res.ok){ stopRing(); setStatus('連不上太乙（'+res.status+'）'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setStatus('通話服務無法簽發憑證（'+res.status+'）'); setLamp('livekit','bad'); uiIdle(); return; }
       const d=await res.json();
       currentCallId=d.room||'';
 
       room=new LK.Room({ adaptiveStream:true, dynacast:true });
       room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
         if(track.kind===LK.Track.Kind.Audio){
+          setLamp('audio','ok');
           stopRing();                       // AI 夥伴接聽了 → 停等待鈴聲
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
@@ -1759,9 +1778,11 @@
         }
       });
       room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
+        setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
         if(s) applyAgentState(s); else setStatus('通話中');
       });
+      room.on(LK.RoomEvent.ParticipantDisconnected,()=>setLamp('agent','warn'));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
@@ -1769,6 +1790,7 @@
       room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已掛斷'); });
 
       await room.connect(d.url, d.token);
+      setLamp('livekit','ok');
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
         setMic('ok');
@@ -1784,9 +1806,9 @@
       const others=room.numParticipants||0;
       setStatus(others>0?'通話中':'AI 夥伴接通中…');
       // AI 夥伴已在房且已有狀態 → 立刻反映 (避免錯過第一個狀態)
-      try{ room.remoteParticipants.forEach(p=>{ const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
+      try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
-      stopRing(); setStatus('出錯了：'+(e&&e.message?e.message:e)); uiIdle(); room=null;
+      stopRing(); setStatus('出錯了：'+(e&&e.message?e.message:e)); setLamp('livekit','bad'); uiIdle(); room=null;
     }
   }
 
@@ -1796,7 +1818,7 @@
     try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 聲浪源歸零 → 光球回待機呼吸
-    room=null; muted=false; currentCallId=''; setMic(''); uiIdle(); setStatus(msg||'已掛斷');
+    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio',''); uiIdle(); setStatus(msg||'已掛斷');
   }
   async function endCall(){
     if(room){ try{ await room.disconnect(); }catch(_){} }
@@ -1814,8 +1836,8 @@
   callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
   muteBtn.addEventListener('click', toggleMute);
   meetingExpandBtn&&meetingExpandBtn.addEventListener('click', toggleMeetingTranscriptExpanded);
-  swipeHint&&swipeHint.addEventListener('click',()=>{ if(!activeOverlayOpen()) toggleMeetingView(); });
-  swipeHint&&swipeHint.addEventListener('keydown',e=>{
+  MEETING_ENABLED&&swipeHint&&swipeHint.addEventListener('click',()=>{ if(!activeOverlayOpen()) toggleMeetingView(); });
+  MEETING_ENABLED&&swipeHint&&swipeHint.addEventListener('keydown',e=>{
     if(e.key==='Enter' || e.key===' '){
       e.preventDefault();
       if(!activeOverlayOpen()) toggleMeetingView();
@@ -2030,6 +2052,7 @@
   });
 
   function beginMeetingDrag(clientX, clientY, target){
+    if(!MEETING_ENABLED) return;
     if(activeOverlayOpen()) return;
     const active=document.activeElement;
     if(active && /input|textarea|select/i.test(active.tagName||'')) return;
@@ -2110,6 +2133,7 @@
     setMeetingProgress(shouldOpen?1:0,true);
   });
   window.addEventListener('keydown',e=>{
+    if(!MEETING_ENABLED) return;
     if(activeOverlayOpen()) return;
     if(e.key==='ArrowRight') openMeetingView();
     if(e.key==='ArrowLeft') closeMeetingView();
@@ -2122,12 +2146,12 @@
   refreshSwipeHint();
   setMeetingUi();
   resizeMeetingWave();
-  loadMeetingHistory();
+  if(MEETING_ENABLED) loadMeetingHistory();
   window.addEventListener('resize',()=>{
     resizeMeetingWave();
     setMeetingProgress(meetingProgress,false);
   });
-  setInterval(tickMeetingRecording, 250);
+  if(MEETING_ENABLED) setInterval(tickMeetingRecording, 250);
 
   setMic('');                       // MIC 待機灰
   pollHealth();                     // 開機先點亮一次

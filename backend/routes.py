@@ -252,12 +252,17 @@ def api_yuling_health():
 
     creds = _load_livekit_creds()
     if AGENT_NAME != "ailivex-realtime-v9":
-        # Hosted Builder runs outside this server. Its model/log status cannot be
-        # inferred from the legacy local worker keys or files.
+        # Hosted Builder runs outside this server. This endpoint can prove only
+        # that the preview API responds and that LiveKit credentials are set.
+        # Provider and Agent health require actual call events or LiveKit-side checks.
         configured = all((creds["url"], creds["key"], creds["secret"]))
-        data = {"llm": "unknown", "stt": "unknown", "tts": "unknown",
-                "livekit": "unknown" if configured else "bad", "memory": "bad",
-                "agent": AGENT_NAME}
+        data = {"service": "ok", "mode": "hosted_builder",
+                "call_config": "configured" if configured else "missing",
+                "agent": AGENT_NAME,
+                "provider_health": "not_observable_from_preview",
+                "integrations": {"hermes": "not_connected", "memory": "not_connected",
+                                 "knowledge": "not_connected", "graph": "not_connected",
+                                 "mcp": "not_connected"}}
         _health_cache["ts"] = now
         _health_cache["data"] = data
         return jsonify(data)
