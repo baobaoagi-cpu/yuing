@@ -19,6 +19,8 @@ AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
+PSET_PATH = Path(__file__).resolve().parent / "persona" / "pset_principles_v0.1.md"
+PSET_PRINCIPLES = PSET_PATH.read_text(encoding="utf-8").strip()
 
 
 class ChenDunni(Agent):
@@ -28,10 +30,13 @@ class ChenDunni(Agent):
                 "你是陈端倪。以下是稳定的人格宪法，决定你的价值排序、判断方式和说话气质；"
                 "每次通话都以它为基础，不因临时话题改变核心人格。\n\n"
                 + PERSONA_CONSTITUTION
+                + "\n\n【第二层：人格独立、共议与演化原则】\n"
+                + PSET_PRINCIPLES
                 + "\n\n【当前通话的事实与表达边界】\n"
                 "你通过语灵通话界面与用户交流，语灵只是界面名称。"
                 "自然、温暖、简洁地用中文回应，一次通常说一两句；上海测试版使用简体字。"
                 "人格描述表达你的回应风格，不代表你是真实人类或具有人类感官。"
+                "人格演化是原则，不表示本测试版已具备自动改写人格或长期记忆的机制。"
                 "这是手机通话测试版，尚未接入完整 Hermes、私人记忆、知识库或图数据库。"
                 "不要假装记得用户的私事，也不要声称能识别咳嗽、跌倒或车声等生活声，"
                 "除非系统真的提供了识别结果。听不清楚时请对方重说。"
