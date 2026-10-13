@@ -1,7 +1,10 @@
 """Offline checks for opt-in, owner-scoped public page read artifacts."""
 import os
+import sqlite3
 import tempfile
+import time
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 os.environ.setdefault("POC_PREVIEW_USER", "test-user")
@@ -50,9 +53,95 @@ class PageReadApiTest(unittest.TestCase):
 
     @staticmethod
     def result():
-        return {"url": "https://example.org/article", "fetched_at": "2026-10-14T00:00:00+00:00",
+        return {"url": "https://example.org/article", "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "sha256": "a" * 64, "content_type": "text/html",
                 "text": "来源网页内容。", "source_kind": "public_web_untrusted"}
+
+    def make_read_artifact(self, url="https://example.org/article"):
+        exchange = self.link_event(url)
+        result = self.result()
+        result["url"] = url
+        with patch.object(server, "read_public_page", return_value=result):
+            saved = self.read(exchange["user_event"]["id"])
+        self.assertEqual(saved.status_code, 201)
+        return exchange["session_id"], saved.json["page_read"]["id"]
+
+    def test_explicit_page_context_is_scoped_bounded_and_visible_on_reload(self):
+        self.login()
+        url = "https://example.org/article?access_token=secret-value"
+        sid, page_id = self.make_read_artifact(url)
+        with patch.object(server, "reply_to", return_value="摘录说了这个。") as model:
+            response = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "这页说了什么？",
+                                              "session_id": sid,
+                                              "page_read_id": page_id,
+                                              "source_url": "https://attacker.invalid/",
+                                              "page_text": "伪造内容"})
+        self.assertEqual(response.status_code, 200)
+        page_context = model.call_args.kwargs["page_context"]
+        self.assertEqual(page_context["text"], "来源网页内容。")
+        self.assertEqual(page_context["model_url"], "https://example.org/article")
+        self.assertNotIn("伪造内容", str(model.call_args))
+        citation = response.json["assistant_event"]["source_citation"]
+        self.assertEqual(citation["page_read_id"], page_id)
+        self.assertEqual(citation["url"], url)
+        self.assertEqual(citation["excerpt_chars"], len("来源网页内容。"))
+        history = self.client.get("/api/v2/history?session_id=" + sid,
+                                  base_url=self.base).json["events"]
+        self.assertEqual(history[-2]["source_citation"], citation)
+        self.assertEqual(history[-1]["source_citation"], citation)
+        self.assertNotIn("来源网页内容。", str(history))
+
+    def test_page_context_rejects_cross_owner_session_pending_failed_and_stale(self):
+        self.login()
+        sid, page_id = self.make_read_artifact()
+        other_sid = self.link_event("https://example.org/other")["session_id"]
+        def ask(session_id=sid, read_id=page_id):
+            with patch.object(server, "reply_to", return_value="不应调用") as model:
+                response = self.client.post("/api/v2/chat", base_url=self.base,
+                                            headers=self.headers,
+                                            json={"text": "解释", "session_id": session_id,
+                                                  "page_read_id": read_id})
+                model.assert_not_called()
+            return response
+        self.assertEqual(ask(session_id=None).status_code, 400)
+        self.assertEqual(ask(session_id=other_sid).status_code, 404)
+        with patch.object(server, "USERNAME", "friend"), \
+             patch.object(server, "PASSWORD", "friend-password"):
+            other = server.app.test_client()
+            self.login(other, "friend", "friend-password")
+            response = other.post("/api/v2/chat", base_url=self.base,
+                                  headers=self.headers,
+                                  json={"text": "解释", "session_id": sid,
+                                        "page_read_id": page_id})
+            self.assertEqual(response.status_code, 404)
+        db_path = os.environ["POC_CHAT_DB_PATH"]
+        with sqlite3.connect(db_path) as db:
+            db.execute("UPDATE page_reads SET requested_at=? WHERE id=?",
+                       (time.time() - 24 * 60 * 60 - 1, page_id))
+        self.assertEqual(ask().status_code, 404)
+        with sqlite3.connect(db_path) as db:
+            db.execute("UPDATE page_reads SET requested_at=?,status='pending' WHERE id=?",
+                       (time.time(), page_id))
+        self.assertEqual(ask().status_code, 404)
+        with sqlite3.connect(db_path) as db:
+            db.execute("UPDATE page_reads SET status='failed' WHERE id=?", (page_id,))
+        self.assertEqual(ask().status_code, 404)
+
+    def test_page_context_requires_server_fetch_metadata(self):
+        self.login()
+        sid, page_id = self.make_read_artifact()
+        db_path = os.environ["POC_CHAT_DB_PATH"]
+        with sqlite3.connect(db_path) as db:
+            db.execute("UPDATE page_reads SET sha256=NULL WHERE id=?", (page_id,))
+        with patch.object(server, "reply_to") as model:
+            response = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "解释", "session_id": sid,
+                                              "page_read_id": page_id})
+            model.assert_not_called()
+        self.assertEqual(response.status_code, 404)
 
     def test_disabled_by_default_and_auth_csrf(self):
         self.assertEqual(self.read("00000000-0000-0000-0000-000000000000").status_code, 401)

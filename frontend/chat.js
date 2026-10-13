@@ -13,6 +13,8 @@ const urlPreview = $("url-preview");
 const urlHost = $("url-host");
 const urlPreviewStatus = $("url-preview-status");
 const globalStatus = $("global-status");
+const pageReference = $("page-reference");
+const pageReferenceHost = $("page-reference-host");
 const SESSION_KEY = "yuling_chat_session_v2";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 4_000_000;
@@ -20,6 +22,7 @@ let sessionId = localStorage.getItem(SESSION_KEY) || "";
 let selectedImage = null;
 let selectedImageUrl = "";
 let sending = false;
+let selectedPageRead = null;
 const messageImageUrls = new Set();
 const savedKnowledgeEventIds = new Set();
 
@@ -70,6 +73,59 @@ function pageSourceUrl(originalUrl, pageRead) {
   } catch { return null; }
 }
 
+function pageReadReference(originalUrl, pageRead) {
+  const source = pageSourceUrl(originalUrl, pageRead);
+  if (!source || source.href.split("#")[0] !== originalUrl.href.split("#")[0] ||
+      typeof pageRead?.id !== "string" || !pageRead.id ||
+      typeof pageRead.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(pageRead.sha256) ||
+      !["text/html", "text/plain"].includes(pageRead.content_type)) return null;
+  const fetchedTime = Date.parse(pageRead.fetched_at);
+  if (!Number.isFinite(fetchedTime) || fetchedTime > Date.now() + 60_000 ||
+      Date.now() - fetchedTime > 24 * 60 * 60 * 1000) return null;
+  return { id: pageRead.id, hostname: source.hostname, fetchedAt: pageRead.fetched_at };
+}
+
+function snapshotTime(value) {
+  const time = new Date(value);
+  return Number.isNaN(time.getTime()) ? "" : new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(time);
+}
+
+function setPageReference(reference) {
+  selectedPageRead = reference;
+  pageReference.hidden = !reference;
+  pageReferenceHost.textContent = reference
+    ? `${reference.hostname} · ${snapshotTime(reference.fetchedAt)} 的摘录` : "";
+  if (reference) {
+    showStatus("已选择网页摘录。输入问题后发送，端倪只会参考有限摘录，不代表读懂整个网站。");
+    input.focus();
+  }
+}
+
+function addSourceCitation(bubble, citation) {
+  if (!citation || typeof citation.url !== "string") return;
+  let source;
+  try {
+    source = new URL(citation.url);
+    if (source.protocol !== "https:") return;
+  } catch { return; }
+  const card = document.createElement("a");
+  card.className = "source-citation";
+  card.href = source.href;
+  card.target = "_blank";
+  card.rel = "noopener noreferrer nofollow";
+  const label = document.createElement("strong");
+  label.textContent = `网页摘录 · ${source.hostname}`;
+  const detail = document.createElement("small");
+  const excerpt = Number.isInteger(citation.excerpt_chars) && citation.excerpt_chars > 0
+    ? `仅引用 ${citation.excerpt_chars} 字摘录` : "仅引用有限摘录";
+  const fetched = snapshotTime(citation.fetched_at);
+  detail.textContent = `${excerpt} · ${fetched ? `${fetched} 快照 · ` : ""}非完整网页`;
+  card.append(label, detail);
+  bubble.append(card);
+}
+
 function showPageRead(row, originalUrl, pageRead) {
   const card = row.querySelector(".link-card");
   if (!card || !originalUrl) return;
@@ -79,8 +135,11 @@ function showPageRead(row, originalUrl, pageRead) {
   if (pageRead?.status === "read" && source) {
     card.href = source.href;
     title.textContent = source.hostname;
-    subtitle.textContent = `已读取网页 · 来源 ${source.hostname} · 端倪尚未使用`;
-    card.title = pageRead.fetched_at ? `读取时间：${pageRead.fetched_at}` : "已读取的网页来源";
+    const usable = pageReadReference(originalUrl, pageRead);
+    subtitle.textContent = usable
+      ? `已读取摘录 · ${snapshotTime(pageRead.fetched_at)} · 尚未用于回答`
+      : "已读取快照 · 暂不可引用，请重新读取";
+    card.title = pageRead.fetched_at ? `读取时间：${snapshotTime(pageRead.fetched_at)}` : "已读取的网页来源";
   } else if (pageRead?.status === "failed") {
     subtitle.textContent = "读取失败 · 未使用页面内容";
   } else if (pageRead?.status === "read") {
@@ -96,10 +155,21 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "page-read-action";
-  const hasSource = !!pageSourceUrl(url, pageRead);
-  button.textContent = hasSource ? "已读取网页" : "读取此网页";
-  button.disabled = hasSource;
+  const hasReference = !!pageReadReference(url, pageRead);
+  button.textContent = hasReference ? "已读取网页" : pageRead?.status === "read" ? "重新读取" : "读取此网页";
+  button.disabled = hasReference;
   button.setAttribute("aria-label", `读取 ${url.hostname} 的公开网页内容`);
+  function addReferenceAction(artifact) {
+    const reference = pageReadReference(url, artifact);
+    if (!reference || footer.querySelector(".page-reference-action")) return;
+    const cite = document.createElement("button");
+    cite.type = "button";
+    cite.className = "page-reference-action";
+    cite.textContent = "引用此网页提问";
+    cite.setAttribute("aria-label", `引用 ${reference.hostname} 的网页摘录提问`);
+    cite.addEventListener("click", () => setPageReference(reference));
+    footer.append(cite);
+  }
   button.addEventListener("click", async () => {
     button.disabled = true;
     button.textContent = "读取中…";
@@ -112,12 +182,15 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
       const outcome = result.page_read;
       if (!outcome || !["read", "failed"].includes(outcome.status)) throw new Error("网页服务没有返回读取结果");
       showPageRead(row, url, outcome);
-      const confirmedRead = !!pageSourceUrl(url, outcome);
+      const confirmedRead = !!pageReadReference(url, outcome);
       button.textContent = confirmedRead ? "已读取网页" : "重试读取";
       button.disabled = confirmedRead;
       if (outcome.status === "failed") showStatus("网页读取失败，端倪没有使用页面内容。可以稍后重试。");
-      if (confirmedRead) showStatus("网页已读取（试用暂存）；内容尚未提供给端倪回答，也未存为知识。");
-      if (outcome.status === "read" && !confirmedRead) showStatus("网页读取结果缺少来源，状态未确认。可以重试。");
+      if (confirmedRead) {
+        addReferenceAction(outcome);
+        showStatus("网页已读取（试用暂存）。点击“引用此网页提问”后，输入问题才会提供有限摘录；尚未存为知识。");
+      }
+      if (outcome.status === "read" && !confirmedRead) showStatus("网页快照来源不符、不完整或已过期；这次不能引用，可以重试读取。");
     } catch (error) {
       button.disabled = false;
       button.textContent = "重试读取";
@@ -130,9 +203,10 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
     }
   });
   footer.append(button);
+  addReferenceAction(pageRead);
 }
 
-function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null }) {
+function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null, sourceCitation = null }) {
   intro.hidden = true;
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -157,6 +231,7 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
   bubble.append(body);
   const parsed = url instanceof URL ? url : firstUrl(url || text);
   if (parsed) bubble.append(linkCard(parsed));
+  if (role === "assistant") addSourceCitation(bubble, sourceCitation);
   const meta = document.createElement("div");
   meta.className = "message-meta";
   const sourceLabel = sourceKind === "livekit_browser_transcript" ? "语音转写 · " : "";
@@ -283,7 +358,8 @@ async function loadHistory() {
       addMessage({ role, text: event.text || event.content || "",
         imageUrl: event.image_id ? `/api/v2/image/${encodeURIComponent(event.image_id)}` : "",
         url: event.url || null, timestamp: event.created_at || event.timestamp,
-        sourceKind: event.source_kind || "", eventId: event.id || "", pageRead: event.page_read || null });
+        sourceKind: event.source_kind || "", eventId: event.id || "", pageRead: event.page_read || null,
+        sourceCitation: event.source_citation || null });
     }
     if (events.length) showStatus("");
   } catch (error) {
@@ -301,6 +377,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (sending) return;
   const text = input.value.trim();
+  const pageReadId = text ? selectedPageRead?.id || "" : "";
   const file = selectedImage;
   const messageImageUrl = file ? URL.createObjectURL(file) : "";
   if (messageImageUrl) messageImageUrls.add(messageImageUrl);
@@ -323,6 +400,7 @@ form.addEventListener("submit", async (event) => {
     if (sessionId) requestBody.session_id = sessionId;
     if (imageId) requestBody.image_id = imageId;
     if (url) requestBody.url = url.href;
+    if (pageReadId) requestBody.page_read_id = pageReadId;
     const result = await jsonResponse(await fetch("/api/v2/chat", {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
     }));
@@ -337,8 +415,10 @@ form.addEventListener("submit", async (event) => {
       attachKnowledgeAction(visible.footer, result.user_event.id, text);
       if (url) attachPageReadAction(visible.footer, result.user_event.id, url, visible.row, result.user_event.page_read || null);
     }
-    addMessage({ role: "assistant", text: result.reply });
+    addMessage({ role: "assistant", text: result.reply,
+      sourceCitation: result.assistant_event?.source_citation || null });
     input.value = "";
+    if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
     clearImage();
     updateComposer();
     input.focus();
@@ -356,13 +436,19 @@ form.addEventListener("submit", async (event) => {
           error.payload.user_event.page_read || null);
       }
       input.value = "";
+      if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
       clearImage();
       showStatus(error.message || "消息已保存，端倪暂时无法回复。");
     } else {
       visible.row.classList.add("failed");
       visible.meta.textContent = error.httpStatus && error.httpStatus < 500
         ? "发送失败 · 未保存" : "发送状态未确认 · 刷新查看";
-      showStatus(error.message || "消息发送失败，请稍后重试。");
+      if (pageReadId && [400, 404].includes(error.httpStatus)) {
+        if (selectedPageRead?.id === pageReadId) setPageReference(null);
+        showStatus("网页摘录已过期或试用记录已清空。问题未发送；请重新读取网址后再提问。");
+      } else {
+        showStatus(error.message || "消息发送失败，请稍后重试。");
+      }
     }
   } finally {
     sending = false;
@@ -384,6 +470,7 @@ input.addEventListener("paste", (event) => {
 imageInput.addEventListener("change", () => { if (imageInput.files?.[0]) setImage(imageInput.files[0]); });
 $("attach-button").addEventListener("click", () => imageInput.click());
 $("remove-attachment").addEventListener("click", clearImage);
+$("remove-page-reference").addEventListener("click", () => setPageReference(null));
 $("remove-url").addEventListener("click", () => {
   const url = firstUrl(input.value);
   if (!url) return;

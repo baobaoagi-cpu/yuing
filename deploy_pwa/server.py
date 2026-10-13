@@ -562,12 +562,17 @@ def conversation_chat():
     image_id = _uuid(data.get("image_id")) if data.get("image_id") else None
     if data.get("image_id") and not image_id:
         return jsonify(error="图片编号不正确"), 400
+    page_read_id = _uuid(data.get("page_read_id")) if data.get("page_read_id") else None
+    if data.get("page_read_id") and not page_read_id:
+        return jsonify(error="网页读取编号不正确"), 400
+    if page_read_id and os.environ.get("POC_PUBLIC_WEB_READ_ENABLED") != "1":
+        return jsonify(error="网页读取尚未启用"), 503
     link_url = data.get("url")
     if link_url is not None:
         if (not isinstance(link_url, str) or len(link_url) > 2048 or
                 urlparse(link_url).scheme not in {"http", "https"} or not urlparse(link_url).hostname):
             return jsonify(error="网址格式不正确"), 400
-    if not text_value and not image_id and not link_url:
+    if not text_value and not image_id and not link_url and not page_read_id:
         return jsonify(error="请输入文字、图片或网址"), 400
     store = _chat_store()
     if store is None:
@@ -581,18 +586,29 @@ def conversation_chat():
     sid = _uuid(sid_raw) if sid_raw else None
     if sid_raw and not sid:
         return jsonify(error="会话编号不正确"), 400
+    if page_read_id and sid is None:
+        return jsonify(error="引用网页需要原会话编号"), 400
     if sid and not store.has_session(sid):
         return jsonify(error="会话不存在"), 404
+    page_context = store.usable_page_context(page_read_id, sid) if page_read_id else None
+    if page_read_id and page_context is None:
+        return jsonify(error="网页读取记录不存在或已过期"), 404
     sid = sid or store.create_session()
     history = store.history(sid, limit=20)
-    user_event = store.add_event(sid, "user", text_value, image_id=image_id,
-                                 link_url=link_url, source_kind="user_explicit")
+    try:
+        user_event = store.add_event(sid, "user", text_value, image_id=image_id,
+                                     link_url=link_url, source_kind="user_explicit",
+                                     page_read_id=page_read_id)
+    except StoreUnavailable:
+        return jsonify(error="网页读取记录不存在或已过期"), 404
     try:
         answer = reply_to(text_value, history, store.memories(), image=image,
-                          link_url=link_url)
+                          link_url=link_url, page_context=page_context)
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
-    assistant_event = store.add_event(sid, "assistant", answer, source_kind="model_generated")
+    assistant_event = store.add_event(sid, "assistant", answer,
+                                      source_kind="model_generated",
+                                      page_read_id=page_read_id)
     return jsonify(session_id=sid, reply=answer,
                    user_event=user_event, assistant_event=assistant_event)
 

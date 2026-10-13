@@ -22,3 +22,17 @@ button,textarea{font:inherit}button{cursor:pointer}a{color:inherit;text-decorati
 .knowledge-action:hover,.page-read-action:hover{text-decoration:underline}
 .knowledge-action:focus-visible,.page-read-action:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 .knowledge-action:disabled,.page-read-action:disabled{color:var(--soft);cursor:default;text-decoration:none}
+.page-reference[hidden]{display:none}
+.page-reference{max-width:740px;margin:0 auto 8px;display:flex;align-items:center;gap:10px;min-width:0;padding:7px 9px;border-radius:11px;border:1px solid #32694f;background:#173125}
+.page-reference-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.page-reference-copy strong{font-size:12px;color:#b6e9cd}
+.page-reference-copy small{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-reference button{border:0;background:none;color:var(--muted);font-size:22px;width:28px;height:28px;flex:none}
+.page-reference button:focus-visible,.page-reference-action:focus-visible,.source-citation:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.page-reference-action{border:0;background:transparent;color:#a3d9bb;font-size:11px;line-height:1.5;min-height:28px;padding:3px 0;white-space:nowrap}
+.page-reference-action:hover{text-decoration:underline}
+.source-citation{display:flex;flex-direction:column;gap:2px;min-width:0;margin-top:11px;padding:8px 10px;border-radius:9px;border:1px solid #365a44;background:#172c21;white-space:normal}
+.source-citation strong{font-size:11px;font-weight:600;color:#b9e6c9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.source-citation small{font-size:10px;color:#aebdb2}
+.source-citation:hover{border-color:#61ae7c}
+@media(max-width:390px){.message-footer{gap:1px 8px}.knowledge-action,.page-read-action,.page-reference-action{font-size:10px}.source-citation{padding:7px 8px}}

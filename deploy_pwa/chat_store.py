@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import sqlite3
 import time
+import re
+from urllib.parse import urlsplit
+from deploy_pwa.public_page_reader import PageReadError, _validated_url
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +44,8 @@ class ChatStore:
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id),
                     role TEXT NOT NULL CHECK(role IN ('user','assistant')),
                     text TEXT NOT NULL, image_id TEXT, link_url TEXT,
-                    source_kind TEXT NOT NULL, created_at REAL NOT NULL
+                    source_kind TEXT NOT NULL, created_at REAL NOT NULL,
+                    page_read_id TEXT
                 );
                 CREATE INDEX IF NOT EXISTS events_session_time ON events(session_id, created_at);
                 CREATE TABLE IF NOT EXISTS call_transcripts (
@@ -102,6 +106,10 @@ class ChatStore:
                        "ON knowledge_items(owner_id, created_at)")
             db.execute("CREATE INDEX IF NOT EXISTS relation_owner_time "
                        "ON relation_candidates(owner_id, created_at)")
+            event_columns = {row[1] for row in db.execute("PRAGMA table_info(events)")}
+            if "page_read_id" not in event_columns:
+                db.execute("ALTER TABLE events ADD COLUMN page_read_id TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS events_page_read ON events(page_read_id)")
 
     @contextmanager
     def _connect(self):
@@ -131,19 +139,26 @@ class ChatStore:
             return db.execute("SELECT 1 FROM sessions WHERE id=? AND owner_id=?",
                               (sid, self.owner_id)).fetchone() is not None
 
-    def add_event(self, sid, role, text, image_id=None, link_url=None, source_kind="conversation"):
+    def add_event(self, sid, role, text, image_id=None, link_url=None,
+                  source_kind="conversation", page_read_id=None):
         eid = str(uuid4())
         now = time.time()
         with self._connect() as db:
             if not db.execute("SELECT 1 FROM sessions WHERE id=? AND owner_id=?",
                               (sid, self.owner_id)).fetchone():
                 raise StoreUnavailable("会话不存在")
-            db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
-                       (eid, sid, role, text, image_id, link_url, source_kind, now))
+            if page_read_id and not self._usable_page_context(db, page_read_id, now, sid):
+                raise StoreUnavailable("网页读取记录不存在或已过期")
+            db.execute("INSERT INTO events(id,session_id,role,text,image_id,link_url,"
+                       "source_kind,created_at,page_read_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                       (eid, sid, role, text, image_id, link_url, source_kind, now,
+                        page_read_id))
             db.execute("UPDATE sessions SET updated_at=? WHERE id=?", (now, sid))
+            citation = self._citation(self._usable_page_context(db, page_read_id, now, sid)) \
+                if page_read_id else None
         return {"id": eid, "session_id": sid, "role": role, "text": text,
                 "image_id": image_id, "url": link_url, "source_kind": source_kind,
-                "created_at": now}
+                "created_at": now, "source_citation": citation}
 
     def add_call_transcript(self, sid, call_id, speaker_identity, segment_id, role, text):
         """Store one final LiveKit text segment exactly once, with its browser provenance."""
@@ -172,7 +187,8 @@ class ChatStore:
                                 (sid, self.owner_id)).fetchone():
                 raise StoreUnavailable("会话不存在")
             eid = str(uuid4())
-            db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO events(id,session_id,role,text,image_id,link_url,"
+                       "source_kind,created_at) VALUES(?,?,?,?,?,?,?,?)",
                        (eid, sid, role, text, None, None,
                         "livekit_browser_transcript", now))
             db.execute("INSERT INTO call_transcripts VALUES(?,?,?,?)",
@@ -190,6 +206,7 @@ class ChatStore:
                               "ORDER BY created_at, seq", (sid, self.owner_id, limit)).fetchall()
             event_ids = [row["id"] for row in rows]
             reads = {}
+            citations = {}
             if event_ids:
                 placeholders = ",".join("?" for _ in event_ids)
                 found = db.execute(
@@ -204,11 +221,81 @@ class ChatStore:
                         "fetched_at": item["fetched_at"], "sha256": item["sha256"],
                         "content_type": item["content_type"],
                     })
+                cited_ids = [row["page_read_id"] for row in rows if row["page_read_id"]]
+                if cited_ids:
+                    cited_placeholders = ",".join("?" for _ in cited_ids)
+                    cited_rows = db.execute(
+                        "SELECT id,url,fetched_at,sha256,content_type,text "
+                        "FROM page_reads WHERE owner_id=? AND id IN (" +
+                        cited_placeholders + ") AND status='read'",
+                        (self.owner_id, *cited_ids),
+                    ).fetchall()
+                    citations = {row["id"]: self._citation(row) for row in cited_rows}
         return [{"id": x["id"], "session_id": x["session_id"], "role": x["role"],
                  "text": x["text"], "image_id": x["image_id"], "url": x["link_url"],
                  "source_kind": x["source_kind"], "created_at": x["created_at"],
-                 "page_read": reads.get(x["id"])}
+                 "page_read": reads.get(x["id"]),
+                 "source_citation": citations.get(x["page_read_id"])}
                 for x in rows]
+
+    @staticmethod
+    def _citation(row):
+        if not row:
+            return None
+        return {"page_read_id": row["id"], "url": row["url"],
+                "fetched_at": row["fetched_at"], "sha256": row["sha256"],
+                "content_type": row["content_type"],
+                "excerpt_chars": min(len(row["text"] or ""), 4000)}
+
+    def _usable_page_context(self, db, page_id, now, session_id=None):
+        if not page_id:
+            return None
+        row = db.execute(
+            "SELECT p.id,p.url,p.requested_at,p.status,p.fetched_at,p.sha256,"
+            "p.content_type,p.text,e.link_url,e.session_id FROM page_reads p "
+            "JOIN events e ON e.id=p.source_event_id "
+            "JOIN sessions s ON s.id=e.session_id "
+            "WHERE p.id=? AND p.owner_id=? AND s.owner_id=? "
+            "AND e.role='user' AND e.source_kind='user_explicit' "
+            "AND e.link_url IS NOT NULL",
+            (page_id, self.owner_id, self.owner_id),
+        ).fetchone()
+        if not row or row["status"] != "read":
+            return None
+        if session_id is not None and row["session_id"] != session_id:
+            return None
+        if not (0 <= now - row["requested_at"] <= 24 * 60 * 60):
+            return None
+        if (not isinstance(row["url"], str) or
+                not row["fetched_at"] or not isinstance(row["sha256"], str) or
+                not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) or
+                row["content_type"] not in {"text/html", "text/plain"} or
+                not isinstance(row["text"], str) or not row["text"].strip()):
+            return None
+        try:
+            _, source_url = _validated_url(row["link_url"])
+            _, fetched_url = _validated_url(row["url"])
+            fetched_stamp = datetime.fromisoformat(row["fetched_at"])
+            if fetched_stamp.tzinfo is None:
+                return None
+            fetched_time = fetched_stamp.timestamp()
+        except (PageReadError, ValueError, TypeError):
+            return None
+        if source_url != fetched_url or not 0 <= now - fetched_time <= 24 * 60 * 60:
+            return None
+        return row
+
+    def usable_page_context(self, page_id, session_id):
+        """Return one fresh, server-fetched, owner-linked excerpt and citation."""
+        with self._connect() as db:
+            row = self._usable_page_context(db, page_id, time.time(), session_id)
+        if not row:
+            return None
+        url = urlsplit(row["url"])
+        model_url = url._replace(query="", fragment="").geturl()
+        return {"text": row["text"][:4000],
+                "model_url": model_url,
+                "source_citation": self._citation(row)}
 
     def page_read_source(self, source_event_id):
         """Only a user-posted link card from this account can initiate a read."""
