@@ -111,6 +111,7 @@ function attachKnowledgeAction(footer, eventId, originalText) {
   button.className = "knowledge-action";
   button.textContent = savedKnowledgeEventIds.has(eventId) ? "已存为知识" : "存为知识";
   button.disabled = savedKnowledgeEventIds.has(eventId);
+  if (button.disabled) button.title = "试用暂存；重新部署可能清空";
   button.setAttribute("aria-label", "将这条用户消息存为知识");
   button.addEventListener("click", async () => {
     button.disabled = true;
@@ -124,7 +125,8 @@ function attachKnowledgeAction(footer, eventId, originalText) {
       }));
       savedKnowledgeEventIds.add(eventId);
       button.textContent = "已存为知识";
-      showStatus("");
+      button.title = "试用暂存；重新部署可能清空";
+      showStatus("已存为知识（试用暂存）；重新部署可能清空。");
     } catch (error) {
       button.disabled = false;
       button.textContent = "保存失败 · 重试";
