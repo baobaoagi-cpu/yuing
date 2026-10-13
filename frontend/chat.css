@@ -15,3 +15,10 @@ button,textarea{font:inherit}button{cursor:pointer}a{color:inherit;text-decorati
 .composer{max-width:740px;margin:auto;display:flex;align-items:flex-end;gap:8px;padding:6px;border-radius:18px;border:1px solid #35443a;background:#1a211c}.attach-button,.send-button{width:40px;height:40px;border:0;border-radius:12px;display:grid;place-items:center;flex:none}.attach-button{background:transparent;color:#bfcec2;cursor:pointer}.attach-button:hover{background:#27332a}.attach-button svg,.send-button svg{width:22px;height:22px}.composer textarea{flex:1;min-width:0;max-height:130px;min-height:40px;resize:none;border:0;outline:0;padding:9px 2px;background:transparent;color:var(--text);font-size:16px;line-height:22px}.composer textarea::placeholder{color:#89988b}.send-button{background:var(--green);color:#092116}.send-button:disabled{background:#2b3a30;color:#72877b;cursor:default}.composer-footnote{max-width:740px;margin:6px auto 0;color:#728078;text-align:center;font-size:10px;letter-spacing:.01em}
 @keyframes appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 @media(max-width:520px){.topbar{height:67px}.conversation-inner{padding-top:20px;gap:13px}.message{max-width:92%}.bubble{font-size:14px;padding:10px 13px}.composer-footnote{font-size:9px}.intro h1{font-size:28px}}
+.message-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 3px 0}
+.message-footer .message-meta{margin:0}
+.message.user .message-footer{justify-content:flex-end}
+.knowledge-action{border:0;background:transparent;color:#a3d9bb;font-size:11px;line-height:1.5;padding:2px 0;white-space:nowrap}
+.knowledge-action:hover{text-decoration:underline}
+.knowledge-action:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.knowledge-action:disabled{color:var(--soft);cursor:default;text-decoration:none}

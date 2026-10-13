@@ -20,6 +20,7 @@ let selectedImage = null;
 let selectedImageUrl = "";
 let sending = false;
 const messageImageUrls = new Set();
+const savedKnowledgeEventIds = new Set();
 
 function showStatus(message) {
   globalStatus.textContent = message;
@@ -60,7 +61,7 @@ function linkCard(url) {
   return card;
 }
 
-function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "" }) {
+function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "" }) {
   intro.hidden = true;
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -89,11 +90,48 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
   meta.className = "message-meta";
   const sourceLabel = sourceKind === "livekit_browser_transcript" ? "语音转写 · " : "";
   meta.textContent = status === "pending" ? "发送中…" : status === "failed" ? "发送失败 · 未保存" : sourceLabel + displayTime(timestamp);
-  stack.append(bubble, meta);
+  const footer = document.createElement("div");
+  footer.className = "message-footer";
+  footer.append(meta);
+  stack.append(bubble, footer);
   row.append(avatar, stack);
   list.append(row);
+  if (role === "user" && sourceKind === "user_explicit" && eventId && text.trim()) {
+    attachKnowledgeAction(footer, eventId, text);
+  }
   conversation.scrollTop = conversation.scrollHeight;
-  return { row, meta };
+  return { row, meta, footer };
+}
+
+function attachKnowledgeAction(footer, eventId, originalText) {
+  const content = originalText.trim().slice(0, 4000);
+  if (!eventId || !content || footer.querySelector(".knowledge-action")) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "knowledge-action";
+  button.textContent = savedKnowledgeEventIds.has(eventId) ? "已存为知识" : "存为知识";
+  button.disabled = savedKnowledgeEventIds.has(eventId);
+  button.setAttribute("aria-label", "将这条用户消息存为知识");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "保存中…";
+    try {
+      await jsonResponse(await fetch("/api/v2/knowledge", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: content.replace(/\s+/g, " ").slice(0, 80),
+          content, source_event_id: eventId }),
+      }));
+      savedKnowledgeEventIds.add(eventId);
+      button.textContent = "已存为知识";
+      showStatus("");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "保存失败 · 重试";
+      showStatus(`未能存为知识：${error.message}`);
+    }
+  });
+  footer.append(button);
 }
 
 function updateUrlPreview() {
@@ -151,6 +189,12 @@ async function jsonResponse(response) {
 async function loadHistory() {
   if (!sessionId) return;
   try {
+    try {
+      const knowledge = await jsonResponse(await fetch("/api/v2/knowledge", { credentials: "same-origin" }));
+      for (const item of knowledge.items || []) {
+        if (item.source_event_id) savedKnowledgeEventIds.add(item.source_event_id);
+      }
+    } catch { /* History remains usable if the optional knowledge list is unavailable. */ }
     const response = await fetch(`/api/v2/history?session_id=${encodeURIComponent(sessionId)}`, { credentials: "same-origin" });
     const payload = await jsonResponse(response);
     const events = Array.isArray(payload.events) ? payload.events : [];
@@ -160,7 +204,7 @@ async function loadHistory() {
       addMessage({ role, text: event.text || event.content || "",
         imageUrl: event.image_id ? `/api/v2/image/${encodeURIComponent(event.image_id)}` : "",
         url: event.url || null, timestamp: event.created_at || event.timestamp,
-        sourceKind: event.source_kind || "" });
+        sourceKind: event.source_kind || "", eventId: event.id || "" });
     }
     if (events.length) showStatus("");
   } catch (error) {
@@ -210,6 +254,9 @@ form.addEventListener("submit", async (event) => {
     }
     visible.row.classList.remove("pending");
     visible.meta.textContent = displayTime();
+    if (result.user_event?.source_kind === "user_explicit") {
+      attachKnowledgeAction(visible.footer, result.user_event.id, text);
+    }
     addMessage({ role: "assistant", text: result.reply });
     input.value = "";
     clearImage();
@@ -223,6 +270,9 @@ form.addEventListener("submit", async (event) => {
         localStorage.setItem(SESSION_KEY, sessionId);
       }
       visible.meta.textContent = "已保存 · 端倪暂时无法回复";
+      if (error.payload.user_event.source_kind === "user_explicit") {
+        attachKnowledgeAction(visible.footer, error.payload.user_event.id, text);
+      }
       input.value = "";
       clearImage();
       showStatus(error.message || "消息已保存，端倪暂时无法回复。");
