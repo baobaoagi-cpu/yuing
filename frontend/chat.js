@@ -11,6 +11,7 @@ const attachmentImage = $("attachment-image");
 const attachmentName = $("attachment-name");
 const urlPreview = $("url-preview");
 const urlHost = $("url-host");
+const urlPreviewStatus = $("url-preview-status");
 const globalStatus = $("global-status");
 const SESSION_KEY = "yuling_chat_session_v2";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -61,7 +62,76 @@ function linkCard(url) {
   return card;
 }
 
-function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "" }) {
+function pageSourceUrl(originalUrl, pageRead) {
+  if (pageRead?.status !== "read" || typeof pageRead.url !== "string") return null;
+  try {
+    const source = new URL(pageRead.url);
+    return source.protocol === "https:" ? source : null;
+  } catch { return null; }
+}
+
+function showPageRead(row, originalUrl, pageRead) {
+  const card = row.querySelector(".link-card");
+  if (!card || !originalUrl) return;
+  const source = pageSourceUrl(originalUrl, pageRead);
+  const title = card.querySelector("strong");
+  const subtitle = card.querySelector("small");
+  if (pageRead?.status === "read" && source) {
+    card.href = source.href;
+    title.textContent = source.hostname;
+    subtitle.textContent = `已读取网页 · 来源 ${source.hostname}`;
+    card.title = pageRead.fetched_at ? `读取时间：${pageRead.fetched_at}` : "已读取的网页来源";
+  } else if (pageRead?.status === "failed") {
+    subtitle.textContent = "读取失败 · 未使用页面内容";
+  } else if (pageRead?.status === "read") {
+    subtitle.textContent = "读取结果缺少来源 · 状态未确认";
+  } else {
+    subtitle.textContent = "外部链接 · 未读取网页内容";
+  }
+}
+
+function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
+  if (!eventId || url?.protocol !== "https:" || footer.querySelector(".page-read-action")) return;
+  showPageRead(row, url, pageRead);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "page-read-action";
+  const hasSource = !!pageSourceUrl(url, pageRead);
+  button.textContent = hasSource ? "已读取网页" : "读取此网页";
+  button.disabled = hasSource;
+  button.setAttribute("aria-label", `读取 ${url.hostname} 的公开网页内容`);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "读取中…";
+    try {
+      const result = await jsonResponse(await fetch("/api/v2/page-read", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_event_id: eventId }),
+      }));
+      const outcome = result.page_read;
+      if (!outcome || !["read", "failed"].includes(outcome.status)) throw new Error("网页服务没有返回读取结果");
+      showPageRead(row, url, outcome);
+      const confirmedRead = !!pageSourceUrl(url, outcome);
+      button.textContent = confirmedRead ? "已读取网页" : "重试读取";
+      button.disabled = confirmedRead;
+      if (outcome.status === "failed") showStatus("网页读取失败，端倪没有使用页面内容。可以稍后重试。");
+      if (outcome.status === "read" && !confirmedRead) showStatus("网页读取结果缺少来源，状态未确认。可以重试。");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "重试读取";
+      if (error.payload?.page_read?.status === "failed") {
+        showPageRead(row, url, error.payload.page_read);
+        showStatus(`网页读取失败，端倪没有使用页面内容：${error.message}`);
+      } else {
+        showStatus(`网页读取状态未确认：${error.message}。刷新对话可查看记录。`);
+      }
+    }
+  });
+  footer.append(button);
+}
+
+function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null }) {
   intro.hidden = true;
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -98,6 +168,10 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
   list.append(row);
   if (role === "user" && sourceKind === "user_explicit" && eventId && text.trim()) {
     attachKnowledgeAction(footer, eventId, text);
+  }
+  if (parsed && role === "user") showPageRead(row, parsed, pageRead);
+  if (parsed && role === "user" && sourceKind === "user_explicit" && eventId) {
+    attachPageReadAction(footer, eventId, parsed, row, pageRead);
   }
   conversation.scrollTop = conversation.scrollHeight;
   return { row, meta, footer };
@@ -140,6 +214,8 @@ function updateUrlPreview() {
   const url = firstUrl(input.value);
   urlPreview.hidden = !url;
   urlHost.textContent = url ? url.hostname : "";
+  urlPreviewStatus.textContent = url?.protocol === "https:"
+    ? "网址卡片 · 发送后可选择读取网页" : "网址卡片 · 未读取网页内容";
 }
 
 function updateComposer() {
@@ -206,7 +282,7 @@ async function loadHistory() {
       addMessage({ role, text: event.text || event.content || "",
         imageUrl: event.image_id ? `/api/v2/image/${encodeURIComponent(event.image_id)}` : "",
         url: event.url || null, timestamp: event.created_at || event.timestamp,
-        sourceKind: event.source_kind || "", eventId: event.id || "" });
+        sourceKind: event.source_kind || "", eventId: event.id || "", pageRead: event.page_read || null });
     }
     if (events.length) showStatus("");
   } catch (error) {
@@ -258,6 +334,7 @@ form.addEventListener("submit", async (event) => {
     visible.meta.textContent = displayTime();
     if (result.user_event?.source_kind === "user_explicit") {
       attachKnowledgeAction(visible.footer, result.user_event.id, text);
+      if (url) attachPageReadAction(visible.footer, result.user_event.id, url, visible.row, result.user_event.page_read || null);
     }
     addMessage({ role: "assistant", text: result.reply });
     input.value = "";
@@ -274,6 +351,8 @@ form.addEventListener("submit", async (event) => {
       visible.meta.textContent = "已保存 · 端倪暂时无法回复";
       if (error.payload.user_event.source_kind === "user_explicit") {
         attachKnowledgeAction(visible.footer, error.payload.user_event.id, text);
+        if (url) attachPageReadAction(visible.footer, error.payload.user_event.id, url, visible.row,
+          error.payload.user_event.page_read || null);
       }
       input.value = "";
       clearImage();

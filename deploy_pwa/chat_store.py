@@ -4,11 +4,16 @@ from __future__ import annotations
 import sqlite3
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 
 class StoreUnavailable(RuntimeError):
+    pass
+
+
+class PageReadQuotaExceeded(RuntimeError):
     pass
 
 
@@ -63,6 +68,17 @@ class ChatStore:
                     object_id TEXT NOT NULL, source_event_id TEXT,
                     status TEXT NOT NULL DEFAULT 'candidate', created_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS page_reads (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                    source_event_id TEXT NOT NULL, url TEXT NOT NULL,
+                    requested_at REAL NOT NULL, utc_day TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('pending','read','failed')),
+                    fetched_at TEXT, sha256 TEXT, content_type TEXT, text TEXT
+                );
+                CREATE INDEX IF NOT EXISTS page_reads_owner_day
+                    ON page_reads(owner_id, utc_day);
+                CREATE INDEX IF NOT EXISTS page_reads_owner_event
+                    ON page_reads(owner_id, source_event_id, requested_at);
             """)
         # Existing single-account databases are assigned to the configured
         # legacy owner once. New records always carry their owner explicitly.
@@ -172,10 +188,90 @@ class ChatStore:
                               "WHERE e.session_id=? AND s.owner_id=? "
                               "ORDER BY e.created_at DESC, e.rowid DESC LIMIT ?) "
                               "ORDER BY created_at, seq", (sid, self.owner_id, limit)).fetchall()
+            event_ids = [row["id"] for row in rows]
+            reads = {}
+            if event_ids:
+                placeholders = ",".join("?" for _ in event_ids)
+                found = db.execute(
+                    "SELECT id,source_event_id,url,status,fetched_at,sha256,content_type "
+                    "FROM page_reads WHERE owner_id=? AND source_event_id IN (" +
+                    placeholders + ") ORDER BY requested_at DESC,rowid DESC",
+                    (self.owner_id, *event_ids),
+                ).fetchall()
+                for item in found:
+                    reads.setdefault(item["source_event_id"], {
+                        "id": item["id"], "status": item["status"], "url": item["url"],
+                        "fetched_at": item["fetched_at"], "sha256": item["sha256"],
+                        "content_type": item["content_type"],
+                    })
         return [{"id": x["id"], "session_id": x["session_id"], "role": x["role"],
                  "text": x["text"], "image_id": x["image_id"], "url": x["link_url"],
-                 "source_kind": x["source_kind"], "created_at": x["created_at"]}
+                 "source_kind": x["source_kind"], "created_at": x["created_at"],
+                 "page_read": reads.get(x["id"])}
                 for x in rows]
+
+    def page_read_source(self, source_event_id):
+        """Only a user-posted link card from this account can initiate a read."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT e.link_url FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=? AND s.owner_id=? AND e.role='user' "
+                "AND e.source_kind='user_explicit'",
+                (source_event_id, self.owner_id),
+            ).fetchone()
+        return row["link_url"] if row and row["link_url"] else None
+
+    def reserve_page_read(self, source_event_id, canonical_url, daily_limit=6):
+        """Atomically consume one UTC-day attempt before making a network request."""
+        now = time.time()
+        utc_day = datetime.fromtimestamp(now, timezone.utc).date().isoformat()
+        page_id = str(uuid4())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            source = db.execute(
+                "SELECT e.link_url FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=? AND s.owner_id=? AND e.role='user' "
+                "AND e.source_kind='user_explicit'",
+                (source_event_id, self.owner_id),
+            ).fetchone()
+            if source is None or not source["link_url"]:
+                raise StoreUnavailable("来源消息不存在")
+            count = db.execute(
+                "SELECT count(*) FROM page_reads WHERE owner_id=? AND utc_day=?",
+                (self.owner_id, utc_day),
+            ).fetchone()[0]
+            if count >= daily_limit:
+                raise PageReadQuotaExceeded("今日网页读取次数已用完")
+            db.execute(
+                "INSERT INTO page_reads(id,owner_id,source_event_id,url,requested_at,utc_day,status) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (page_id, self.owner_id, source_event_id, canonical_url,
+                 now, utc_day, "pending"),
+            )
+        return page_id, daily_limit - count - 1
+
+    def finish_page_read(self, page_id, result=None):
+        """Keep fetched content separate from chat history and model input."""
+        fields = ("read", result["url"], result["fetched_at"], result["sha256"],
+                  result["content_type"], result["text"][:8000]) if result else (
+                      "failed", None, None, None, None, None)
+        with self._connect() as db:
+            cur = db.execute(
+                "UPDATE page_reads SET status=?, url=COALESCE(?,url), fetched_at=?, "
+                "sha256=?, content_type=?, text=? WHERE id=? AND owner_id=? "
+                "AND status='pending'",
+                (*fields, page_id, self.owner_id),
+            )
+        return cur.rowcount == 1
+
+    def page_read(self, page_id):
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT id,source_event_id,url,requested_at,status,fetched_at,sha256,"
+                "content_type,text FROM page_reads WHERE id=? AND owner_id=?",
+                (page_id, self.owner_id),
+            ).fetchone()
+        return dict(row) if row else None
 
     def recent_sessions(self, limit=20):
         with self._connect() as db:

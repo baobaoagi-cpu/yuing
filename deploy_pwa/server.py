@@ -30,8 +30,9 @@ PROJECT_ROOT = ROOT.parent
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
-from deploy_pwa.chat_store import ChatStore, StoreUnavailable
+from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
 from deploy_pwa.chat_api import reply_to, ProviderError
+from deploy_pwa.public_page_reader import PageReadError, _validated_url, read_public_page
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
@@ -82,6 +83,7 @@ app.config.update(
 )
 _failures = defaultdict(deque)
 _failure_lock = threading.Lock()
+_page_read_lock = threading.Lock()
 
 
 @app.before_request
@@ -422,6 +424,79 @@ def conversation_history():
             return jsonify(error="会话不存在"), 404
         return jsonify(session_id=sid, events=store.history(sid))
     return jsonify(sessions=store.recent_sessions(), events=[])
+
+
+@app.post("/api/v2/page-read")
+def read_conversation_page():
+    """Opt-in read of an existing user link card; never feeds text to the model."""
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if os.environ.get("POC_PUBLIC_WEB_READ_ENABLED") != "1":
+        return jsonify(error="网页读取尚未启用"), 503
+    if (request.mimetype != "application/json" or not request.content_length or
+            request.content_length > 1024):
+        return jsonify(error="网页读取请求格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"source_event_id"}:
+        return jsonify(error="只需提供来源消息编号"), 400
+    source_event_id = _uuid(data["source_event_id"])
+    if not source_event_id:
+        return jsonify(error="来源消息编号不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    source_url = store.page_read_source(source_event_id)
+    if source_url is None:
+        return jsonify(error="来源消息不存在或没有网址"), 404
+    try:
+        _, canonical_url = _validated_url(source_url)
+    except PageReadError:
+        return jsonify(error="仅支持公开 HTTPS 网页"), 400
+    if not _page_read_lock.acquire(blocking=False):
+        return jsonify(error="网页读取忙，请稍后再试"), 429
+    try:
+        try:
+            page_id, remaining = store.reserve_page_read(source_event_id, canonical_url)
+        except StoreUnavailable:
+            return jsonify(error="来源消息不存在或没有网址"), 404
+        except PageReadQuotaExceeded:
+            return jsonify(error="今日网页读取次数已用完"), 429
+        try:
+            result = read_public_page(source_url)
+        except PageReadError:
+            store.finish_page_read(page_id)
+            return jsonify(page_read=store.page_read(page_id),
+                           remaining_today=remaining,
+                           error="网页暂时无法读取"), 502
+        except Exception:
+            # Unexpected parser/transport failures still consume the attempt
+            # and leave an honest failed artifact, without exposing details.
+            store.finish_page_read(page_id)
+            return jsonify(page_read=store.page_read(page_id),
+                           remaining_today=remaining,
+                           error="网页暂时无法读取"), 502
+        store.finish_page_read(page_id, result)
+        return jsonify(page_read=store.page_read(page_id),
+                       remaining_today=remaining), 201
+    finally:
+        _page_read_lock.release()
+
+
+@app.get("/api/v2/page-read/<page_id>")
+def get_conversation_page_read(page_id):
+    guard = _v2_guard()
+    if guard:
+        return guard
+    if os.environ.get("POC_PUBLIC_WEB_READ_ENABLED") != "1":
+        return jsonify(error="网页读取尚未启用"), 503
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    artifact = store.page_read(_uuid(page_id)) if _uuid(page_id) else None
+    if artifact is None:
+        return jsonify(error="网页读取记录不存在"), 404
+    return jsonify(page_read=artifact)
 
 
 @app.post("/api/v2/call-transcript")
