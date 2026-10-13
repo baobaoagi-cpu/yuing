@@ -79,7 +79,7 @@ function showPageRead(row, originalUrl, pageRead) {
   if (pageRead?.status === "read" && source) {
     card.href = source.href;
     title.textContent = source.hostname;
-    subtitle.textContent = `已读取网页 · 来源 ${source.hostname}`;
+    subtitle.textContent = `已读取网页 · 来源 ${source.hostname} · 端倪尚未使用`;
     card.title = pageRead.fetched_at ? `读取时间：${pageRead.fetched_at}` : "已读取的网页来源";
   } else if (pageRead?.status === "failed") {
     subtitle.textContent = "读取失败 · 未使用页面内容";
@@ -116,6 +116,7 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
       button.textContent = confirmedRead ? "已读取网页" : "重试读取";
       button.disabled = confirmedRead;
       if (outcome.status === "failed") showStatus("网页读取失败，端倪没有使用页面内容。可以稍后重试。");
+      if (confirmedRead) showStatus("网页已读取（试用暂存）；内容尚未提供给端倪回答，也未存为知识。");
       if (outcome.status === "read" && !confirmedRead) showStatus("网页读取结果缺少来源，状态未确认。可以重试。");
     } catch (error) {
       button.disabled = false;
