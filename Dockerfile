@@ -1,5 +1,6 @@
 FROM python:3.12-alpine
 WORKDIR /app
+RUN apk add --no-cache tzdata
 COPY deploy_pwa/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY deploy_pwa/ /app/deploy_pwa/

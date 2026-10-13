@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a09">
+  <link rel="stylesheet" href="/tools.css">
+  <title>实用工具 · Dunni</title>
+</head>
+<body>
+  <main>
+    <a class="back" href="/chat">← 返回对话</a>
+    <p class="eyebrow">DUNNI · 实用工具</p>
+    <h1>时区换算</h1>
+    <p class="intro">安排跨地区通话或工作时间。只把你选的时间发给本服务换算；不会连接日历，也不会保存为个人记忆。</p>
+    <form id="time-form">
+      <label for="time">当地日期与时间</label>
+      <input id="time" type="datetime-local" required>
+      <label for="source">所在时区</label>
+      <select id="source" required></select>
+      <label for="target">换算到</label>
+      <select id="target" required></select>
+      <button id="convert" type="submit">换算时间</button>
+    </form>
+    <div id="result" class="result" role="status" aria-live="polite" hidden></div>
+    <p class="note">本机时区工具 · 无第三方帐号、费用或资料授权。夏令时间切换的重复／不存在时段会要求重新选择。</p>
+  </main>
+  <script src="/tools.js" defer></script>
+</body>
+</html>

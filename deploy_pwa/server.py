@@ -36,6 +36,7 @@ from deploy_pwa.nico_profile_store import NicoProfileStore
 from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
 from deploy_pwa.call_reflection import PROMPT_VERSION, substantial_call, generate_reflection
 from deploy_pwa.public_page_reader import PageReadError, _validated_url, read_public_page
+from deploy_pwa.time_tool import ZONES, TimeToolError, convert_time
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
@@ -190,6 +191,23 @@ def conversation_page():
     if guard:
         return guard
     return send_from_directory(PROJECT_ROOT / "frontend", "chat.html")
+
+
+@app.get("/tools")
+def tool_page():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", "tools.html")
+
+
+@app.get("/tools.css")
+@app.get("/tools.js")
+def tool_asset():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", request.path[1:])
 
 
 @app.get("/chat.css")
@@ -365,6 +383,33 @@ def _v2_guard(write=False):
     if write and not _same_origin():
         return jsonify(error="来源不符"), 403
     return None
+
+
+@app.get("/api/v2/tools/time")
+def time_tool_info():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    return jsonify(tool="time_convert_local", zones=ZONES,
+                   permissions=[], cost="free", status="local_ready")
+
+
+@app.post("/api/v2/tools/time")
+def time_tool_convert():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if (request.mimetype != "application/json" or not request.content_length or
+            request.content_length > 256):
+        return jsonify(error="时间请求格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"time", "source_timezone", "target_timezone"}:
+        return jsonify(error="时间请求字段不正确"), 400
+    try:
+        result = convert_time(data["time"], data["source_timezone"], data["target_timezone"])
+    except TimeToolError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(result=result)
 
 
 @app.get("/api/v2/profile")
