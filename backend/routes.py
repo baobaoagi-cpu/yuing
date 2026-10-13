@@ -137,7 +137,7 @@ def api_yuling_token():
     """簽一張 LiveKit token 給前端連進房, 並派AI 夥伴 (v9) 進房。"""
     creds = _load_livekit_creds()
     if not all([creds["url"], creds["key"], creds["secret"]]):
-        return jsonify({"error": "LiveKit 未設定 (LIVEKIT_URL/API_KEY/API_SECRET)"}), 500
+        return jsonify({"error": "LiveKit 未设置 (LIVEKIT_URL/API_KEY/API_SECRET)"}), 500
 
     body = request.get_json(silent=True) or {}
 

@@ -138,6 +138,18 @@ def original_yuling_asset(filename):
     return send_from_directory(PROJECT_ROOT / "frontend" / "vendor", filename)
 
 
+@app.get("/yuling-media/<path:filename>")
+def original_yuling_media(filename):
+    guard = _require_login()
+    if guard:
+        return guard
+    if filename not in {"chen-dunni-loop.m4v", "chen-dunni-poster.jpg"}:
+        abort(404)
+    mimetype = "video/mp4" if filename.endswith(".m4v") else "image/jpeg"
+    return send_from_directory(PROJECT_ROOT / "frontend" / "media", filename,
+                               mimetype=mimetype, conditional=True)
+
+
 @app.post("/api/login")
 def login():
     if not _configured():

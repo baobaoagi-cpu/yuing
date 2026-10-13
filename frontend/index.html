@@ -28,10 +28,10 @@
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
-  /* 去背陈端倪: 锁定右下角, 各装置自适应, 不挡点击 */
-  #bao-bg{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
-    width:min(40vw,260px); height:auto; opacity:.92; user-select:none;
-    -webkit-user-drag:none; }
+  /* 人像贴住视口右下角；视频自带黑底，其他区域保持纯黑。 */
+  #dunni-portrait{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
+    display:block; width:min(58vw,54vh,460px); height:auto; aspect-ratio:9/16;
+    object-fit:contain; background:#000; user-select:none; -webkit-user-drag:none; }
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:2; }
   .gear, .lamps, .panel{ z-index:3; }
@@ -222,6 +222,7 @@
     cursor:pointer; user-select:none; -webkit-user-select:none; }
   .swipehint.hide{ opacity:0; }
   @media (max-width:700px){
+    .controls.callpane{ align-self:flex-start; margin-left:clamp(8px,7vw,36px); }
     .lamps{ top:14px; }
     .gear{ top:54px; left:12px; }
     .top.callpane{ margin-top:62px; }
@@ -252,6 +253,9 @@
 <h2 class="sr-only">Voice Companion：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
+<video id="dunni-portrait" src="/yuling-media/chen-dunni-loop.m4v"
+  poster="/yuling-media/chen-dunni-poster.jpg" autoplay muted loop playsinline
+  preload="metadata" aria-hidden="true"></video>
 
 <button class="gear" id="gear" aria-label="设置">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1175,8 +1179,9 @@
     const hue = motionFX.hue===null ? baseHue : lerp(baseHue,motionFX.hue,Math.min(1,motionFX.colorGlow));
     const sat = 20 + vol*38, lit = 62 + vol*16;
     const motionPush=motionFX.enabled ? (1+vol*.8) : 0;
-    const cxp=VW/2 - motionFX.x*DPR*48*motionPush;
-    const cyp=VH*0.5 + motionFX.y*DPR*26*motionPush;
+    const portraitLayout=innerWidth<=700;
+    const cxp=VW*(portraitLayout?0.34:0.5) - motionFX.x*DPR*48*motionPush;
+    const cyp=VH*(portraitLayout?0.34:0.5) + motionFX.y*DPR*26*motionPush;
     const base=Math.min(VW,VH)*0.125, breathe=1+Math.sin(t*0.8)*0.04;
     const R=base*breathe*(1+vol*0.8+motionFX.shake*0.16);
 
@@ -1241,6 +1246,10 @@
       cx.beginPath(); cx.arc(cxp,cyp,rp.r,0,6.2832); cx.stroke(); }
 
     cx.globalCompositeOperation='source-over';
+    // 视频所在区域是声浪禁入区，含少量留白；不让粒子或涟漪盖上人脸。
+    const portrait=$('dunni-portrait').getBoundingClientRect();
+    cx.clearRect((portrait.left-12)*DPR,(portrait.top-12)*DPR,
+      (portrait.width+24)*DPR,(portrait.height+24)*DPR);
     requestAnimationFrame(vizFrame);
   }
   requestAnimationFrame(vizFrame);
