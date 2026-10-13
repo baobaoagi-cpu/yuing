@@ -432,6 +432,8 @@ def tool_catalog():
             {"name": "高德地图", "state": "waiting", "detail": "待 Web Key 与服务授权确认"},
             {"name": "支付宝", "state": "waiting", "detail": "待商户资格与个人资料授权确认"},
             {"name": "美团", "state": "waiting", "detail": "待合适的个人服务接口与授权"},
+            {"name": "QQ 邮箱", "state": "waiting",
+             "detail": "待用户开启 IMAP、提供专用授权码及只读接入验收"},
             {"name": "12306", "state": "unavailable", "detail": "暂不提供抓票、代购或帐号连接"},
         ]},
         {"title": "工作服务 · 等待整合", "items": [

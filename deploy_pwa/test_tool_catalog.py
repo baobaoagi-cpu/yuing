@@ -28,8 +28,9 @@ class ToolCatalogTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         groups = response.json["groups"]
         names = {item["name"] for group in groups for item in group["items"]}
-        self.assertEqual(len(names), 17)
+        self.assertEqual(len(names), 18)
         self.assertIn("和风天气", names)
+        self.assertIn("QQ 邮箱", names)
         self.assertIn("腾讯会议", names)
         self.assertIn("时区换算", names)
         self.assertEqual({item["name"] for item in groups[3]["items"]}, {
