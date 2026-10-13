@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
 from livekit.plugins import anthropic, minimax
+from signed_context import ContextRejected, signed_context_text
 
 
 load_dotenv(".env.local")
@@ -31,7 +32,7 @@ PSET_PRINCIPLES = PSET_PATH.read_text(encoding="utf-8").strip()
 
 
 class ChenDunni(Agent):
-    def __init__(self) -> None:
+    def __init__(self, context_text: str = "") -> None:
         super().__init__(
             instructions=(
                 "你是陈端倪。以下是稳定的人格宪法，决定你的价值排序、判断方式和说话气质；"
@@ -44,9 +45,11 @@ class ChenDunni(Agent):
                 "自然、温暖、简洁地用中文回应，一次通常说一两句；上海测试版使用简体字。"
                 "人格描述表达你的回应风格，不代表你是真实人类或具有人类感官。"
                 "人格演化是原则，不表示本测试版已具备自动改写人格或长期记忆的机制。"
-                "这是手机通话测试版，尚未接入完整 Hermes、私人记忆、知识库或图数据库。"
-                "不要假装记得用户的私事，也不要声称能识别咳嗽、跌倒或车声等生活声，"
+                "这是手机通话测试版，尚未接入完整 Hermes、知识库或图数据库。"
+                "只有在本次通话实际附带用户主动保存的记忆时才能参考它；"
+                "否则不要假装记得用户的私事。不要声称能识别咳嗽、跌倒或车声等生活声，"
                 "除非系统真的提供了识别结果。听不清楚时请对方重说。"
+                + context_text
             )
         )
 
@@ -62,6 +65,18 @@ async def phone_call(ctx: agents.JobContext) -> None:
     api_key = os.environ.get("MINIMAX_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("MINIMAX_API_KEY is required")
+
+    # The current PWA does not issue signed context. This remains disabled
+    # unless a separate server-side issuer and a shared signing key are added.
+    context_text = ""
+    try:
+        context_text = signed_context_text(
+            ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
+            ctx.room.name,
+        ) or ""
+    except ContextRejected:
+        # Do not log metadata: it could contain private memories.
+        pass
 
     session = AgentSession(
         stt=inference.STT(**STT_OPTIONS),
@@ -81,7 +96,7 @@ async def phone_call(ctx: agents.JobContext) -> None:
         ),
         turn_handling=TurnHandlingOptions(turn_detection=inference.TurnDetector()),
     )
-    await session.start(room=ctx.room, agent=ChenDunni())
+    await session.start(room=ctx.room, agent=ChenDunni(context_text))
     await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")
 
 
