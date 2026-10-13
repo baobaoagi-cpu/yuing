@@ -2,13 +2,30 @@
 
 此服務提供受登入保護的聊天、圖片、明示記憶、通話頁和裝置端 YAMNet 生活聲候選分類。文字與圖片對話會呼叫 MiniMax；語音 Agent 是另一個服務。Hermes、向量搜尋和圖推理尚未接入。對話與圖片目前存在 `POC_CHAT_DB_PATH` 指向的 SQLite 檔案；若設為 `/tmp`，部署或容器重建後可能遺失。`/api/v2/status` 會標示 `ephemeral`。
 
-`Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除 Cookie；更換帳密或簽章祕密會使舊登入失效。這仍是單一內部預覽帳號，尚非朋友的個別帳號與權限系統。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
+`Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除目前瀏覽器的 Cookie；更換帳密或簽章祕密會使相應舊登入失效。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
+
+### 可選的個別測試帳號
+
+保留既有 `POC_PREVIEW_USER` / `POC_PREVIEW_PASSWORD` 原樣；額外帳號以私密環境變數 `POC_EXTRA_ACCOUNTS_JSON` 設定為「帳號名稱 → Werkzeug PBKDF2-SHA256 雜湊」的 JSON 物件，最多 20 組。帳號名稱限英文字母起頭，總長 3–64 字元，後續可含數字、底線、點或連字號，且不能與舊帳號重複。格式不正確會使服務啟動失敗，避免悄悄關閉新增帳號。產生一組**未使用過的強密碼**及其雜湊時，在安裝 Flask/Werkzeug 的 Python 環境執行以下指令；密碼在終端機隱藏輸入，不寫入 shell 歷史。產出的 JSON 直接放入 Railway 私密變數，不貼到聊天或提交 Git。
+
+```sh
+python - <<'PY'
+import getpass, json
+from werkzeug.security import generate_password_hash
+username = "shanghai_friend"
+password_hash = generate_password_hash(
+    getpass.getpass("New preview password: "), method="pbkdf2:sha256:1000000")
+print(json.dumps({username: password_hash}))
+PY
+```
+
+原帳號的 Cookie 驗證值維持舊算法；新增帳號的 Cookie 綁定其帳號與雜湊，移除帳號或更換雜湊會使其既有 Cookie 失效。登入錯誤仍受既有 IP 速率限制，寫入 API 保留來源檢查。這只是 POC 的少量測試帳號：沒有自助註冊、權限角色、找回密碼、伺服器端單一裝置登出撤銷或正式稽核。登出清除目前瀏覽器 Cookie；若 Cookie 已被複製，需更換該帳號雜湊或 `POC_SESSION_SECRET` 才能使複本失效。
 
 YAMNet ONNX 模型、類別表和 ONNX Runtime Web 隨目錄提供。授權見 `assets/YAMNET-LICENSE.txt` 與 `assets/ONNXRUNTIME-LICENSE.txt`；模型來源為 [Audio Magic YAMNet ONNX](https://huggingface.co/audiomagic/yamnet-onnx)，類別表為 CC BY 4.0。
 
 ## 資料歸屬與離線快照
 
-`ChatStore` 以登入帳號作為資料擁有者；會話、圖片、明示記憶、知識項與關係候選各有 `owner_id`，事件透過所屬會話隔離。舊版單帳號資料在首次升級時歸給 `POC_LEGACY_OWNER`，未設定則歸給當時的 `POC_PREVIEW_USER`。**升級前先固定舊帳號歸屬，不要先改掉原有登入帳號。**目前登入系統仍只有一組共用帳密；不同的人若共用它，就會看到同一份資料，不能視為朋友的個別權限。
+`ChatStore` 以登入帳號作為資料擁有者；會話、圖片、明示記憶、知識項與關係候選各有 `owner_id`，事件透過所屬會話隔離。舊版單帳號資料在首次升級時歸給 `POC_LEGACY_OWNER`，未設定則歸給當時的 `POC_PREVIEW_USER`。**升級前先固定舊帳號歸屬，不要先改掉原有登入帳號。** 若舊帳號是 `nicole`，請將 `POC_LEGACY_OWNER=nicole` 固定；新增好友帳號後，彼此的會話、圖片和記憶才會按不同帳號分開。共用同一組帳密的兩人仍會看到同一份資料。聊天頁在同一瀏覽器切換帳號時可能暫留上個帳號的本地會話編號；後端會拒絕讀取並由頁面清除編號，但建議不同人使用各自裝置或瀏覽器設定檔。
 
 有權存取實際 SQLite 檔案的操作者，可在服務停止或運行時做一致性快照：
 

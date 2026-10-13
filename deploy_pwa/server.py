@@ -1,4 +1,4 @@
-"""Single-owner preview login and PWA API. This is not a multi-user account system."""
+"""Authenticated PWA preview with optional, isolated test accounts."""
 from __future__ import annotations
 
 from collections import defaultdict, deque
@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, request, send_from_directory, session, send_file
+from werkzeug.security import check_password_hash
 from uuid import UUID
 
 ROOT = Path(__file__).resolve().parent
@@ -34,6 +35,30 @@ from deploy_pwa.chat_api import reply_to, ProviderError
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
+
+
+def _load_extra_accounts():
+    """Read optional username -> Werkzeug PBKDF2 hash entries, failing closed."""
+    raw = os.environ.get("POC_EXTRA_ACCOUNTS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        accounts = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON must be valid JSON") from exc
+    if not isinstance(accounts, dict) or not 1 <= len(accounts) <= 20:
+        raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON must contain 1 to 20 accounts")
+    for username, password_hash in accounts.items():
+        if (not isinstance(username, str) or
+                not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{2,63}", username) or
+                username == USERNAME or not isinstance(password_hash, str) or
+                not re.fullmatch(r"pbkdf2:sha256:1000000\$[A-Za-z0-9]{16}\$[0-9a-f]{64}",
+                                 password_hash)):
+            raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON has an invalid account entry")
+    return accounts
+
+
+EXTRA_ACCOUNTS = _load_extra_accounts()
 BRIDGE = os.environ.get("POC_LOCAL_BRIDGE_URL", "").rstrip("/")
 _bridge_url = urlparse(BRIDGE)
 if BRIDGE and (_bridge_url.scheme != "http" or _bridge_url.hostname not in {"127.0.0.1", "localhost"}):
@@ -69,13 +94,23 @@ def _configured():
     return bool(USERNAME and PASSWORD and SESSION_SECRET and len(SESSION_SECRET) >= 32)
 
 
-def _credential_tag():
-    return hmac.new(SESSION_SECRET.encode(), f"{USERNAME}\0{PASSWORD}".encode(), sha256).hexdigest()[:24]
+def _credential_tag(account):
+    if account == USERNAME:
+        # Preserve cookies issued before optional test accounts were added.
+        material = f"{USERNAME}\0{PASSWORD}"
+    elif isinstance(account, str) and account in EXTRA_ACCOUNTS:
+        material = f"extra\0{account}\0{EXTRA_ACCOUNTS[account]}"
+    else:
+        return None
+    return hmac.new(SESSION_SECRET.encode(), material.encode(), sha256).hexdigest()[:24]
 
 
 def _signed_in():
-    return (_configured() and session.get("account") == USERNAME and
-            session.get("credential_tag") == _credential_tag() and
+    account = session.get("account")
+    tag = _credential_tag(account)
+    return (_configured() and tag is not None and
+            isinstance(session.get("credential_tag"), str) and
+            hmac.compare_digest(session["credential_tag"], tag) and
             isinstance(session.get("until"), (int, float)) and session["until"] > time.time())
 
 
@@ -199,7 +234,12 @@ def login():
     username, password = data.get("username"), data.get("password")
     if not isinstance(username, str) or not isinstance(password, str):
         return jsonify(error="帐号或密码不正确"), 401
-    correct = hmac.compare_digest(username, USERNAME) & hmac.compare_digest(password, PASSWORD)
+    if username == USERNAME:
+        correct = hmac.compare_digest(password, PASSWORD)
+    elif username in EXTRA_ACCOUNTS:
+        correct = check_password_hash(EXTRA_ACCOUNTS[username], password)
+    else:
+        correct = False
     if not correct:
         with _failure_lock:
             _failures[key].append(now)
@@ -209,8 +249,8 @@ def login():
     remember = data.get("remember") is True
     session.clear()
     session.permanent = remember
-    session["account"] = USERNAME
-    session["credential_tag"] = _credential_tag()
+    session["account"] = username
+    session["credential_tag"] = _credential_tag(username)
     session["until"] = now + (REMEMBER_SECONDS if remember else SHORT_SECONDS)
     return jsonify(ok=True, remember=remember)
 
