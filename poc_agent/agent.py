@@ -122,6 +122,12 @@ def _attach_call_diagnostics(session: AgentSession) -> None:
         if source in {"say", "generate_reply"}:
             logger.info("call_stage speech_queued source=%s", source)
 
+    @session.on("agent_false_interruption")
+    def _false_interruption(event) -> None:
+        # Observe the event without retaining anything the caller said.
+        logger.info("call_stage false_interruption resumed=%s",
+                    bool(getattr(event, "resumed", False)))
+
     @session.on("error")
     def _session_error(event) -> None:
         error = getattr(event, "error", None)
@@ -194,7 +200,16 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 max_tokens=256,
             ),
             tts=minimax.TTS(**minimax_tts_options(api_key)),
-            turn_handling=TurnHandlingOptions(turn_detection=inference.TurnDetector()),
+            turn_handling=TurnHandlingOptions(
+                turn_detection=inference.TurnDetector(),
+                interruption={
+                    "enabled": True,
+                    "min_duration": 0.5,
+                    "false_interruption_timeout": 2.0,
+                    "resume_false_interruption": True,
+                },
+                preemptive_generation={"enabled": True, "preemptive_tts": False},
+            ),
         )
         _attach_call_diagnostics(session)
         await session.start(room=ctx.room, agent=ChenDunni(context_text))
