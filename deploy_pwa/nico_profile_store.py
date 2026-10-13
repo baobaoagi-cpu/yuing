@@ -25,6 +25,20 @@ _SELF_REPORT = {
     "need": ("我希望", "我需要", "我想要"),
 }
 
+# These are account-opening statements supplied by the user on 2026-10-14.
+# They are not inferred from conversation and are not verified biographical facts.
+_MING_SEED = {
+    "display_name": "王跃明",
+    "gender": "男性",
+    "occupation": "资深工程师",
+    "expertise": "熟悉 AI 与后端",
+    "relationship": "威廷的好朋友",
+    "collaboration": "协助准备陈端倪的中国区服务器",
+    "account_purpose": "王跃明是陈端倪的独立陪伴使用者；由他主动打开对话",
+}
+_SEED_SOURCE = "account_setup_user_provided"
+_SEED_DATE = "2026-10-14"  # Date precision only; no account-opening clock time was supplied.
+
 
 class NicoProfileStore:
     """Narrow profile API; owner_id must come from the authenticated session.
@@ -81,12 +95,29 @@ class NicoProfileStore:
                     ON profile_facts(owner_id, updated_at DESC);
                 CREATE UNIQUE INDEX IF NOT EXISTS profile_facts_source_unique
                     ON profile_facts(owner_id,category,source_event_id,evidence_quote);
+                CREATE TABLE IF NOT EXISTS account_seed_revisions (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, field TEXT NOT NULL,
+                    value TEXT, source_kind TEXT NOT NULL, source_date TEXT NOT NULL,
+                    recorded_at REAL NOT NULL, confidence TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('active','retracted'))
+                );
+                CREATE INDEX IF NOT EXISTS account_seed_owner_field_time
+                    ON account_seed_revisions(owner_id,field,recorded_at DESC);
             """)
             if owner_id == "nicole":
                 db.execute("INSERT OR IGNORE INTO profile_identity "
                            "(owner_id,display_name,source_kind,source_event_id,updated_at) "
                            "VALUES(?,?,?,?,?)",
                            (owner_id, "Nicole", "account_seed", None, time.time()))
+            if owner_id == "MING":
+                for field, value in _MING_SEED.items():
+                    exists = db.execute(
+                        "SELECT 1 FROM account_seed_revisions WHERE owner_id=? AND field=? LIMIT 1",
+                        (owner_id, field)).fetchone()
+                    if not exists:
+                        db.execute("INSERT INTO account_seed_revisions VALUES(?,?,?,?,?,?,?,?,?)",
+                                   (str(uuid4()), owner_id, field, value, _SEED_SOURCE,
+                                    _SEED_DATE, time.time(), "user_provided_unverified", "active"))
         with self._connect(self.graph_path) as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS profile_edges (
@@ -143,11 +174,44 @@ class NicoProfileStore:
         return row
 
     def identity(self):
+        if self.owner_id == "MING":
+            name = self.seed_facts().get("display_name")
+            if name and name["status"] == "active":
+                return {"display_name": name["value"], "source_kind": name["source_kind"],
+                        "source_event_id": None, "updated_at": name["recorded_at"]}
         with self._connect() as db:
             row = db.execute("SELECT display_name,source_kind,source_event_id,updated_at "
                              "FROM profile_identity WHERE owner_id=?",
                              (self.owner_id,)).fetchone()
         return dict(row) if row else None
+
+    def seed_facts(self):
+        """Latest account-opening values, scoped to this authenticated owner."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT field,value,source_kind,source_date,recorded_at,confidence,status "
+                "FROM account_seed_revisions WHERE owner_id=? "
+                "ORDER BY recorded_at DESC,rowid DESC", (self.owner_id,)).fetchall()
+        result = {}
+        for row in rows:
+            result.setdefault(row["field"], dict(row))
+        return result
+
+    def correct_seed_fact(self, field: str, value: str | None):
+        """Record an authenticated user's correction or retraction without erasing provenance."""
+        if field not in _MING_SEED or field not in self.seed_facts():
+            raise ValueError("种子字段不存在")
+        if value is not None and (not isinstance(value, str) or not 1 <= len(value.strip()) <= 120
+                                  or any(ord(ch) < 32 for ch in value)):
+            raise ValueError("更正内容不正确")
+        clean = value.strip() if isinstance(value, str) else None
+        with self._connect() as db:
+            db.execute("INSERT INTO account_seed_revisions VALUES(?,?,?,?,?,?,?,?,?)",
+                       (str(uuid4()), self.owner_id, field, clean,
+                        "authenticated_user_correction", time.strftime("%Y-%m-%d", time.gmtime()),
+                        time.time(), "user_corrected_unverified",
+                        "active" if clean is not None else "retracted"))
+        return self.seed_facts()[field]
 
     def consent_status(self) -> bool:
         with self._connect() as db:

@@ -33,12 +33,14 @@ class VoiceContextIssuerTest(unittest.TestCase):
             patch.object(server, "PASSWORD", "synthetic-nicole-password"),
             patch.object(server, "SESSION_SECRET", "synthetic-session-key-at-least-thirty-two-bytes"),
             patch.object(server, "EXTRA_ACCOUNTS", {"friend": generate_password_hash(
-                "synthetic-friend-password", method="pbkdf2:sha256:1000000")}),
+                "synthetic-friend-password", method="pbkdf2:sha256:1000000"),
+                "MING": generate_password_hash("synthetic-ming-password", method="pbkdf2:sha256:1000000")}),
             patch.object(routes, "_load_livekit_creds", return_value=CREDS),
             patch.dict(os.environ, {
                 "POC_VOICE_CONTEXT_ENABLED": "1",
                 "POC_VOICE_CONTEXT_HMAC_KEY": SIGNING_KEY,
                 "POC_CHAT_DB_PATH": self.db_path,
+                "POC_COMPANION_ROOT": str(Path(self.directory.name) / "companion"),
                 "POC_LEGACY_OWNER": "nicole",
             }),
         ]
@@ -102,6 +104,34 @@ class VoiceContextIssuerTest(unittest.TestCase):
         context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
         self.assertIn("当前通话用户叫 Nicole", context)
         self.assertNotIn("用户主动保存的记忆", context)
+
+    def test_ming_seed_is_signed_from_account_store_and_correction_reaches_next_call(self):
+        self._login("MING", "synthetic-ming-password")
+        response = self._call(owner_id="nicole", account_seed={"gender": "伪造"})
+        self.assertEqual(response.status_code, 200)
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("王跃明", context)
+        self.assertIn("熟悉 AI 与后端", context)
+        self.assertIn("威廷的好朋友", context)
+        self.assertIn("不表示拥有任何服务器、部署或资料权限", context)
+        self.assertIn("不预设他只想谈技术", context)
+        self.assertIn("不表示可以主动私讯或安排联络", context)
+        self.assertNotIn("伪造", context)
+        corrected = self.client.patch("/api/v2/profile/account-seed/expertise",
+                                      base_url=self.base, headers=self.headers,
+                                      json={"value": "后端工程"})
+        self.assertEqual(corrected.status_code, 200)
+        response = self._call()
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("后端工程", context)
+        self.assertNotIn("熟悉 AI 与后端", context)
+        self.client.post("/api/logout", base_url=self.base, headers=self.headers)
+        self._login("friend", "synthetic-friend-password")
+        response = self._call(owner_id="MING")
+        metadata, _ = self._agent_metadata(response)
+        self.assertIsNone(signed_context_text(metadata, SIGNING_KEY, response.json["room"]))
 
     def test_untrusted_server_mount_and_cross_site_request_fail_closed(self):
         isolated = Flask("isolated-route")

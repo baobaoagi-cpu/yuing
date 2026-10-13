@@ -18,7 +18,8 @@ def _b64url(data: bytes) -> str:
 
 
 def issue_voice_context(secret: str, room: str, owner_id: str,
-                        memories: list[dict], now: int | None = None) -> str:
+                        memories: list[dict], now: int | None = None,
+                        account_seed: dict | None = None) -> str:
     """Sign the authenticated owner and bounded, explicit saved memories."""
     if not isinstance(secret, str) or len(secret.encode("utf-8")) < 32:
         raise ValueError("voice context signing key is missing or too short")
@@ -42,6 +43,16 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         "expires_at": issued + 90,
         "memories": clean,
     }
+    if owner_id == "MING" and isinstance(account_seed, dict):
+        claims["account_seed"] = {
+            field: {"value": item["value"], "source_kind": item["source_kind"],
+                    "source_date": item["source_date"], "confidence": item["confidence"]}
+            for field, item in account_seed.items()
+            if field in {"display_name", "gender", "occupation", "expertise", "relationship", "collaboration", "account_purpose"}
+            and isinstance(item, dict) and item.get("status") == "active"
+            and isinstance(item.get("value"), str) and 1 <= len(item["value"]) <= 120
+            and item.get("source_kind") in {"account_setup_user_provided", "authenticated_user_correction"}
+        }
     # The receiving agent rejects envelopes longer than 11,000 characters.
     # Eight 500-character CJK memories can exceed that after base64 encoding.
     while True:

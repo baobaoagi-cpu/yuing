@@ -176,7 +176,18 @@ def api_yuling_token():
         identity = "guest-" + uuid4().hex[:20]
         name = "使用者"
         room = "ailivex-yuling-" + uuid4().hex
-        agent_meta = issue_voice_context(signing_key, room, owner, memories)
+        account_seed = {}
+        if owner == "MING":
+            from deploy_pwa.server import _profile_store
+            try:
+                profile = _profile_store(store)
+                if profile is None:
+                    return jsonify({"error": "账号基础资料暂时不可用"}), 503
+                account_seed = profile.seed_facts()
+            except (OSError, ValueError, sqlite3.Error):
+                return jsonify({"error": "账号基础资料暂时不可用"}), 503
+        agent_meta = issue_voice_context(signing_key, room, owner, memories,
+                                         account_seed=account_seed)
     else:
         # Keep calls separate even before voice-memory context is enabled.
         # Browser identity is neither an account proof nor a safe room key.

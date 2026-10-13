@@ -83,7 +83,7 @@ class PageContextPromptTest(unittest.TestCase):
                  "content": [{"type": "text", "text": provider_reply}]}):
             answer = chat_api.reply_to("你有什么能力呢？", [])
         self.assertEqual(captured["body"]["max_tokens"], 180)
-        self.assertIn("先问她想做什么", captured["body"]["system"])
+        self.assertIn("先问对方想做什么", captured["body"]["system"])
         self.assertLessEqual(len(answer), 160)
         self.assertNotIn("**", answer)
         self.assertNotIn("\n-", answer)

@@ -53,13 +53,15 @@ def _load_extra_accounts():
         raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON must be valid JSON") from exc
     if not isinstance(accounts, dict) or not 1 <= len(accounts) <= 20:
         raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON must contain 1 to 20 accounts")
+    folded_names = {USERNAME.casefold()} if USERNAME else set()
     for username, password_hash in accounts.items():
         if (not isinstance(username, str) or
                 not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{2,63}", username) or
-                username == USERNAME or not isinstance(password_hash, str) or
+                username.casefold() in folded_names or not isinstance(password_hash, str) or
                 not re.fullmatch(r"pbkdf2:sha256:1000000\$[A-Za-z0-9]{16}\$[0-9a-f]{64}",
                                  password_hash)):
             raise RuntimeError("POC_EXTRA_ACCOUNTS_JSON has an invalid account entry")
+        folded_names.add(username.casefold())
     return accounts
 
 
@@ -269,12 +271,16 @@ def login():
     username, password = data.get("username"), data.get("password")
     if not isinstance(username, str) or not isinstance(password, str):
         return jsonify(error="帐号或密码不正确"), 401
-    if username == USERNAME:
+    canonical_username = username.strip()
+    if USERNAME and canonical_username.casefold() == USERNAME.casefold():
+        canonical_username = USERNAME
         correct = hmac.compare_digest(password, PASSWORD)
-    elif username in EXTRA_ACCOUNTS:
-        correct = check_password_hash(EXTRA_ACCOUNTS[username], password)
     else:
-        correct = False
+        matches = [name for name in EXTRA_ACCOUNTS
+                   if name.casefold() == canonical_username.casefold()]
+        canonical_username = matches[0] if len(matches) == 1 else ""
+        correct = bool(canonical_username) and check_password_hash(
+            EXTRA_ACCOUNTS[canonical_username], password)
     if not correct:
         with _failure_lock:
             _failures[key].append(now)
@@ -284,8 +290,8 @@ def login():
     remember = data.get("remember") is True
     session.clear()
     session.permanent = remember
-    session["account"] = username
-    session["credential_tag"] = _credential_tag(username)
+    session["account"] = canonical_username
+    session["credential_tag"] = _credential_tag(canonical_username)
     session["until"] = now + (REMEMBER_SECONDS if remember else SHORT_SECONDS)
     return jsonify(ok=True, remember=remember)
 
@@ -458,7 +464,27 @@ def companion_profile():
     return jsonify(identity=profile.identity(),
                    consent_enabled=profile.consent_status(),
                    consent_decided=profile.consent_decided(),
-                   facts=profile.facts())
+                   facts=profile.facts(), account_seed=profile.seed_facts())
+
+
+@app.patch("/api/v2/profile/account-seed/<field>")
+def correct_account_seed(field):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > 512:
+        return jsonify(error="更正格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"value"}:
+        return jsonify(error="更正格式不正确"), 400
+    profile = _profile_store(_chat_store())
+    if profile is None:
+        return jsonify(error="个人资料存储尚未配置"), 503
+    try:
+        item = profile.correct_seed_fact(field, data["value"])
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(item=item)
 
 
 @app.post("/api/v2/profile/consent")
@@ -1008,7 +1034,8 @@ def conversation_chat():
                           display_name=(profile.identity() or {}).get("display_name")
                           if profile is not None else None,
                           profile_candidates=profile.facts(limit=4)
-                          if profile is not None and profile.consent_status() else ())
+                          if profile is not None and profile.consent_status() else (),
+                          account_seed=profile.seed_facts() if profile is not None else {})
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
     assistant_event = store.add_event(sid, "assistant", answer,

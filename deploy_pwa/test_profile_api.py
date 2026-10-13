@@ -1,5 +1,8 @@
 """Authenticated opt-in and provenance checks for the companion profile API."""
 import os
+import sqlite3
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +11,7 @@ from unittest.mock import patch
 from werkzeug.security import generate_password_hash
 
 from deploy_pwa import server
+from deploy_pwa.chat_api import reply_to
 
 
 class ProfileApiTest(unittest.TestCase):
@@ -24,7 +28,8 @@ class ProfileApiTest(unittest.TestCase):
             patch.object(server, "PASSWORD", "synthetic-nicole-password"),
             patch.object(server, "SESSION_SECRET", "synthetic-secret-at-least-thirty-two-characters"),
             patch.object(server, "EXTRA_ACCOUNTS", {"other": generate_password_hash(
-                "synthetic-other-password", method="pbkdf2:sha256:1000000")}),
+                "synthetic-other-password", method="pbkdf2:sha256:1000000"),
+                "MING": generate_password_hash("synthetic-ming-password", method="pbkdf2:sha256:1000000")}),
             patch.dict(os.environ, {
                 "POC_CHAT_DB_PATH": self.db_path,
                 "POC_COMPANION_ROOT": self.profile_root,
@@ -91,6 +96,65 @@ class ProfileApiTest(unittest.TestCase):
         self.assertTrue(self.client.get("/api/v2/profile", base_url=self.base).json["consent_decided"])
         self.chat("我喜欢画画")
         self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json["facts"], [])
+
+    def test_ming_seed_is_owner_scoped_sourced_and_revisable(self):
+        self.login(username="MING", password="synthetic-ming-password")
+        profile = self.client.get("/api/v2/profile", base_url=self.base).json
+        self.assertEqual(profile["identity"]["display_name"], "王跃明")
+        self.assertEqual(set(profile["account_seed"]),
+                         {"display_name", "gender", "occupation", "expertise",
+                          "relationship", "collaboration", "account_purpose"})
+        self.assertEqual(profile["account_seed"]["relationship"]["value"], "威廷的好朋友")
+        self.assertIn("独立陪伴使用者", profile["account_seed"]["account_purpose"]["value"])
+        self.assertEqual(profile["account_seed"]["occupation"]["source_kind"],
+                         "account_setup_user_provided")
+        self.assertEqual(profile["account_seed"]["occupation"]["confidence"],
+                         "user_provided_unverified")
+        self.assertEqual(profile["account_seed"]["occupation"]["source_date"], "2026-10-14")
+        with patch.object(server, "reply_to", return_value="听见了。") as model:
+            response = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers, json={"text": "你好"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(model.call_args.kwargs["account_seed"]["expertise"]["value"],
+                         "熟悉 AI 与后端")
+        with patch("deploy_pwa.chat_api.urlopen") as upstream:
+            upstream.return_value.__enter__.return_value = io.BytesIO(
+                b'{"content":[{"type":"text","text":"ok"}]}')
+            reply_to("你好", [], owner_id="MING", display_name=profile["identity"]["display_name"],
+                     account_seed=profile["account_seed"])
+            request_body = json.loads(upstream.call_args.args[0].data)
+        self.assertIn("王跃明", request_body["system"])
+        self.assertIn("不预设他只想谈技术", request_body["system"])
+        self.assertIn("不表示可以主动私讯或安排联络", request_body["system"])
+        wrong_origin = self.client.patch("/api/v2/profile/account-seed/occupation",
+                                         base_url=self.base, json={"value": "工程师"})
+        self.assertEqual(wrong_origin.status_code, 403)
+        corrected = self.client.patch("/api/v2/profile/account-seed/occupation",
+                                      base_url=self.base, headers=self.headers,
+                                      json={"value": "软件工程师"})
+        self.assertEqual(corrected.status_code, 200)
+        self.assertEqual(corrected.json["item"]["source_kind"], "authenticated_user_correction")
+        self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json
+                         ["account_seed"]["occupation"]["value"], "软件工程师")
+        retracted = self.client.patch("/api/v2/profile/account-seed/gender",
+                                      base_url=self.base, headers=self.headers,
+                                      json={"value": None})
+        self.assertEqual(retracted.status_code, 200)
+        self.assertEqual(retracted.json["item"]["status"], "retracted")
+        with sqlite3.connect(str(Path(self.profile_root) / "memory.sqlite3")) as db:
+            revisions = db.execute("SELECT source_kind FROM account_seed_revisions "
+                                   "WHERE owner_id='MING' AND field='occupation' "
+                                   "ORDER BY recorded_at,rowid").fetchall()
+        self.assertEqual([row[0] for row in revisions],
+                         ["account_setup_user_provided", "authenticated_user_correction"])
+        other = server.app.test_client()
+        self.login(other, "other", "synthetic-other-password")
+        self.assertEqual(other.get("/api/v2/profile", base_url=self.base).json["account_seed"], {})
+        self.assertEqual(other.patch("/api/v2/profile/account-seed/occupation",
+                                     base_url=self.base, headers=self.headers,
+                                     json={"value": "冒名修改"}).status_code, 400)
+        self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json
+                         ["account_seed"]["occupation"]["value"], "软件工程师")
 
     def test_other_account_cannot_read_or_delete_nicole_candidates(self):
         self.login()

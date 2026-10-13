@@ -47,6 +47,10 @@ class PreviewAccountsTest(unittest.TestCase):
         with patch.dict(os.environ, {"POC_EXTRA_ACCOUNTS_JSON": json.dumps(
                 {"friend": self.friend_hash})}):
             self.assertEqual(server._load_extra_accounts(), {"friend": self.friend_hash})
+        with patch.dict(os.environ, {"POC_EXTRA_ACCOUNTS_JSON": json.dumps(
+                {"FRIEND": self.friend_hash, "friend": self.friend_hash})}):
+            with self.assertRaises(RuntimeError):
+                server._load_extra_accounts()
         for bad in ('{"friend":"plaintext"}', '{"nicole":"plaintext"}',
                     '{"friend":"pbkdf2:sha256:1000$bad$bad"}', '[]', '{broken'):
             with self.subTest(bad=bad), patch.dict(os.environ, {"POC_EXTRA_ACCOUNTS_JSON": bad}):
@@ -77,6 +81,9 @@ class PreviewAccountsTest(unittest.TestCase):
         self.assertEqual(self.login("中文帐号", "wrong-password").status_code, 401)
         self.assertEqual(self.login("friend", "wrong-password").status_code, 401)
         self.assertEqual(self.login("friend", "synthetic-friend-password").status_code, 200)
+        self.assertEqual(self.login(" Friend ", "synthetic-friend-password").status_code, 200)
+        with self.client.session_transaction(base_url=self.base) as cookie:
+            self.assertEqual(cookie["account"], "friend")
         self.assertEqual(self.client.get("/api/v2/history?session_id=" + nicole_sid,
                                          base_url=self.base).status_code, 404)
         self.assertEqual(self.client.get("/api/v2/history", base_url=self.base).json["sessions"], [])
