@@ -129,6 +129,14 @@ def original_manifest():
     return send_from_directory(PROJECT_ROOT / "frontend", "manifest.webmanifest")
 
 
+@app.get("/yuling-assets/<path:filename>")
+def original_yuling_asset(filename):
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend" / "vendor", filename)
+
+
 @app.post("/api/login")
 def login():
     if not _configured():
