@@ -80,7 +80,7 @@ def _require_login(api=False):
     if _signed_in():
         return None
     if api:
-        return jsonify(error="請先登入"), 401
+        return jsonify(error="请先登录"), 401
     login_url = "/login?next=/call" if request.path == "/call" else "/login"
     return redirect(login_url, code=303)
 
@@ -141,9 +141,9 @@ def original_yuling_asset(filename):
 @app.post("/api/login")
 def login():
     if not _configured():
-        return jsonify(error="登入服務未設定"), 503
+        return jsonify(error="登录服务未设置"), 503
     if not _same_origin() or request.mimetype != "application/json" or request.content_length is None or request.content_length > 4096:
-        return jsonify(error="請求格式不正確"), 403
+        return jsonify(error="请求格式不正确"), 403
     key = request.remote_addr or "unknown"
     now = time.time()
     with _failure_lock:
@@ -151,18 +151,18 @@ def login():
         while recent and now - recent[0] > 900:
             recent.popleft()
         if len(recent) >= 8:
-            return jsonify(error="請稍後再試"), 429
+            return jsonify(error="请稍后再试"), 429
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return jsonify(error="請求格式不正確"), 400
+        return jsonify(error="请求格式不正确"), 400
     username, password = data.get("username"), data.get("password")
     if not isinstance(username, str) or not isinstance(password, str):
-        return jsonify(error="帳號或密碼不正確"), 401
+        return jsonify(error="帐号或密码不正确"), 401
     correct = hmac.compare_digest(username, USERNAME) & hmac.compare_digest(password, PASSWORD)
     if not correct:
         with _failure_lock:
             _failures[key].append(now)
-        return jsonify(error="帳號或密碼不正確"), 401
+        return jsonify(error="帐号或密码不正确"), 401
     with _failure_lock:
         _failures.pop(key, None)
     remember = data.get("remember") is True
@@ -180,7 +180,7 @@ def logout():
     if guard:
         return guard
     if not _same_origin():
-        return jsonify(error="來源不符"), 403
+        return jsonify(error="来源不符"), 403
     session.clear()
     return jsonify(ok=True)
 
@@ -198,22 +198,22 @@ def _bridge(path, body=None, content_type=None):
         try:
             return exc.code, json.load(exc)
         except (ValueError, UnicodeDecodeError):
-            return exc.code, {"error": "本機橋接服務失敗"}
+            return exc.code, {"error": "本机桥接服务失败"}
     except (URLError, TimeoutError):
-        return 503, {"error": "本機橋接服務無法連線"}
+        return 503, {"error": "本机桥接服务无法连接"}
 
 
 def extract_document(filename, data):
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
         if not data.startswith(b"%PDF-"):
-            raise ValueError("PDF 格式不正確")
+            raise ValueError("PDF 格式不正确")
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(data), strict=False)
         if reader.is_encrypted:
-            raise ValueError("加密 PDF 尚不支援")
+            raise ValueError("加密 PDF 尚不支持")
         if len(reader.pages) > 20:
-            raise ValueError("PDF 最多 20 頁")
+            raise ValueError("PDF 最多 20 页")
         text = "\n".join((page.extract_text() or "") for page in reader.pages)
         kind = "PDF"
     elif ext in {".docx", ".pptx"}:
@@ -222,7 +222,7 @@ def extract_document(filename, data):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             names = archive.namelist()
             if len(names) > 1000 or sum(x.file_size for x in archive.infolist()) > 20_000_000:
-                raise ValueError("檔案內容過大")
+                raise ValueError("文件内容过大")
             if ext == ".docx":
                 targets = [n for n in names if re.fullmatch(r"word/(document|header\d+|footer\d+)\.xml", n)]
             else:
@@ -231,7 +231,7 @@ def extract_document(filename, data):
             for name in targets[:100]:
                 raw = archive.read(name)
                 if len(raw) > 2_000_000:
-                    raise ValueError("單頁內容過大")
+                    raise ValueError("单页内容过大")
                 root = ET.fromstring(raw)
                 parts.append(" ".join(node.text.strip() for node in root.iter()
                                       if node.tag in {"{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t",
@@ -239,15 +239,15 @@ def extract_document(filename, data):
                                       and node.text and node.text.strip()))
         text = "\n".join(parts)
     else:
-        raise ValueError("僅支援 PDF、DOCX、PPTX")
+        raise ValueError("仅支持 PDF、DOCX、PPTX")
     clean = re.sub(r"[ \t]+", " ", text).strip()
     if not clean:
-        return {"kind": kind, "summary": "未抽出文字；掃描圖片或圖表內容尚未支援。", "characters": 0}
+        return {"kind": kind, "summary": "未抽出文字；扫描图片或图表内容尚未支持。", "characters": 0}
     preview = clean[:2500]
     if len(clean) > 2500:
-        preview += "…（僅顯示前 2500 字）"
+        preview += "…（仅显示前 2500 字）"
     return {"kind": kind, "summary": preview, "characters": len(clean),
-            "note": "這是文字抽取預覽，尚未經模型理解或摘要。"}
+            "note": "这是文字抽取预览，尚未经模型理解或摘要。"}
 
 
 @app.get("/api/capabilities")
@@ -263,10 +263,10 @@ def capabilities():
     return jsonify(
         text=ready, turn_voice=ready, live_voice=False,
         image=vision_ready, files=True, sound_events=True,
-        image_mode="本機 OCR 與粗分類" if vision_ready else "未接入",
-        file_mode="PDF/DOCX/PPTX 文字抽取預覽",
+        image_mode="本机 OCR 与粗分类" if vision_ready else "未接入",
+        file_mode="PDF/DOCX/PPTX 文字抽取预览",
         mode="local_bridge" if BRIDGE else "railway_preview",
-        reason="本機 Hermes/Whisper 已連線" if ready else "雲端尚未接入對話模型；生活聲辨識在手機端執行",
+        reason="本机 Hermes/Whisper 已连接" if ready else "云端尚未接入对话模型；生活声辨识在手机端执行",
     )
 
 
@@ -276,32 +276,32 @@ def analyze():
     if guard:
         return guard
     if not _same_origin():
-        return jsonify(error="來源不符"), 403
+        return jsonify(error="来源不符"), 403
     file = request.files.get("file")
     if file is None:
-        return jsonify(error="請上傳一個檔案"), 400
+        return jsonify(error="请上传一个文件"), 400
     data = file.stream.read(MAX_FILE + 1)
     if not 0 < len(data) <= MAX_FILE:
-        return jsonify(error="檔案大小需在 5 MB 內"), 413
+        return jsonify(error="文件大小需在 5 MB 内"), 413
     content_type = (file.content_type or "").lower()
     if content_type in {"image/png", "image/jpeg", "image/webp"}:
         if not BRIDGE:
-            return jsonify(error="此網址尚未接入圖片辨識"), 503
+            return jsonify(error="此网址尚未接入图片辨识"), 503
         if len(data) > 4_000_000:
-            return jsonify(error="圖片需在 4 MB 內"), 413
+            return jsonify(error="图片需在 4 MB 内"), 413
         status, result = _bridge("/api/analyze", data, content_type)
         if status != 200:
             return jsonify(result), status
         words = ", ".join(result.get("text", []))[:2000]
         labels = ", ".join(str(x.get("name", "")) for x in result.get("labels", [])[:3])
-        return jsonify(kind="image", summary=f"圖片文字：{words or '未辨識到'}。粗分類：{labels or '未辨識到'}。",
-                       note="本機 Vision OCR 與粗分類結果；尚非完整圖片問答。")
+        return jsonify(kind="image", summary=f"图片文字：{words or '未辨识到'}。粗分类：{labels or '未辨识到'}。",
+                       note="本机 Vision OCR 与粗分类结果；尚非完整图片问答。")
     try:
         return jsonify(extract_document(file.filename or "", data))
     except (ValueError, zipfile.BadZipFile, ET.ParseError, ImportError) as exc:
         return jsonify(error=str(exc)), 400
     except Exception:
-        return jsonify(error="無法抽取此檔案的文字"), 422
+        return jsonify(error="无法抽取此文件的文字"), 422
 
 
 @app.post("/api/chat")
@@ -310,14 +310,14 @@ def chat():
     if guard:
         return guard
     if not _same_origin():
-        return jsonify(error="來源不符"), 403
+        return jsonify(error="来源不符"), 403
     if not BRIDGE:
-        return jsonify(error="此 Railway 預覽尚未接入對話服務"), 503
+        return jsonify(error="此 Railway 预览尚未接入对话服务"), 503
     if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
-        return jsonify(error="文字格式不正確"), 415
+        return jsonify(error="文字格式不正确"), 415
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
-        return jsonify(error="文字格式不正確"), 400
+        return jsonify(error="文字格式不正确"), 400
     text = str(body.get("message", ""))[:4000]
     status, result = _bridge("/api/chat", json.dumps({"text": text, "history": []}).encode(), "application/json")
     return jsonify(result), status
@@ -329,11 +329,11 @@ def transcribe():
     if guard:
         return guard
     if not _same_origin():
-        return jsonify(error="來源不符"), 403
+        return jsonify(error="来源不符"), 403
     if not BRIDGE:
-        return jsonify(error="此 Railway 預覽尚未接入回合語音"), 503
+        return jsonify(error="此 Railway 预览尚未接入回合语音"), 503
     if request.mimetype != "audio/wav" or not request.content_length or not 44 <= request.content_length <= MAX_AUDIO:
-        return jsonify(error="音訊格式不正確"), 415
+        return jsonify(error="音讯格式不正确"), 415
     status, result = _bridge("/api/transcribe", request.get_data(), "audio/wav")
     return jsonify(result), status
 
@@ -354,8 +354,8 @@ def files(filename="index.html"):
 @app.errorhandler(413)
 def too_large(_error):
     if request.path.startswith("/api/"):
-        return jsonify(error="檔案大小超過限制"), 413
-    return "檔案大小超過限制", 413
+        return jsonify(error="文件大小超过限制"), 413
+    return "文件大小超过限制", 413
 
 
 if __name__ == "__main__":
