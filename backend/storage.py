@@ -79,10 +79,25 @@ def save_formal_meeting_record(session_id, record=None, **kw):
     _save_meeting(session_id, m)
 
 
-def record_audio_event(session_id, event=None, **kw):
-    m = _load_meeting(session_id)
-    m["events"].append(event if event is not None else kw)
-    _save_meeting(session_id, m)
+def record_audio_event(call_id, event=None, **kw):
+    """Store browser sound candidates separately from meeting records.
+
+    This open-source file store is a POC only; hosted calls are not durable until
+    DATA_DIR is mounted on persistent storage.
+    """
+    _ensure(_CALL)
+    path = os.path.join(_CALL, f"{_safe(call_id)}.events.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            events = json.load(f)
+        if not isinstance(events, list):
+            events = []
+    except FileNotFoundError:
+        events = []
+    events.append(event if event is not None else kw)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(events[-200:], f, ensure_ascii=False)
+    return True
 
 
 def read_meeting_session(session_id, **kw):

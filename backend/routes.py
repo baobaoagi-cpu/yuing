@@ -620,11 +620,24 @@ def api_yuling_call_event(call_id):
     if not _access_ok():
         return jsonify({"error": "forbidden"}), 403
     from storage import record_audio_event
-    body = request.get_json(silent=True) or {}
-    label = (body.get("label") or "").strip()
-    confidence = body.get("confidence", 0.0)
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "bad event"}), 400
+    label = body.get("label")
+    if not isinstance(label, str) or not 1 <= len(label.strip()) <= 40:
+        return jsonify({"error": "bad event"}), 400
+    label = label.strip()
+    try:
+        confidence = float(body.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad event"}), 400
+    if not 0 <= confidence <= 1:
+        return jsonify({"error": "bad event"}), 400
     meta = body.get("meta") if isinstance(body.get("meta"), dict) else {}
-    ok = record_audio_event(call_id, label, confidence, meta)
+    if len(json.dumps(meta, ensure_ascii=False)) > 2000:
+        return jsonify({"error": "bad event"}), 400
+    ok = record_audio_event(call_id, {"label": label, "confidence": confidence,
+                                      "meta": meta, "source_kind": "browser_candidate"})
     if not ok:
         return jsonify({"error": "bad event"}), 400
     return jsonify({"ok": True, "call_id": call_id, "label": label})

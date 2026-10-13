@@ -21,13 +21,16 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from pathlib import Path
-from flask import Flask, abort, jsonify, redirect, request, send_from_directory, session
+from flask import Flask, abort, jsonify, redirect, request, send_from_directory, session, send_file
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
+from deploy_pwa.chat_store import ChatStore, StoreUnavailable
+from deploy_pwa.chat_api import reply_to, ProviderError
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
@@ -81,7 +84,7 @@ def _require_login(api=False):
         return None
     if api:
         return jsonify(error="请先登录"), 401
-    login_url = "/login?next=/call" if request.path == "/call" else "/login"
+    login_url = "/login?next=" + request.path if request.path in {"/call", "/chat"} else "/login"
     return redirect(login_url, code=303)
 
 
@@ -110,7 +113,8 @@ def login_page():
     if not _configured():
         abort(503)
     if _signed_in():
-        return redirect("/call" if request.args.get("next") == "/call" else "/", code=303)
+        requested = request.args.get("next")
+        return redirect(requested if requested in {"/call", "/chat"} else "/chat", code=303)
     return send_from_directory(ROOT, "login.html")
 
 
@@ -120,6 +124,31 @@ def original_call_page():
     if guard:
         return guard
     return send_from_directory(PROJECT_ROOT / "frontend", "index.html")
+
+
+@app.get("/sense")
+def sound_preview_page():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(ROOT, "index.html")
+
+
+@app.get("/chat")
+def conversation_page():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", "chat.html")
+
+
+@app.get("/chat.css")
+@app.get("/chat.js")
+def conversation_asset():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", request.path.lstrip("/"))
 
 
 @app.get("/manifest.webmanifest")
@@ -213,6 +242,224 @@ def _bridge(path, body=None, content_type=None):
             return exc.code, {"error": "本机桥接服务失败"}
     except (URLError, TimeoutError):
         return 503, {"error": "本机桥接服务无法连接"}
+
+
+def _chat_store():
+    try:
+        return ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""))
+    except (StoreUnavailable, OSError):
+        return None
+
+
+def _uuid(value):
+    try:
+        return str(UUID(value)) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _v2_guard(write=False):
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if write and not _same_origin():
+        return jsonify(error="来源不符"), 403
+    return None
+
+
+@app.get("/api/v2/status")
+def conversation_status():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    store_path = os.path.realpath(str(store.path)) if store else ""
+    temporary = store_path.startswith(("/tmp/", "/private/tmp/"))
+    persistence = ("unavailable" if store is None else
+                   "ephemeral" if temporary else "path_configured_unverified")
+    return jsonify(text_model=bool(os.environ.get("MINIMAX_API_KEY", "").strip()),
+                   persistent_history=store is not None and not temporary,
+                   memory_persistence=persistence,
+                   image_upload=store is not None,
+                   image_understanding=bool(os.environ.get("MINIMAX_API_KEY", "").strip()),
+                   image_understanding_verified=False, vector_search=False,
+                   graph_reasoning=False, hermes=False)
+
+
+@app.post("/api/v2/upload-image")
+def upload_chat_image():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    file = request.files.get("file")
+    if file is None:
+        return jsonify(error="请选择图片"), 400
+    data = file.stream.read(4_000_001)
+    if not data or len(data) > 4_000_000:
+        return jsonify(error="图片大小需在 4 MB 内"), 413
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+        with Image.open(io.BytesIO(data)) as image:
+            if image.width * image.height > 20_000_000:
+                return jsonify(error="图片像素过大"), 413
+            image.verify()
+        with Image.open(io.BytesIO(data)) as image:
+            if image.width * image.height > 20_000_000:
+                return jsonify(error="图片像素过大"), 413
+            mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}.get(image.format)
+            if mime is None:
+                return jsonify(error="仅支持 PNG、JPEG、WebP"), 415
+            # Re-encode pixels into a fresh image. This removes EXIF/GPS and
+            # other embedded metadata before any bytes enter the database.
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+            mode = "RGBA" if image.mode in {"RGBA", "LA"} else "RGB"
+            fresh = Image.new(mode, image.size)
+            fresh.paste(image.convert(mode))
+            cleaned = io.BytesIO()
+            if mime == "image/jpeg":
+                fresh.convert("RGB").save(cleaned, "JPEG", quality=85)
+            elif mime == "image/webp":
+                fresh.save(cleaned, "WEBP", quality=85)
+            else:
+                fresh.save(cleaned, "PNG", optimize=True)
+            data = cleaned.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return jsonify(error="图片格式不正确"), 400
+    if len(data) > 4_000_000:
+        return jsonify(error="处理后图片超过 4 MB"), 413
+    iid = store.put_image(data, mime)
+    return jsonify(image_id=iid, url=f"/api/v2/image/{iid}", mime_type=mime,
+                   image_understanding="待发送并验证"), 201
+
+
+@app.get("/api/v2/image/<image_id>")
+def chat_image(image_id):
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    iid = _uuid(image_id)
+    row = store.get_image(iid) if iid else None
+    if row is None:
+        abort(404)
+    return send_file(io.BytesIO(row[1]), mimetype=row[0], conditional=False,
+                     download_name="image")
+
+
+@app.get("/api/v2/history")
+def conversation_history():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    sid = _uuid(request.args.get("session_id"))
+    if request.args.get("session_id") and not sid:
+        return jsonify(error="会话编号不正确"), 400
+    if sid:
+        if not store.has_session(sid):
+            return jsonify(error="会话不存在"), 404
+        return jsonify(session_id=sid, events=store.history(sid))
+    return jsonify(sessions=store.recent_sessions(), events=[])
+
+
+@app.post("/api/v2/chat")
+def conversation_chat():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="文字格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="文字格式不正确"), 400
+    text_value = data.get("text", "")
+    if not isinstance(text_value, str) or len(text_value) > 4000:
+        return jsonify(error="文字最多 4000 字"), 400
+    text_value = text_value.strip()
+    image_id = _uuid(data.get("image_id")) if data.get("image_id") else None
+    if data.get("image_id") and not image_id:
+        return jsonify(error="图片编号不正确"), 400
+    link_url = data.get("url")
+    if link_url is not None:
+        if (not isinstance(link_url, str) or len(link_url) > 2048 or
+                urlparse(link_url).scheme not in {"http", "https"} or not urlparse(link_url).hostname):
+            return jsonify(error="网址格式不正确"), 400
+    if not text_value and not image_id and not link_url:
+        return jsonify(error="请输入文字、图片或网址"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    if not os.environ.get("MINIMAX_API_KEY", "").strip():
+        return jsonify(error="对话模型尚未配置"), 503
+    image = store.get_image(image_id) if image_id else None
+    if image_id and image is None:
+        return jsonify(error="图片不存在"), 404
+    sid_raw = data.get("session_id")
+    sid = _uuid(sid_raw) if sid_raw else None
+    if sid_raw and not sid:
+        return jsonify(error="会话编号不正确"), 400
+    if sid and not store.has_session(sid):
+        return jsonify(error="会话不存在"), 404
+    sid = sid or store.create_session()
+    history = store.history(sid, limit=20)
+    user_event = store.add_event(sid, "user", text_value, image_id=image_id,
+                                 link_url=link_url, source_kind="user_explicit")
+    try:
+        answer = reply_to(text_value, history, store.memories(), image=image,
+                          link_url=link_url)
+    except ProviderError as exc:
+        return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
+    assistant_event = store.add_event(sid, "assistant", answer, source_kind="model_generated")
+    return jsonify(session_id=sid, reply=answer,
+                   user_event=user_event, assistant_event=assistant_event)
+
+
+@app.get("/api/v2/memories")
+def explicit_memories():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    return jsonify(memories=store.memories())
+
+
+@app.post("/api/v2/memories")
+def save_explicit_memory():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    data = request.get_json(silent=True) if request.mimetype == "application/json" else None
+    if not isinstance(data, dict) or not isinstance(data.get("text"), str) or not 1 <= len(data["text"].strip()) <= 500:
+        return jsonify(error="记忆文字需在 1 至 500 字内"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    mid = store.add_memory(data["text"].strip())
+    return jsonify(id=mid, source_kind="user_explicit"), 201
+
+
+@app.delete("/api/v2/memories/<memory_id>")
+def forget_explicit_memory(memory_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    mid = _uuid(memory_id)
+    if not mid or not store.delete_memory(mid):
+        return jsonify(error="记忆不存在"), 404
+    return jsonify(ok=True)
 
 
 def extract_document(filename, data):
@@ -352,7 +599,12 @@ def transcribe():
 
 @app.get("/")
 @app.get("/<path:filename>")
-def files(filename="index.html"):
+def files(filename=""):
+    if not filename:
+        guard = _require_login()
+        if guard:
+            return guard
+        return redirect("/chat", code=303)
     public = {"style.css", "login.js", "assets/icon.svg", "assets/icon-180.png"}
     if filename not in public:
         guard = _require_login()

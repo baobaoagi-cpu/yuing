@@ -1,7 +1,7 @@
 {
   "name": "YULING 语灵",
   "short_name": "YULING",
-  "start_url": "/call",
+  "start_url": "/chat",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",

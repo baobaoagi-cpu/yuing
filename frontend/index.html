@@ -57,6 +57,22 @@
   .gear{ position:absolute; top:max(4vh,18px); left:20px; color:var(--dim);
     background:none; border:none; cursor:pointer; padding:8px; }
   .gear svg{ width:22px; height:22px; }
+  .chat-return{ position:absolute; top:max(4vh,18px); right:20px; z-index:3;
+    display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:0 11px;
+    border:1px solid rgba(255,255,255,.15); border-radius:11px; background:rgba(0,0,0,.56);
+    color:rgba(255,255,255,.82); font-size:12px; cursor:pointer; backdrop-filter:blur(8px); }
+  .chat-return:hover{ border-color:rgba(255,255,255,.38); color:#fff; }
+  .chat-return:focus-visible{ outline:2px solid #1d9e75; outline-offset:3px; }
+  .leave-dialog{ position:fixed; inset:0; z-index:9; display:grid; place-items:center;
+    padding:20px; background:rgba(0,0,0,.78); backdrop-filter:blur(10px); }
+  .leave-dialog-card{ width:min(100%,340px); padding:24px; text-align:left; border-radius:18px;
+    border:1px solid rgba(255,255,255,.14); background:#111714; box-shadow:0 24px 80px rgba(0,0,0,.5); }
+  .leave-dialog-card h2{ margin:0 0 9px; font-size:18px; font-weight:600; }
+  .leave-dialog-card p{ margin:0; color:var(--dim); font-size:13px; line-height:1.65; }
+  .leave-actions{ display:flex; gap:9px; justify-content:flex-end; margin-top:22px; }
+  .leave-actions button{ min-height:40px; border-radius:10px; border:1px solid rgba(255,255,255,.14);
+    padding:0 12px; background:transparent; color:#fff; font-size:13px; cursor:pointer; }
+  .leave-actions .leave-confirm{ border-color:#1d9e75; background:#1d9e75; }
 
   /* Only components observable on the deployed call path are shown. */
   .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
@@ -225,6 +241,7 @@
     .controls.callpane{ align-self:flex-start; margin-left:clamp(8px,7vw,36px); }
     .lamps{ top:14px; }
     .gear{ top:54px; left:12px; }
+    .chat-return{ top:54px; right:12px; }
     .top.callpane{ margin-top:62px; }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
@@ -260,6 +277,18 @@
 <button class="gear" id="gear" aria-label="设置">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 </button>
+<button class="chat-return" id="chatReturn" type="button" aria-label="返回文字聊天"><span aria-hidden="true">‹</span> 返回聊天</button>
+
+<div class="leave-dialog hidden" id="leaveDialog" role="dialog" aria-modal="true" aria-labelledby="leaveTitle" aria-describedby="leaveText">
+  <div class="leave-dialog-card">
+    <h2 id="leaveTitle">要返回聊天吗？</h2>
+    <p id="leaveText">返回后会结束这次通话，麦克风也会关闭。</p>
+    <div class="leave-actions">
+      <button id="leaveCancel" type="button">继续通话</button>
+      <button class="leave-confirm" id="leaveConfirm" type="button">挂断并返回</button>
+    </div>
+  </div>
+</div>
 
 <div class="lamps" id="lamps" aria-label="系统健康状态">
   <span class="lamp" id="lamp-service"><i class="dot"></i>服务</span>
@@ -384,6 +413,8 @@
   const callBtn=$('callBtn'), callCircle=$('callCircle'), callIcon=$('callIcon'), callLabel=$('callLabel');
   const muteBtn=$('muteBtn'), muteCircle=$('muteCircle'), muteLabel=$('muteLabel');
   const gear=$('gear'), panel=$('panel');
+  const chatReturn=$('chatReturn'), leaveDialog=$('leaveDialog');
+  const leaveCancel=$('leaveCancel'), leaveConfirm=$('leaveConfirm');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
   const meetingView=$('meetingView'), swipeHint=$('swipeHint');
   const meetingStatus=$('meetingStatus'), meetingBadge=$('meetingBadge'), meetingTimer=$('meetingTimer');
@@ -1862,6 +1893,21 @@
   }
 
   callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
+  chatReturn.addEventListener('click',()=>{
+    if(room || connecting){
+      leaveDialog.classList.remove('hidden');
+      leaveCancel.focus();
+    }else location.assign('/chat');
+  });
+  leaveCancel.addEventListener('click',()=>{ leaveDialog.classList.add('hidden'); chatReturn.focus(); });
+  leaveConfirm.addEventListener('click',async()=>{
+    leaveConfirm.disabled=true;
+    await endCall();
+    location.assign('/chat');
+  });
+  leaveDialog.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ e.preventDefault(); leaveCancel.click(); }
+  });
   muteBtn.addEventListener('click', toggleMute);
   meetingExpandBtn&&meetingExpandBtn.addEventListener('click', toggleMeetingTranscriptExpanded);
   MEETING_ENABLED&&swipeHint&&swipeHint.addEventListener('click',()=>{ if(!activeOverlayOpen()) toggleMeetingView(); });

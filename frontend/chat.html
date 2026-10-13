@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080a09">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="YULING">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <link rel="stylesheet" href="/chat.css">
+  <title>陈端倪 · 语灵</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="identity" aria-label="正在与陈端倪对话">
+        <span class="avatar" aria-hidden="true">倪<span class="avatar-light"></span></span>
+        <span class="identity-copy"><strong>陈端倪</strong><span>语灵 · 陪你聊聊</span></span>
+      </div>
+      <a class="call-link" href="/call" aria-label="进入语音通话">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7.4 3.7-2.3 1a2.3 2.3 0 0 0-1.3 2.6A17.8 17.8 0 0 0 16.7 20a2.3 2.3 0 0 0 2.6-1.3l1-2.3a1.6 1.6 0 0 0-.8-2.1l-2.8-1.2a1.6 1.6 0 0 0-1.8.4l-1.1 1.1a13.3 13.3 0 0 1-4.4-4.4l1.1-1.1a1.6 1.6 0 0 0 .4-1.8L9.5 4.5a1.6 1.6 0 0 0-2.1-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span>通话</span>
+      </a>
+    </header>
+
+    <main class="conversation" id="conversation" aria-label="对话内容">
+      <div class="conversation-inner" id="message-list">
+        <div class="intro" id="intro">
+          <div class="intro-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p class="intro-overline">YULING / CHEN DUNNI</p>
+          <h1>你好，我是端倪。</h1>
+          <p>想说什么就说吧。文字、图片或一个网址，都可以从这里开始。</p>
+          <span class="intro-note">对话能力测试中；回复和记录以实际服务结果为准。</span>
+        </div>
+      </div>
+    </main>
+
+    <div class="composer-wrap">
+      <div id="global-status" class="global-status" role="status" aria-live="polite" hidden></div>
+      <div id="attachment" class="attachment" hidden>
+        <img id="attachment-image" alt="待发送图片预览">
+        <span class="attachment-copy"><strong id="attachment-name"></strong><small>发送后会交给端倪查看</small></span>
+        <button id="remove-attachment" type="button" aria-label="移除图片">×</button>
+      </div>
+      <div id="url-preview" class="url-preview" hidden><span class="url-icon" aria-hidden="true">↗</span><span><small>网址预览</small><strong id="url-host"></strong></span><button id="remove-url" type="button" aria-label="取消网址预览">×</button></div>
+      <form id="chat-form" class="composer" autocomplete="off">
+        <label class="attach-button" for="image-input" title="添加图片" aria-label="添加图片">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </label>
+        <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <label class="sr-only" for="message-input">发送消息</label>
+        <textarea id="message-input" rows="1" maxlength="4000" placeholder="给端倪发消息…" enterkeyhint="send"></textarea>
+        <button class="send-button" id="send-button" type="submit" aria-label="发送消息" disabled>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3.1-5.9L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m19 5-7.1 8.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </form>
+      <p class="composer-footnote">按回车发送 · 图片仅支持 JPG、PNG、WebP，最大 4 MB</p>
+    </div>
+  </div>
+  <script type="module" src="/chat.js"></script>
+</body>
+</html>
