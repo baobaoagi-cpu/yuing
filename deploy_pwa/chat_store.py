@@ -84,6 +84,8 @@ class ChatStore:
                 db.execute("ALTER TABLE knowledge_items ADD COLUMN source_event_id TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS knowledge_owner_time "
                        "ON knowledge_items(owner_id, created_at)")
+            db.execute("CREATE INDEX IF NOT EXISTS relation_owner_time "
+                       "ON relation_candidates(owner_id, created_at)")
 
     @contextmanager
     def _connect(self):
@@ -263,6 +265,69 @@ class ChatStore:
 
     def delete_knowledge_item(self, item_id):
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM relation_candidates WHERE owner_id=? "
+                       "AND (subject_id=? OR object_id=?)",
+                       (self.owner_id, item_id, item_id))
             cur = db.execute("DELETE FROM knowledge_items WHERE id=? AND owner_id=?",
                              (item_id, self.owner_id))
+            return cur.rowcount > 0
+
+    def add_relation_candidate(self, subject_id, predicate, object_id, source_event_id):
+        """Record a possible relation, never a verified fact or causal finding."""
+        if (not all(isinstance(value, str) and value for value in
+                    (subject_id, object_id, source_event_id)) or
+                not isinstance(predicate, str) or
+                not 1 <= len(predicate.strip()) <= 120):
+            raise ValueError("关系候选或来源不正确")
+        rid = str(uuid4())
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            items = db.execute(
+                "SELECT id FROM knowledge_items WHERE owner_id=? AND id IN (?,?)",
+                (self.owner_id, subject_id, object_id),
+            ).fetchall()
+            if {row["id"] for row in items} != {subject_id, object_id}:
+                raise StoreUnavailable("关系条目不存在")
+            source = db.execute(
+                "SELECT e.role FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=? AND s.owner_id=?",
+                (source_event_id, self.owner_id),
+            ).fetchone()
+            if source is None or source["role"] != "user":
+                raise StoreUnavailable("来源事件不存在")
+            db.execute(
+                "INSERT INTO relation_candidates"
+                "(id,subject_id,predicate,object_id,source_event_id,status,created_at,owner_id) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (rid, subject_id, predicate.strip(), object_id, source_event_id,
+                 "candidate", now, self.owner_id),
+            )
+        return {"id": rid, "subject_id": subject_id, "predicate": predicate.strip(),
+                "object_id": object_id, "source_event_id": source_event_id,
+                "status": "candidate", "created_at": now}
+
+    def relation_candidates(self, limit=50):
+        limit = max(1, min(int(limit), 100))
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT r.id,r.subject_id,r.predicate,r.object_id,r.source_event_id,"
+                "r.status,r.created_at FROM relation_candidates r "
+                "JOIN knowledge_items subject ON subject.id=r.subject_id "
+                "AND subject.owner_id=r.owner_id "
+                "JOIN knowledge_items object ON object.id=r.object_id "
+                "AND object.owner_id=r.owner_id "
+                "JOIN events e ON e.id=r.source_event_id "
+                "JOIN sessions s ON s.id=e.session_id AND s.owner_id=r.owner_id "
+                "WHERE r.owner_id=? AND r.status='candidate' "
+                "ORDER BY r.created_at DESC,r.rowid DESC LIMIT ?",
+                (self.owner_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_relation_candidate(self, relation_id):
+        with self._connect() as db:
+            cur = db.execute("DELETE FROM relation_candidates WHERE id=? AND owner_id=?",
+                             (relation_id, self.owner_id))
             return cur.rowcount > 0
