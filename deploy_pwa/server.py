@@ -441,6 +441,18 @@ def tool_catalog():
             {"name": "企业微信", "state": "waiting", "detail": "待企业授权与接口范围确认"},
             {"name": "腾讯会议", "state": "waiting", "detail": "待本人授权与唯读范围确认"},
         ]},
+        {"title": "趣味探索 · 等待整合", "items": [
+            {"name": "B站投稿回顾", "state": "waiting",
+             "detail": "待开放平台应用、本人授权与只读稿件权限"},
+            {"name": "抖音作品互动", "state": "waiting",
+             "detail": "待应用审核、本人授权与作品数据权限"},
+            {"name": "快手漫画脸", "state": "waiting",
+             "detail": "待图像授权、接口资格与费用确认"},
+            {"name": "Lichess 每日棋题", "state": "waiting",
+             "detail": "待中国大陆连线、限流与展示验收"},
+            {"name": "NASA 每日宇宙图片", "state": "waiting",
+             "detail": "待新版接口、图片许可与中国大陆连线核对"},
+        ]},
     ])
 
 

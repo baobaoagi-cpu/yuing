@@ -28,11 +28,14 @@ class ToolCatalogTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         groups = response.json["groups"]
         names = {item["name"] for group in groups for item in group["items"]}
-        self.assertEqual(len(names), 12)
+        self.assertEqual(len(names), 17)
         self.assertIn("和风天气", names)
         self.assertIn("腾讯会议", names)
         self.assertIn("时区换算", names)
-        candidates = groups[1]["items"] + groups[2]["items"]
+        self.assertEqual({item["name"] for item in groups[3]["items"]}, {
+            "B站投稿回顾", "抖音作品互动", "快手漫画脸", "Lichess 每日棋题",
+            "NASA 每日宇宙图片"})
+        candidates = groups[1]["items"] + groups[2]["items"] + groups[3]["items"]
         self.assertTrue(all(item["state"] != "ready" and "href" not in item
                             for item in candidates))
         self.assertNotIn("API_KEY", response.get_data(as_text=True))
