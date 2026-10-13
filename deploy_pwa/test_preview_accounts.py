@@ -62,6 +62,7 @@ class PreviewAccountsTest(unittest.TestCase):
 
     def test_accounts_have_separate_history_and_memory(self):
         self.assertEqual(self.login("nicole", "synthetic-nicole-password", True).status_code, 200)
+        self.assertEqual(self.client.get("/api/v2/account", base_url=self.base).json["account"], "nicole")
         with self.client.session_transaction(base_url=self.base) as cookie:
             self.assertEqual(cookie["account"], "nicole")
             self.assertTrue(cookie.permanent)
@@ -84,6 +85,7 @@ class PreviewAccountsTest(unittest.TestCase):
         self.assertEqual(self.login(" Friend ", "synthetic-friend-password").status_code, 200)
         with self.client.session_transaction(base_url=self.base) as cookie:
             self.assertEqual(cookie["account"], "friend")
+        self.assertEqual(self.client.get("/api/v2/account", base_url=self.base).json["account"], "friend")
         ringback = self.client.get("/yuling-media/ringback.wav", base_url=self.base)
         self.assertEqual(ringback.status_code, 200)
         self.assertEqual(ringback.mimetype, "audio/wav")

@@ -39,13 +39,14 @@ const pageReference = $("page-reference");
 const pageReferenceHost = $("page-reference-host");
 const emojiButton = $("emoji-button");
 const emojiPanel = $("emoji-panel");
-const SESSION_KEY = "yuling_chat_session_v2";
+const SESSION_KEY_PREFIX = "yuling_chat_session_v2:";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DOCUMENT_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "txt", "md", "csv"]);
 const DOWNLOAD_ONLY_EXTENSIONS = new Set(["doc", "xls", "ppt", "wps", "et", "dps", "ofd"]);
 const MAX_IMAGE_BYTES = 4_000_000;
 const MAX_DOCUMENT_BYTES = 5_000_000;
-let sessionId = localStorage.getItem(SESSION_KEY) || "";
+let sessionStorageKey = "";
+let sessionId = "";
 let selectedFile = null;
 let selectedImageUrl = "";
 let sending = false;
@@ -470,7 +471,7 @@ function setAttachment(file) {
 async function jsonResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    localStorage.removeItem(SESSION_KEY);
+    if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
     window.location.href = "/login?next=/chat";
     throw new Error("请先登录");
   }
@@ -481,6 +482,20 @@ async function jsonResponse(response) {
     throw error;
   }
   return payload;
+}
+
+async function loadAccount() {
+  try {
+    const result = await jsonResponse(await fetch("/api/v2/account", { credentials: "same-origin" }));
+    if (typeof result.account !== "string" || !result.account) throw new Error("无法确认当前帐号");
+    sessionStorageKey = SESSION_KEY_PREFIX + result.account;
+    sessionId = localStorage.getItem(sessionStorageKey) || "";
+    localStorage.removeItem("yuling_chat_session_v2");
+    $("current-account-label").textContent = `Dunni · ${result.account}`;
+    await loadHistory();
+  } catch (error) {
+    showStatus(error.message || "无法确认当前帐号，请重新登录。");
+  }
 }
 
 async function loadHistory() {
@@ -511,7 +526,7 @@ async function loadHistory() {
     if (error.httpStatus === 404) {
       if (sessionId === requestedSessionId) {
         sessionId = "";
-        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(sessionStorageKey);
       }
       showStatus("之前的会话未找到，可以开始新对话。");
     } else {
@@ -523,6 +538,7 @@ async function loadHistory() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (sending) return;
+  if (!sessionStorageKey) { showStatus("正在确认当前帐号，请稍后重试。"); return; }
   const text = input.value.trim();
   const pageReadId = text ? selectedPageRead?.id || "" : "";
   const file = selectedFile;
@@ -591,7 +607,7 @@ form.addEventListener("submit", async (event) => {
       const failure = await response.clone().json().catch(() => null);
       if (failure?.error === "会话不存在") {
         sessionId = "";
-        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(sessionStorageKey);
         delete requestBody.session_id;
         response = await postChat();
       }
@@ -600,7 +616,7 @@ form.addEventListener("submit", async (event) => {
     if (typeof result.reply !== "string") throw new Error("对话服务没有返回回复");
     if (result.session_id) {
       sessionId = String(result.session_id);
-      localStorage.setItem(SESSION_KEY, sessionId);
+      localStorage.setItem(sessionStorageKey, sessionId);
     }
     visible.row.classList.remove("pending");
     visible.meta.textContent = displayTime();
@@ -625,7 +641,7 @@ form.addEventListener("submit", async (event) => {
       linkSavedDocument();
       if (error.payload.session_id) {
         sessionId = String(error.payload.session_id);
-        localStorage.setItem(SESSION_KEY, sessionId);
+        localStorage.setItem(sessionStorageKey, sessionId);
       }
       visible.meta.textContent = "已保存 · 端倪暂时无法回复";
       if (error.payload.user_event.source_kind === "user_explicit") {
@@ -760,7 +776,7 @@ document.addEventListener("keydown", (event) => {
 });
 refreshInstallButton();
 updateComposer();
-loadHistory();
+loadAccount();
 
 const memoryButton = $("memory-button");
 const memoryPanel = $("memory-panel");

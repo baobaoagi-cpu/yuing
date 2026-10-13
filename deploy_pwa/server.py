@@ -308,6 +308,14 @@ def logout():
     return jsonify(ok=True)
 
 
+@app.get("/api/v2/account")
+def current_account():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    return jsonify(account=session["account"])
+
+
 def _bridge(path, body=None, content_type=None):
     headers = {"Host": _bridge_url.netloc, "Origin": BRIDGE}
     if content_type:

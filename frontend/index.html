@@ -452,7 +452,7 @@
     audioRetryHandler=null;
   }
   let callAttemptId=0;
-  const CHAT_SESSION_KEY='yuling_chat_session_v2';
+  let CHAT_SESSION_KEY='';
   let transcriptSaveQueue=Promise.resolve();
   const savedTranscriptCalls=new Set(), failedTranscriptCalls=new Set();
   const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
@@ -460,6 +460,12 @@
     ? 'http://127.0.0.1:8080'
     : (location.port==='3000' ? `${location.protocol}//${location.hostname}:8080` : '');
   const apiUrl=path=>`${API_ROOT}${path}`;
+  const accountReady=fetch(apiUrl('/api/v2/account'),{credentials:'same-origin'})
+    .then(response=>response.ok?response.json():null)
+    .then(data=>{ if(data&&typeof data.account==='string'&&data.account){
+      CHAT_SESSION_KEY='yuling_chat_session_v2:'+data.account;
+      localStorage.removeItem('yuling_chat_session_v2');
+    } }).catch(()=>{});
   let meetingProgress=0;
   let meetingDrag=null;
   let meetingHistory=[];
@@ -1859,9 +1865,10 @@
   function saveFinalTranscript(callId, speakerIdentity, segmentId, role, text){
     // Serialize writes so the first segment can create one shared chat session.
     transcriptSaveQueue=transcriptSaveQueue.then(async()=>{
+      await accountReady;
       const payload={call_id:callId, speaker_identity:speakerIdentity,
         segment_id:segmentId, role, text};
-      const savedSession=localStorage.getItem(CHAT_SESSION_KEY);
+      const savedSession=CHAT_SESSION_KEY?localStorage.getItem(CHAT_SESSION_KEY):'';
       if(savedSession) payload.session_id=savedSession;
       const post=()=>fetch(apiUrl('/api/v2/call-transcript'),{
         method:'POST', credentials:'same-origin', keepalive:true,
@@ -1871,13 +1878,13 @@
       // A preview redeploy can erase the temporary SQLite file. Start a new
       // session then, while still deduplicating by LiveKit's segment id.
       if(response.status===404 && payload.session_id){
-        localStorage.removeItem(CHAT_SESSION_KEY);
+        if(CHAT_SESSION_KEY) localStorage.removeItem(CHAT_SESSION_KEY);
         delete payload.session_id;
         response=await post();
       }
       if(!response.ok) throw new Error('transcript save '+response.status);
       const result=await response.json();
-      if(result.session_id) localStorage.setItem(CHAT_SESSION_KEY,result.session_id);
+      if(result.session_id&&CHAT_SESSION_KEY) localStorage.setItem(CHAT_SESSION_KEY,result.session_id);
       savedTranscriptCalls.add(callId);
     }).catch(()=>{
       failedTranscriptCalls.add(callId);

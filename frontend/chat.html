@@ -19,7 +19,7 @@
     <header class="topbar">
       <div class="identity" aria-label="正在与陳端倪对话">
         <span class="avatar" aria-hidden="true"><span class="avatar-light"></span></span>
-        <span class="identity-copy"><strong>陳端倪</strong><span>Dunni</span></span>
+        <span class="identity-copy"><strong>陳端倪</strong><span id="current-account-label">Dunni</span></span>
       </div>
       <div class="topbar-actions">
         <button class="memory-button" id="memory-button" type="button" aria-label="记忆设置" aria-expanded="false" aria-controls="memory-panel" title="记忆设置" hidden>记</button>
@@ -43,7 +43,7 @@
       </div>
       <section id="memory-panel" class="memory-panel" aria-labelledby="memory-title" hidden>
         <button id="memory-close" class="memory-close" type="button" aria-label="关闭记忆设置">×</button>
-        <strong id="memory-title">关于 Nicole 的记忆</strong>
+        <strong id="memory-title">关于你的记忆</strong>
         <p>端倪可以把你主动说出的喜好、习惯和需要记成待确认的线索，继续了解你。不会把猜测当成事实。你可以随时关闭记录，逐条删除线索。</p>
         <div id="memory-choice" class="memory-actions" hidden>
           <button id="memory-allow" type="button">允许记录</button>
