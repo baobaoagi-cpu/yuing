@@ -155,17 +155,31 @@ async def phone_call(ctx: agents.JobContext) -> None:
     if not api_key:
         raise RuntimeError("MINIMAX_API_KEY is required")
 
-    # The current PWA does not issue signed context. This remains disabled
-    # unless a separate server-side issuer and a shared signing key are added.
     context_text = ""
     try:
         context_text = signed_context_text(
             ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
             ctx.room.name,
         ) or ""
-    except ContextRejected:
-        # Do not log metadata: it could contain private memories.
-        pass
+    except ContextRejected as exc:
+        # Only emit a bounded diagnostic category. Metadata can contain private
+        # memories, so never log it or an arbitrary exception representation.
+        reason = str(exc)
+        if reason not in {
+            "context signing key too short", "invalid metadata", "invalid envelope",
+            "invalid encoding", "invalid signature", "invalid claims",
+            "invalid version", "wrong context owner or room",
+            "expired or invalid validity window", "too many memories",
+            "invalid memory source", "invalid account seed",
+        }:
+            reason = "other"
+        logger.warning("call_stage context_rejected reason=%s", reason.replace(" ", "_"))
+    else:
+        logger.info(
+            "call_stage context_status=%s account_seed=%s",
+            "accepted" if context_text else "absent",
+            "present" if "【当前账号开通时提供的基础资料" in context_text else "absent",
+        )
 
     logger.info("call_stage job_accepted")
     try:

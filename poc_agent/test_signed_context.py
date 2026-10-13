@@ -47,6 +47,17 @@ class SignedContextTest(unittest.TestCase):
         self.assertIsNone(signed_context_text(
             envelope(owner_id="friend", memories=[]), KEY, ROOM, now=110))
 
+    def test_ming_name_is_explicit_for_identity_question(self):
+        seed = {"display_name": {"value": "王跃明",
+                                 "source_kind": "account_setup_user_provided",
+                                 "source_date": "2026-10-14",
+                                 "confidence": "user_provided_unverified"}}
+        context = signed_context_text(envelope(owner_id="MING", memories=[],
+                                               account_seed=seed), KEY, ROOM, now=110)
+        self.assertIn("王跃明", context)
+        self.assertIn("当前登录账号的称呼", context)
+        self.assertIn("不要把这些资料说成自己从声音认出来的", context)
+
     def test_room_mismatch_and_expired_context_are_rejected(self):
         with self.assertRaises(ContextRejected):
             signed_context_text(envelope(), KEY, "other-room", now=110)
