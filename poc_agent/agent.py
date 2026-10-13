@@ -78,8 +78,16 @@ class ChenDunni(Agent):
         # Provider interjections belong only in audio input. LiveKit's assistant
         # transcript and conversation history consume the original LLM stream.
         model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
+        def log_cue(category: str | None) -> None:
+            # Never log spoken text, room metadata, user identity or API keys.
+            logger.info(
+                "call_stage tts_emotion model=%s category=%s",
+                model if model in {"speech-2.8-hd", "speech-2.8-turbo"} else "unsupported",
+                category or "none",
+            )
+
         async for frame in Agent.default.tts_node(
-            self, minimax_tts_text(text, model=model), model_settings
+            self, minimax_tts_text(text, model=model, on_decision=log_cue), model_settings
         ):
             yield frame
 
