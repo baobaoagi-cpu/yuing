@@ -55,7 +55,7 @@ class ChatStore:
                 );
                 CREATE TABLE IF NOT EXISTS knowledge_items (
                     id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
-                    source_url TEXT, source_kind TEXT NOT NULL,
+                    source_url TEXT, source_kind TEXT NOT NULL, source_event_id TEXT,
                     created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS relation_candidates (
@@ -79,6 +79,11 @@ class ChatStore:
             db.execute("CREATE INDEX IF NOT EXISTS images_owner ON images(owner_id, id)")
             db.execute("CREATE INDEX IF NOT EXISTS memories_owner_time "
                        "ON memories(owner_id, created_at)")
+            knowledge_columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge_items)")}
+            if "source_event_id" not in knowledge_columns:
+                db.execute("ALTER TABLE knowledge_items ADD COLUMN source_event_id TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS knowledge_owner_time "
+                       "ON knowledge_items(owner_id, created_at)")
 
     @contextmanager
     def _connect(self):
@@ -209,4 +214,55 @@ class ChatStore:
         with self._connect() as db:
             cur = db.execute("DELETE FROM memories WHERE id=? AND owner_id=?",
                              (mid, self.owner_id))
+            return cur.rowcount > 0
+
+    def add_knowledge_item(self, title, content, source_event_id,
+                           source_kind="user_explicit", source_url=None):
+        """Save a source-linked item; this is no claim that a URL was fetched."""
+        if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 200 or
+                not isinstance(content, str) or not 1 <= len(content.strip()) <= 8000 or
+                not isinstance(source_event_id, str) or not source_event_id or
+                source_kind not in {"user_explicit", "document_extract", "webpage_candidate"} or
+                source_url is not None and
+                (not isinstance(source_url, str) or len(source_url) > 2048)):
+            raise ValueError("知识条目或来源不正确")
+        kid = str(uuid4())
+        now = time.time()
+        with self._connect() as db:
+            source = db.execute(
+                "SELECT e.role,e.source_kind FROM events e "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=? AND s.owner_id=?",
+                (source_event_id, self.owner_id),
+            ).fetchone()
+            if source is None or source["role"] != "user":
+                raise StoreUnavailable("来源事件不存在")
+            if source_kind == "user_explicit" and source["source_kind"] != "user_explicit":
+                raise StoreUnavailable("来源事件不是用户明示输入")
+            db.execute(
+                "INSERT INTO knowledge_items"
+                "(id,title,content,source_url,source_kind,source_event_id,created_at,owner_id) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (kid, title.strip(), content.strip(), source_url, source_kind,
+                 source_event_id, now, self.owner_id),
+            )
+        return {"id": kid, "title": title.strip(), "content": content.strip(),
+                "source_event_id": source_event_id, "source_kind": source_kind,
+                "source_url": source_url, "created_at": now}
+
+    def knowledge_items(self, limit=50):
+        limit = max(1, min(int(limit), 100))
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                "FROM knowledge_items WHERE owner_id=? "
+                "ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                (self.owner_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_knowledge_item(self, item_id):
+        with self._connect() as db:
+            cur = db.execute("DELETE FROM knowledge_items WHERE id=? AND owner_id=?",
+                             (item_id, self.owner_id))
             return cur.rowcount > 0
