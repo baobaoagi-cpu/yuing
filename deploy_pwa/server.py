@@ -327,6 +327,7 @@ def conversation_status():
                    image_upload=store is not None,
                    image_understanding=bool(os.environ.get("MINIMAX_API_KEY", "").strip()),
                    image_understanding_verified=False, vector_search=False,
+                   sourced_knowledge=store is not None,
                    graph_reasoning=False, hermes=False)
 
 
@@ -549,6 +550,61 @@ def forget_explicit_memory(memory_id):
     mid = _uuid(memory_id)
     if not mid or not store.delete_memory(mid):
         return jsonify(error="记忆不存在"), 404
+    return jsonify(ok=True)
+
+
+@app.get("/api/v2/knowledge")
+def list_knowledge_items():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="知识存储尚未配置"), 503
+    return jsonify(items=store.knowledge_items())
+
+
+@app.post("/api/v2/knowledge")
+def save_knowledge_item():
+    """Save a user-supplied note linked to its original conversation event."""
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="知识格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="知识格式不正确"), 400
+    title, content = data.get("title"), data.get("content")
+    source_event_id = _uuid(data.get("source_event_id"))
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120:
+        return jsonify(error="标题需在 1 至 120 字内"), 400
+    if not isinstance(content, str) or not 1 <= len(content.strip()) <= 4000:
+        return jsonify(error="内容需在 1 至 4000 字内"), 400
+    if not source_event_id:
+        return jsonify(error="请提供本账号的来源消息"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="知识存储尚未配置"), 503
+    try:
+        item = store.add_knowledge_item(title.strip(), content.strip(),
+                                        source_event_id, source_kind="user_explicit")
+    except StoreUnavailable:
+        return jsonify(error="来源消息不存在"), 404
+    return jsonify(item=item), 201
+
+
+@app.delete("/api/v2/knowledge/<item_id>")
+def delete_knowledge_item(item_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="知识存储尚未配置"), 503
+    kid = _uuid(item_id)
+    if not kid or not store.delete_knowledge_item(kid):
+        return jsonify(error="知识条目不存在"), 404
     return jsonify(ok=True)
 
 

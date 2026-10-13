@@ -2,6 +2,8 @@
 
 此服務提供受登入保護的聊天、圖片、明示記憶、通話頁和裝置端 YAMNet 生活聲候選分類。文字與圖片對話會呼叫 MiniMax；語音 Agent 是另一個服務。Hermes、向量搜尋和圖推理尚未接入。對話與圖片目前存在 `POC_CHAT_DB_PATH` 指向的 SQLite 檔案；若設為 `/tmp`，部署或容器重建後可能遺失。`/api/v2/status` 會標示 `ephemeral`。
 
+`POST /api/v2/knowledge` 可將使用者已送出的原始訊息整理成知識條目，須帶該訊息的 `source_event_id`、`title`、`content`；後端只接受同帳號的使用者明示訊息。`GET /api/v2/knowledge` 列出同帳號條目，`DELETE /api/v2/knowledge/{id}` 可撤回。這些條目是有來源的使用者筆記，不代表內容已查證，也沒有向量檢索或圖推理；目前資料庫若在 `/tmp`，知識同樣會在重新部署時消失。貼網址只儲存網址，不會自動抓取網頁內容。
+
 `Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除目前瀏覽器的 Cookie；更換帳密或簽章祕密會使相應舊登入失效。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
 
 ### 可選的個別測試帳號

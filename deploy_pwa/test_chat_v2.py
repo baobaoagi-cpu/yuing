@@ -96,6 +96,33 @@ class ChatV2Test(unittest.TestCase):
                                      base_url=self.base, headers=self.headers)
         self.assertEqual(deleted.status_code, 200)
 
+    def test_knowledge_requires_original_user_message_and_can_be_removed(self):
+        self.assertEqual(self.client.get("/api/v2/knowledge", base_url=self.base).status_code, 401)
+        self._login()
+        with patch("deploy_pwa.server.reply_to", return_value="我记下来源了。"):
+            exchange = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "我住在上海"})
+        self.assertEqual(exchange.status_code, 200)
+        source = exchange.json["user_event"]["id"]
+        candidate = {"title": "居住地", "content": "使用者说自己住在上海",
+                     "source_event_id": source}
+        self.assertEqual(self.client.post("/api/v2/knowledge", base_url=self.base,
+                                          json=candidate).status_code, 403)
+        self.assertEqual(self.client.post("/api/v2/knowledge", base_url=self.base,
+                                          headers=self.headers,
+                                          json={**candidate, "source_event_id":
+                                                exchange.json["assistant_event"]["id"]}).status_code, 404)
+        saved = self.client.post("/api/v2/knowledge", base_url=self.base,
+                                 headers=self.headers, json=candidate)
+        self.assertEqual(saved.status_code, 201)
+        self.assertEqual(saved.json["item"]["source_event_id"], source)
+        listing = self.client.get("/api/v2/knowledge", base_url=self.base)
+        self.assertTrue(any(item["id"] == saved.json["item"]["id"]
+                            for item in listing.json["items"]))
+        self.assertEqual(self.client.delete("/api/v2/knowledge/" + saved.json["item"]["id"],
+                                            base_url=self.base, headers=self.headers).status_code, 200)
+
     def test_final_call_transcript_joins_chat_history_once(self):
         payload = {"call_id": "ailivex-yuling-coach-1791920000",
                    "speaker_identity": "coach", "segment_id": "segment-1",
