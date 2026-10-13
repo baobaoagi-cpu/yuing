@@ -68,14 +68,20 @@ class ChatStoreIsolationTest(unittest.TestCase):
             owner = ChatStore(source, "nicole")
             sid = owner.create_session()
             owner.add_event(sid, "user", "preserved")
+            source_event = owner.add_event(sid, "user", "https://example.com/",
+                                           link_url="https://example.com/",
+                                           source_kind="user_explicit")
+            page_id, _ = owner.reserve_page_read(source_event["id"], "https://example.com/")
             owner.put_image(b"pixels", "image/png")
             result = snapshot(source, backup)
             self.assertEqual(result["integrity_check"], "ok")
-            self.assertEqual(result["counts"]["events"], 1)
+            self.assertEqual(result["counts"]["events"], 2)
             self.assertEqual(result["counts"]["images"], 1)
+            self.assertEqual(result["counts"]["page_reads"], 1)
             self.assertEqual(os.stat(backup).st_mode & 0o777, 0o600)
             restored = ChatStore(backup, "nicole")
             self.assertEqual(restored.history(sid)[0]["text"], "preserved")
+            self.assertEqual(restored.page_read(page_id)["source_event_id"], source_event["id"])
             with self.assertRaises(FileExistsError):
                 snapshot(source, backup)
             self.assertEqual(restored.history(sid)[0]["text"], "preserved")

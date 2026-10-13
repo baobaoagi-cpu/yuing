@@ -16,7 +16,7 @@ from uuid import uuid4
 
 TABLES = (
     "sessions", "events", "call_transcripts", "images", "memories",
-    "knowledge_items", "relation_candidates",
+    "knowledge_items", "relation_candidates", "page_reads",
 )
 
 
