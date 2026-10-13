@@ -208,3 +208,155 @@ ui.file.addEventListener('change',async()=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden && running) stopListening();});
 window.addEventListener('pagehide',()=>{if(running) stopListening();});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+// These controls fail closed. The server advertises only capabilities backed by
+// a real endpoint; an unavailable feature stays visible but cannot be used.
+const assistantUi = {
+  badge:$('connection-badge'), note:$('connection-note'), strip:$('capability-strip'),
+  log:$('conversation'), form:$('chat-form'), input:$('chat-input'), send:$('send-button'),
+  voice:$('voice-button'), image:$('image-input'), imageLabel:$('image-label'),
+  document:$('document-input'), documentLabel:$('document-label'), status:$('action-status'),
+  latency:$('latency-button'), latencyResult:$('latency-result')
+};
+const CAP_NAMES={text:'文字',turn_voice:'回合語音',live_voice:'即時通話',image:'圖片',files:'檔案'};
+let activeCaps={};
+let voiceCapture=null;
+
+function setActionStatus(value){assistantUi.status.textContent=value;}
+function renderCapabilities(caps){
+  activeCaps=caps;
+  for(const [key,label] of Object.entries(CAP_NAMES)){
+    const item=assistantUi.strip.querySelector(`[data-capability="${key}"]`);
+    if(!item)continue;
+    const on=caps[key]===true;
+    item.textContent=`${label} · ${on?'可測試':'待接通'}`;
+    item.classList.toggle('available',on);
+    item.classList.toggle('unavailable',!on);
+  }
+  const textReady=caps.text===true;
+  assistantUi.input.disabled=!textReady;
+  assistantUi.send.disabled=!textReady;
+  assistantUi.voice.disabled=caps.turn_voice!==true;
+  assistantUi.image.disabled=caps.image!==true;
+  assistantUi.document.disabled=caps.files!==true;
+  assistantUi.imageLabel.classList.toggle('disabled',assistantUi.image.disabled);
+  assistantUi.documentLabel.classList.toggle('disabled',assistantUi.document.disabled);
+  assistantUi.badge.textContent=Object.values(CAP_NAMES).some((_,i)=>caps[Object.keys(CAP_NAMES)[i]]===true)?'部分接通':'尚未接通';
+  assistantUi.badge.classList.toggle('on',textReady);
+  assistantUi.note.textContent=textReady?'能力來自目前伺服器的即時檢查；語音轉文字後會先讓你確認，再送出對話。':caps.files===true?'目前可讀取 PDF、DOCX、PPTX 的文字；對話和圖片仍待接通。下方也可測試生活聲辨識。':'目前可繼續測試下方的生活聲辨識；對話、圖片與檔案入口會在接通後開放。';
+  setActionStatus(textReady?'文字對話已接通。':caps.files===true?'檔案文字抽取可測；對話服務尚未接通。':'對話服務尚未接通。');
+}
+async function refreshCapabilities(){
+  try{
+    const response=await fetch('./api/capabilities',{cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const body=await response.json();
+    if(!body||typeof body!=='object')throw new Error('能力回應無效');
+    renderCapabilities(body);
+  }catch(error){renderCapabilities({});assistantUi.note.textContent=`能力檢查失敗：${error.message}。可測試下方的生活聲辨識。`;}
+}
+function addMessage(role,value){
+  const empty=assistantUi.log.querySelector('.conversation-empty');if(empty)empty.remove();
+  const p=document.createElement('p');p.className=`message ${role}`;p.textContent=value;
+  assistantUi.log.append(p);assistantUi.log.scrollTop=assistantUi.log.scrollHeight;
+}
+assistantUi.form.addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(activeCaps.text!==true)return;
+  const message=assistantUi.input.value.trim();if(!message)return;
+  assistantUi.send.disabled=true;assistantUi.input.disabled=true;setActionStatus('正在等待端倪回應…');
+  try{
+    const response=await fetch('./api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const body=await response.json();
+    if(typeof body.reply!=='string'||!body.reply.trim())throw new Error('回應內容無效');
+    addMessage('user',message);addMessage('assistant',body.reply);assistantUi.input.value='';setActionStatus('對話完成。');
+  }catch(error){setActionStatus(`對話未完成：${error.message}`);await refreshCapabilities();}
+  finally{assistantUi.input.disabled=activeCaps.text!==true;assistantUi.send.disabled=activeCaps.text!==true;}
+});
+
+function wavFromSamples(samples,sampleRate){
+  const length=samples.length;const bytes=new ArrayBuffer(44+length*2);const view=new DataView(bytes);
+  const ascii=(at,value)=>{for(let i=0;i<value.length;i++)view.setUint8(at+i,value.charCodeAt(i));};
+  ascii(0,'RIFF');view.setUint32(4,36+length*2,true);ascii(8,'WAVE');ascii(12,'fmt ');
+  view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);ascii(36,'data');view.setUint32(40,length*2,true);
+  for(let i=0;i<length;i++){const v=Math.max(-1,Math.min(1,samples[i]));view.setInt16(44+i*2,v<0?v*32768:v*32767,true);}
+  return new Blob([bytes],{type:'audio/wav'});
+}
+function closeVoiceCapture(){
+  if(!voiceCapture)return null;
+  const capture=voiceCapture;voiceCapture=null;
+  capture.processor.disconnect();capture.source.disconnect();capture.silent.disconnect();
+  capture.stream.getTracks().forEach(track=>track.stop());capture.context.close().catch(()=>{});
+  assistantUi.voice.textContent='錄一段話';return capture;
+}
+async function finishVoiceCapture(){
+  const capture=closeVoiceCapture();if(!capture)return;
+  if(capture.samples.length<16000){setActionStatus('請至少錄 1 秒，再試一次。');return;}
+  assistantUi.voice.disabled=true;setActionStatus('正在將語音轉成文字…');
+  try{
+    const wave=wavFromSamples(capture.samples,16000);
+    const response=await fetch('./api/transcribe',{method:'POST',headers:{'Content-Type':'audio/wav'},body:wave});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const body=await response.json();
+    if(typeof body.text!=='string'||!body.text.trim())throw new Error('未辨識出語句');
+    assistantUi.input.value=body.text.trim();assistantUi.input.focus();setActionStatus('語音已轉成文字。確認內容後，按「送出」。');
+  }catch(error){setActionStatus(`語音未完成：${error.message}`);await refreshCapabilities();}
+  finally{assistantUi.voice.disabled=activeCaps.turn_voice!==true;}
+}
+assistantUi.voice.addEventListener('click',async()=>{
+  if(voiceCapture){await finishVoiceCapture();return;}
+  if(activeCaps.turn_voice!==true)return;
+  if(running)stopListening();
+  if(!navigator.mediaDevices?.getUserMedia){setActionStatus('此頁需要 HTTPS 才能錄音。');return;}
+  assistantUi.voice.disabled=true;
+  try{
+    const mic=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    const context=new (window.AudioContext||window.webkitAudioContext)();await context.resume();
+    const sourceNode=context.createMediaStreamSource(mic),processorNode=context.createScriptProcessor(4096,1,1),silent=context.createGain();silent.gain.value=0;
+    const samples=[];
+    sourceNode.connect(processorNode);processorNode.connect(silent);silent.connect(context.destination);
+    processorNode.onaudioprocess=event=>{if(voiceCapture){for(const sample of resample(event.inputBuffer.getChannelData(0),context.sampleRate))samples.push(sample);}};
+    voiceCapture={stream:mic,context,source:sourceNode,processor:processorNode,silent,samples};
+    assistantUi.voice.textContent='停止並轉文字';setActionStatus('正在錄音，最多 8 秒。');
+    setTimeout(()=>{if(voiceCapture?.stream===mic)finishVoiceCapture();},8000);
+  }catch(error){setActionStatus(error.name==='NotAllowedError'?'請允許此網站使用麥克風。':`錄音失敗：${error.message}`);}
+  finally{assistantUi.voice.disabled=false;}
+});
+
+async function analyzeUpload(file,kind){
+  if(!file||activeCaps[kind]!==true)return;
+  const input=kind==='image'?assistantUi.image:assistantUi.document;
+  if(file.size>5*1024*1024){setActionStatus('檔案超過 5 MB，請選擇較小的檔案。');input.value='';return;}
+  input.disabled=true;setActionStatus(`正在分析${kind==='image'?'圖片':'檔案'}：${file.name}`);
+  try{
+    const data=new FormData();data.append('file',file,file.name);
+    const response=await fetch('./api/analyze',{method:'POST',body:data});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const body=await response.json();
+    if(typeof body.summary!=='string'||!body.summary.trim())throw new Error('分析結果無效');
+    addMessage('user',`請看${kind==='image'?'圖片':'檔案'}：${file.name}`);addMessage('assistant',body.summary);
+    setActionStatus(body.note||'分析完成。');
+  }catch(error){setActionStatus(`分析未完成：${error.message}`);await refreshCapabilities();}
+  finally{input.value='';input.disabled=activeCaps[kind]!==true;}
+}
+assistantUi.image.addEventListener('change',()=>analyzeUpload(assistantUi.image.files?.[0],'image'));
+assistantUi.document.addEventListener('change',()=>analyzeUpload(assistantUi.document.files?.[0],'files'));
+
+assistantUi.latency.addEventListener('click',async()=>{
+  assistantUi.latency.disabled=true;
+  const checks=[];
+  for(const path of ['./healthz','./api/capabilities']){
+    const started=performance.now();
+    try{const response=await fetch(path,{cache:'no-store'});checks.push(`${path}: ${response.ok?'成功':'失敗 HTTP '+response.status} · ${Math.round(performance.now()-started)} ms`);}
+    catch(error){checks.push(`${path}: 連線失敗 · ${Math.round(performance.now()-started)} ms`);}
+  }
+  const time=new Date().toLocaleString('zh-TW',{hour12:false});
+  assistantUi.latencyResult.textContent=`${time}（本裝置）｜${checks.join('｜')}`;
+  assistantUi.latency.disabled=false;
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&voiceCapture)closeVoiceCapture();});
+window.addEventListener('pagehide',()=>{if(voiceCapture)closeVoiceCapture();});
+refreshCapabilities();

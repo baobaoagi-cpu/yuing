@@ -1,7 +1,7 @@
 {
-  "name": "陳端倪 · 語靈感知預覽",
-  "short_name": "端倪感知",
-  "description": "語靈分支的生活聲音感知預覽；人格與本機模型對話不在公開服務提供。",
+  "name": "陳端倪 · 語靈手機測試",
+  "short_name": "端倪語靈",
+  "description": "端倪語靈內部測試入口；各項能力依伺服器連線狀態開放。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

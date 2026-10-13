@@ -6,24 +6,46 @@
   <meta name="theme-color" content="#f3efe7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="端倪感知">
+  <meta name="apple-mobile-web-app-title" content="端倪語靈">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icon-180.png">
   <link rel="stylesheet" href="./style.css">
-  <title>端倪 · Railway 感知體驗</title>
+  <title>端倪語靈 · 手機測試</title>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">倪</span><span>陳端倪 <small>感知實驗室</small></span></div>
-      <span class="version">語靈分支 · Railway 感知預覽</span>
+      <div class="brand"><span class="brand-mark" aria-hidden="true">倪</span><span>陳端倪 <small>語靈測試版</small></span></div>
+      <span class="version">iPhone PWA · 內部測試</span>
     </header>
 
+    <section class="assistant-panel" aria-labelledby="assistant-title">
+      <div class="section-heading"><div><p class="eyebrow">陪伴與教練</p><h2 id="assistant-title">跟端倪說說話</h2></div><span class="live-badge" id="connection-badge">檢查連線</span></div>
+      <p class="panel-intro" id="connection-note">正在檢查此網址已接通的能力。只有通過連線檢查的入口才能使用。</p>
+      <div class="capability-strip" id="capability-strip" aria-label="能力狀態">
+        <span data-capability="text">文字 · 檢查中</span><span data-capability="turn_voice">回合語音 · 檢查中</span><span data-capability="live_voice">即時通話 · 檢查中</span><span data-capability="image">圖片 · 檢查中</span><span data-capability="files">檔案 · 檢查中</span>
+      </div>
+      <div class="conversation" id="conversation" role="log" aria-live="polite"><p class="conversation-empty">接通後，可以在這裡用文字或語音開始一回合對話。</p></div>
+      <form class="composer" id="chat-form">
+        <label class="sr-only" for="chat-input">輸入訊息</label>
+        <textarea id="chat-input" rows="2" placeholder="先用文字和端倪聊聊…" disabled></textarea>
+        <button type="submit" id="send-button" disabled>送出</button>
+      </form>
+      <div class="input-actions">
+        <button type="button" id="voice-button" disabled>錄一段話</button>
+        <label class="upload-action disabled" id="image-label" for="image-input">看圖片</label><input id="image-input" type="file" accept="image/*" disabled>
+        <label class="upload-action disabled" id="document-label" for="document-input">讀檔案文字</label><input id="document-input" type="file" accept=".pdf,.docx,.pptx,application/pdf" disabled>
+      </div>
+      <p class="action-status" id="action-status" role="status">等待能力檢查。</p>
+      <div class="network-check"><div><strong>區域型流暢性監督</strong><small>從目前這支手機測量；不代表上海朋友的實測結果。</small></div><button type="button" id="latency-button">測試連線</button></div>
+      <p class="network-result" id="latency-result" role="status">尚未測量。</p>
+    </section>
+
     <section class="hero" aria-labelledby="hero-title">
-      <p class="eyebrow">不是只有文字的對話</p>
+      <p class="eyebrow">生活聲感知</p>
       <h1 id="hero-title">我聽見的，<br><em>不只是你說的話。</em></h1>
-      <p class="intro">這個網址先讓你在手機測試生活聲感知。聲音分類在手機瀏覽器進行；Hermes 本機模型、測試人格、記憶與知識的對話鏈目前只能在威廷的 Mac 上使用。</p>
+      <p class="intro">咳嗽、噴嚏、哭聲、車聲、碰撞與音樂會在手機瀏覽器上分類。結果是聲音事件候選，請用真實情境驗收。</p>
       <div class="hero-rule"></div>
       <div class="sound-stage" id="sound-stage" aria-live="polite">
         <div class="sound-orbit"><div class="sound-core"><svg viewBox="0 0 80 80" aria-hidden="true"><path d="M9 42c7 0 7-12 14-12s7 23 14 23 7-42 14-42 7 58 14 58 7-27 14-27"/></svg></div></div>
@@ -49,11 +71,11 @@
       <div class="scope-grid">
         <article><span class="scope-index">01</span><h3>聽生活聲</h3><p>對咳嗽、噴嚏、哭聲、車聲、碰撞聲與音樂提供分類候選及分數。</p><span class="tag ready">可測試</span></article>
         <article><span class="scope-index">02</span><h3>自然回應</h3><p>在高把握度事件後顯示預寫的關心語句；尚非端倪模型生成。</p><span class="tag limited">預寫回應</span></article>
-        <article><span class="scope-index">03</span><h3>人格與對話</h3><p>yuing 人格介面、隔離測試記憶、知識與 Hermes 所選本機模型已在獨立的 Mac 測試入口串接；此公開網址尚未提供對話。</p><span class="tag pending">僅本機測試</span></article>
+        <article><span class="scope-index">03</span><h3>人格與對話</h3><p>上方入口會向伺服器檢查文字、回合語音、圖片與檔案能力。只有實際接通的能力可以操作。</p><span class="tag pending">依連線狀態</span></article>
       </div>
     </section>
 
-    <footer>模型輸出是聲音事件的候選分數，不是事實判定。聽見碰撞聲不代表確認有人跌倒。<br>語靈 Railway 感知預覽 · 尚非完整陪伴對話服務</footer>
+    <footer>模型輸出是聲音事件的候選分數，不是事實判定。聽見碰撞聲不代表確認有人跌倒。<br>語靈內部測試版 · 請以能力狀態與實際操作結果為準</footer>
   </main>
   <script src="./assets/ort.min.js"></script>
   <script type="module" src="./app.js"></script>
