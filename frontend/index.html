@@ -1888,7 +1888,7 @@
   }
 
   // 等待接听铃声 (拨打 → 陈端倪接听之间的过渡期循环播放)
-  const ringback=new Audio(); ringback.loop=true; ringback.volume=0.55;
+  const ringback=new Audio('/yuling-media/ringback.wav'); ringback.loop=true; ringback.volume=0.35;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
 
   async function startCall(){

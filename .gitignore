@@ -16,6 +16,7 @@ data/
 *.jsonl
 *.log
 *.wav
+!frontend/media/ringback.wav
 *.pcm
 
 # ── Python ──

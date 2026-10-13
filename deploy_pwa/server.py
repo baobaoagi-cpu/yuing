@@ -244,9 +244,10 @@ def original_yuling_media(filename):
     guard = _require_login()
     if guard:
         return guard
-    if filename not in {"chen-dunni-loop.m4v", "chen-dunni-poster.jpg"}:
+    if filename not in {"chen-dunni-loop.m4v", "chen-dunni-poster.jpg", "ringback.wav"}:
         abort(404)
-    mimetype = "video/mp4" if filename.endswith(".m4v") else "image/jpeg"
+    mimetype = ("video/mp4" if filename.endswith(".m4v") else
+                "audio/wav" if filename.endswith(".wav") else "image/jpeg")
     return send_from_directory(PROJECT_ROOT / "frontend" / "media", filename,
                                mimetype=mimetype, conditional=True)
 

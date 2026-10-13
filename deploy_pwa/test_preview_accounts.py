@@ -84,6 +84,11 @@ class PreviewAccountsTest(unittest.TestCase):
         self.assertEqual(self.login(" Friend ", "synthetic-friend-password").status_code, 200)
         with self.client.session_transaction(base_url=self.base) as cookie:
             self.assertEqual(cookie["account"], "friend")
+        ringback = self.client.get("/yuling-media/ringback.wav", base_url=self.base)
+        self.assertEqual(ringback.status_code, 200)
+        self.assertEqual(ringback.mimetype, "audio/wav")
+        self.assertTrue(ringback.data.startswith(b"RIFF"))
+        ringback.close()
         self.assertEqual(self.client.get("/api/v2/history?session_id=" + nicole_sid,
                                          base_url=self.base).status_code, 404)
         self.assertEqual(self.client.get("/api/v2/history", base_url=self.base).json["sessions"], [])
