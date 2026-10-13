@@ -32,6 +32,9 @@
         <a class="call-link" href="/call" aria-label="进入语音通话" title="语音通话">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7.4 3.7-2.3 1a2.3 2.3 0 0 0-1.3 2.6A17.8 17.8 0 0 0 16.7 20a2.3 2.3 0 0 0 2.6-1.3l1-2.3a1.6 1.6 0 0 0-.8-2.1l-2.8-1.2a1.6 1.6 0 0 0-1.8.4l-1.1 1.1a13.3 13.3 0 0 1-4.4-4.4l1.1-1.1a1.6 1.6 0 0 0 .4-1.8L9.5 4.5a1.6 1.6 0 0 0-2.1-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         </a>
+        <button class="tool-menu-button" id="tool-menu-button" type="button" aria-label="打开工具菜单" aria-expanded="false" aria-controls="tool-menu" title="工具菜单">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div id="install-panel" class="install-panel" role="dialog" aria-labelledby="install-title" hidden>
         <button id="install-close" class="install-close" type="button" aria-label="关闭安装说明">×</button>
@@ -52,6 +55,11 @@
           <ul id="memory-facts" aria-label="已记录的个人线索"></ul>
         </div>
         <p id="memory-error" class="memory-error" role="status" aria-live="polite" hidden></p>
+      </section>
+      <section id="tool-menu" class="tool-menu" aria-labelledby="tool-menu-title" hidden>
+        <div class="tool-menu-heading"><strong id="tool-menu-title">实用工具</strong><button id="tool-menu-close" type="button" aria-label="关闭工具菜单">×</button></div>
+        <p class="tool-menu-intro">绿色可使用；灰色尚未接入或暂不可接入。</p>
+        <div id="tool-menu-content">正在检查工具状态…</div>
       </section>
     </header>
 
@@ -90,10 +98,11 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3.1-5.9L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m19 5-7.1 8.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </form>
-      <p class="composer-footnote"><a href="/tools" style="color:#a3d9bb;text-decoration:underline">实用工具 · 时区换算</a>　<span id="deployment-version" role="status" aria-live="polite">版本确认中…</span></p>
+      <p class="composer-footnote"><span id="deployment-version" role="status" aria-live="polite">版本确认中…</span></p>
     </div>
   </div>
   <script type="module" src="/chat.js"></script>
+  <script src="/tool-menu.js" defer></script>
   <script src="/update.js" defer></script>
 </body>
 </html>

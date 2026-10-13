@@ -203,6 +203,7 @@ def tool_page():
 
 @app.get("/tools.css")
 @app.get("/tools.js")
+@app.get("/tool-menu.js")
 def tool_asset():
     guard = _require_login()
     if guard:
@@ -392,6 +393,40 @@ def time_tool_info():
         return guard
     return jsonify(tool="time_convert_local", zones=ZONES,
                    permissions=[], cost="free", status="local_ready")
+
+
+@app.get("/api/v2/tools/catalog")
+def tool_catalog():
+    """Only enabled local capabilities get an action; candidates stay inert."""
+    guard = _v2_guard()
+    if guard:
+        return guard
+    page_read_ready = (os.environ.get("POC_PUBLIC_WEB_READ_ENABLED") == "1" and
+                       _chat_store() is not None)
+    return jsonify(groups=[
+        {"title": "已可使用", "items": [
+            {"name": "时区换算", "state": "ready", "detail": "本机换算，不需要外部帐号",
+             "href": "/tools"},
+            {"name": "公开网页读取", "state": "ready" if page_read_ready else "waiting",
+             "detail": ("在对话中发送公开 HTTPS 网址，再点读取此网页" if page_read_ready
+                        else "后端读取功能尚未启用"),
+             **({"href": "/chat"} if page_read_ready else {})},
+        ]},
+        {"title": "生活服务 · 等待整合", "items": [
+            {"name": "和风天气", "state": "waiting", "detail": "待专属 Key、来源标示与费用硬上限"},
+            {"name": "高德地图", "state": "waiting", "detail": "待 Web Key 与服务授权确认"},
+            {"name": "支付宝", "state": "waiting", "detail": "待商户资格与个人资料授权确认"},
+            {"name": "美团", "state": "waiting", "detail": "待合适的个人服务接口与授权"},
+            {"name": "12306", "state": "unavailable", "detail": "暂不提供抓票、代购或帐号连接"},
+        ]},
+        {"title": "工作服务 · 等待整合", "items": [
+            {"name": "飞书", "state": "waiting", "detail": "待本人授权与唯读范围确认"},
+            {"name": "钉钉", "state": "waiting", "detail": "待组织管理员授权与唯读范围确认"},
+            {"name": "WPS 365", "state": "waiting", "detail": "待企业应用及本人授权"},
+            {"name": "企业微信", "state": "waiting", "detail": "待企业授权与接口范围确认"},
+            {"name": "腾讯会议", "state": "waiting", "detail": "待本人授权与唯读范围确认"},
+        ]},
+    ])
 
 
 @app.post("/api/v2/tools/time")

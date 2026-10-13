@@ -2,6 +2,8 @@
 
 `/tools` 提供已登入帳號的時區換算入口。`GET/POST /api/v2/tools/time` 是後端白名單、同源保護的本機工具適配，參考開源 MCP Time Server 的唯讀工具用途；目前**沒有啟動或連接 MCP server**。它不連外、不使用使用者記憶或外部帳號，夏令時間切換的歧義時段會拒絕換算。容器需 `tzdata` 才能取得 IANA 時區資料。
 
+聊天頁右上角選單由登入後的 `GET /api/v2/tools/catalog` 決定狀態。時區換算有入口；公開網頁讀取只有在後端開關與對話儲存都可用時才有入口。其他生活與工作候選維持灰色、不可點擊，並列出缺少的憑證、授權或費用邊界；候選清單不會自行接入第三方或讀取帳號資料。
+
 此服務提供受登入保護的聊天、圖片、明示記憶、通話頁和裝置端 YAMNet 生活聲候選分類。文字與圖片對話會呼叫 MiniMax；語音 Agent 是另一個服務。Hermes、向量搜尋和圖推理尚未接入。對話與圖片目前存在 `POC_CHAT_DB_PATH` 指向的 SQLite 檔案；若設為 `/tmp`，部署或容器重建後可能遺失。Railway 未掛載 Volume 時，其他容器路徑也不能視為持久化。`/api/v2/status` 會標示 `ephemeral`；路徑已設定但未做還原驗證時標示 `path_configured_unverified`，`persistent_history` 仍為 `false`。
 
 聊天附件接受 JPG/PNG/WebP 圖片（4 MB 內）與 PDF、DOCX、PPTX、XLSX、TXT、MD、CSV、DOC、XLS、PPT、WPS、ET、DPS、OFD 文件（5 MB 內）。文件原件、SHA-256、檔名與最多 2500 字文字預覽保存在同帳號 SQLite，事件引用附件 ID；重開對話後可看到文件卡片並下載原件。模型本輪只看到文字預覽；掃描 PDF、圖片、表格版式及預覽以外內容未驗證，空白抽取會明示無文字。DOC、XLS、PPT、WPS、ET、DPS、OFD **只能保存與下載，不能解析內容**，聊天卡片明示狀態；舊版 Office 限 OLE 容器，WPS/ET/DPS 限 OLE 或 ZIP 容器，OFD 限含 `OFD.xml` 的 ZIP，這只是基本封裝檢查，不證明檔案內容正確。需要端倪讀取時請先轉為 PDF 或 DOCX 等可抽取格式。PDF 使用已列入依賴的 [pypdf](https://github.com/py-pdf/pypdf)（BSD-3-Clause）；XLSX 使用 [openpyxl](https://github.com/soxhub/openpyxl)（MIT）；Office XML 與文字檔使用 Python 標準函式庫。沒有外部上傳轉換服務。若 SQLite 位於 `/tmp`，附件原件與事件同樣可能在重新部署後消失。
