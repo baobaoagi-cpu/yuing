@@ -28,7 +28,7 @@
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
-  /* 去背AI 夥伴: 鎖定右下角, 各裝置自適應, 不擋點擊 */
+  /* 去背陳端倪: 鎖定右下角, 各裝置自適應, 不擋點擊 */
   #bao-bg{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
     width:min(40vw,260px); height:auto; opacity:.92; user-select:none;
     -webkit-user-drag:none; }
@@ -249,7 +249,7 @@
 </style>
 </head>
 <body>
-<h2 class="sr-only">Voice Companion：點中間的綠色按鈕就能跟AI 夥伴即時語音通話。中央光球會隨聲音呼吸。</h2>
+<h2 class="sr-only">Voice Companion：點中間的綠色按鈕就能跟陳端倪即時語音通話。中央光球會隨聲音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
 
@@ -267,7 +267,7 @@
 
 <div class="top callpane" id="callTop">
   <div class="clock" id="clock" aria-label="台北時間">—</div>
-  <div class="name">語靈</div>
+  <div class="name">陳端倪</div>
   <div class="status" id="status">點下面綠色按鈕開始通話</div>
 </div>
 
@@ -517,11 +517,11 @@
     const hasNotes=meetingRec.minuteNotes.some(note=>(note.summary||note.transcript||'').trim());
     const noteUploading=meetingRec.minuteNotes.some(note=>note.uploading && !note.done);
     const ready=!!meetingFormalSummary();
-    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready};
+    if(meetingRec.formalizing) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready};
     if(meetingRec.formalizedAt) return {phase:'done', label:'已產出', status:'正式會議已產出，已收進歷史會議紀錄。', canFormalize:ready, ready};
-    if(noteUploading) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready};
-    if(!hasNotes) return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:false, ready:false};
-    return {phase:'working', label:'整理中', status:'AI 夥伴正在整理會議紀錄', canFormalize:true, ready};
+    if(noteUploading) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready};
+    if(!hasNotes) return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:false, ready:false};
+    return {phase:'working', label:'整理中', status:'陳端倪正在整理會議紀錄', canFormalize:true, ready};
   }
   async function finalizeMeetingFormalNotes(){
     const loop=getMeetingLoopState();
@@ -646,7 +646,7 @@
       rollover:{label:'換流中', cls:'rollover', detail:'長會議到換流點，正在無縫接到下一條後端字幕流。'},
       'fallback-active':{label:'備援逐字中', cls:'fallback-active', detail:'目前先用這台裝置的即時字幕頂住，後端恢復後會切回主路徑。'},
       error:{label:'異常', cls:'error', detail:'即時字幕鏈路出現錯誤，需要看最近事件與後端紀錄。'},
-      closed:{label:'已停止', cls:'closed', detail:'這段錄音已停止；字幕與AI 夥伴作業停在目前內容。'}
+      closed:{label:'已停止', cls:'closed', detail:'這段錄音已停止；字幕與陳端倪作業停在目前內容。'}
     };
     const base=map[state]||map.idle;
     return {
@@ -720,7 +720,7 @@
     if(type==='closed'){
       meetingRec.backendLiveActive=false;
       meetingRec.interimText='';
-      setMeetingStreamState('closed', '這段錄音已停止；字幕與AI 夥伴作業停在目前內容。');
+      setMeetingStreamState('closed', '這段錄音已停止；字幕與陳端倪作業停在目前內容。');
       setMeetingUi();
     }
   }
@@ -1050,7 +1050,7 @@
   }
 
   function setStatus(t){ statusEl.textContent=t; }
-  // AI 夥伴當下真實狀態 (LiveKit lk.agent.state) → 人話
+  // 陳端倪當下真實狀態 (LiveKit lk.agent.state) → 人話
   const AGENT_STATE={ initializing:'接通中…', listening:'收音待命', thinking:'思考中', speaking:'說話中', idle:'空閒待命' };
   let agentState='', agentStateAt=0, lastUserVoiceAt=0, lastBaoVoiceAt=0;
   function applyAgentState(s){
@@ -1167,7 +1167,7 @@
     const vol = Math.max(mLvl, bLvl);
     const gv = vol<0.06 ? 0 : (vol-0.06)/0.94;          // 噪聲門檻: 真安靜→0 (擋麥克風底噪)
     const bao = bLvl>=mLvl;                               // 誰在發聲 → 配色
-    const baseHue = bao ? 158 : 192;                      // AI 夥伴=青綠, 使用者=冷白藍
+    const baseHue = bao ? 158 : 192;                      // 陳端倪=青綠, 使用者=冷白藍
     const hue = motionFX.hue===null ? baseHue : lerp(baseHue,motionFX.hue,Math.min(1,motionFX.colorGlow));
     const sat = 20 + vol*38, lit = 62 + vol*16;
     const motionPush=motionFX.enabled ? (1+vol*.8) : 0;
@@ -1439,8 +1439,8 @@
         ? '後端即時字幕會跟著你的聲音往下長；音訊保存已開啟，後端會自動長連線 rollover。'
         : '後端即時字幕會跟著你的聲音往下長；目前只保存逐字稿。';
       meetingStatus.textContent=currentElapsed<NOTE_ROLLUP_MS
-        ? '上半段持續長出後端即時字幕；下半段會先累積上下文，滿 1 分鐘才開始第一段AI 夥伴作業。'
-        : '上半段持續長出後端即時字幕；下半段會開始把上下文整理成AI 夥伴作業。';
+        ? '上半段持續長出後端即時字幕；下半段會先累積上下文，滿 1 分鐘才開始第一段陳端倪作業。'
+        : '上半段持續長出後端即時字幕；下半段會開始把上下文整理成陳端倪作業。';
     }else if(meetingRec.isRecording && meetingRec.isPaused){
       meetingBadge.className='recordbadge pause';
       meetingBadge.textContent='已暫停';
@@ -1449,7 +1449,7 @@
       meetingPauseBtn.textContent='繼續';
       meetingDraftState.textContent='錄音暫停中';
       meetingChunkMeta.textContent='錄音已暫停';
-      meetingStatus.textContent='目前暫停收音；逐字與AI 夥伴作業都會停在這裡。';
+      meetingStatus.textContent='目前暫停收音；逐字與陳端倪作業都會停在這裡。';
     }else{
       meetingBadge.className='recordbadge idle';
       const hasStoredAudio=meetingRec.segments.length>0;
@@ -1467,7 +1467,7 @@
         ? (hasStoredAudio?`這次另外保存了 ${meetingRec.segments.length} 段音訊。`:'尚未開始錄音')
         : (hasTranscript?'本次只保存逐字稿。':'尚未開始錄音');
       meetingStatus.textContent=(hasStoredAudio || hasTranscript)
-        ? '錄音已停止。上半段保留逐字流，下半段保留每分鐘的AI 夥伴作業。'
+        ? '錄音已停止。上半段保留逐字流，下半段保留每分鐘的陳端倪作業。'
         : '開始錄音後，後端即時字幕會貼著你的聲音往下長。';
     }
     renderMeetingLists();
@@ -1599,7 +1599,7 @@
     meetingRec.analyser=null;
     if(meetingRec.source) try{ meetingRec.source.disconnect(); }catch(_){}
     meetingRec.source=null;
-    setMeetingStreamState('closed', '這段錄音已停止；字幕與AI 夥伴作業停在目前內容。');
+    setMeetingStreamState('closed', '這段錄音已停止；字幕與陳端倪作業停在目前內容。');
     stopMeetingWave();
     setMeetingUi();
     loadMeetingHistory();
@@ -1744,7 +1744,7 @@
     muteBtn.classList.add('show');      // 確保通話中靜音鈕在外面
   }
 
-  // 等待接聽鈴聲 (撥打 → AI 夥伴接聽之間的過渡期循環播放)
+  // 等待接聽鈴聲 (撥打 → 陳端倪接聽之間的過渡期循環播放)
   const ringback=new Audio(); ringback.loop=true; ringback.volume=0.55;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
 
@@ -1769,12 +1769,12 @@
       room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
         if(track.kind===LK.Track.Kind.Audio){
           setLamp('audio','ok');
-          stopRing();                       // AI 夥伴接聽了 → 停等待鈴聲
+          stopRing();                       // 陳端倪接聽了 → 停等待鈴聲
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
           el.play&&el.play().catch(()=>{});
           boostRemoteAudio(track, el);
-          baoCalc=makeVol(track);          // AI 夥伴發聲 → 光球反應
+          baoCalc=makeVol(track);          // 陳端倪發聲 → 光球反應
         }
       });
       room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
@@ -1804,8 +1804,8 @@
       }
       connecting=false; uiInCall();
       const others=room.numParticipants||0;
-      setStatus(others>0?'通話中':'AI 夥伴接通中…');
-      // AI 夥伴已在房且已有狀態 → 立刻反映 (避免錯過第一個狀態)
+      setStatus(others>0?'通話中':'陳端倪接通中…');
+      // 陳端倪已在房且已有狀態 → 立刻反映 (避免錯過第一個狀態)
       try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
       stopRing(); setStatus('出錯了：'+(e&&e.message?e.message:e)); setLamp('livekit','bad'); uiIdle(); room=null;
@@ -1873,7 +1873,7 @@
       const r=await fetch(apiUrl('/api/yuling/calls'),{headers:logHeaders()});
       if(r.status===403){ logBody.innerHTML='<div class="logempty">需要通話密語才能看紀錄，<br>請先到設定輸入密語。</div>'; return; }
       const calls=(await r.json()).calls||[];
-      if(!calls.length){ logBody.innerHTML='<div class="logempty">還沒有對話紀錄。<br>跟AI 夥伴通一次話就會出現在這裡。</div>'; return; }
+      if(!calls.length){ logBody.innerHTML='<div class="logempty">還沒有對話紀錄。<br>跟陳端倪通一次話就會出現在這裡。</div>'; return; }
       logBody.innerHTML='';
       calls.forEach(c=>{
         const el=document.createElement('button'); el.className='callitem';
@@ -1979,7 +1979,7 @@
         const bao=t.role==='assistant';
         const el=document.createElement('div');
         el.className='turn '+(bao?'bao':'coach');
-        el.innerHTML=`<span class="tts">${bao?'AI 夥伴':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
+        el.innerHTML=`<span class="tts">${bao?'陳端倪':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
         turnList.appendChild(el);
       });
       timeline.appendChild(turnList);
@@ -2026,7 +2026,7 @@
       const r=await fetch(apiUrl('/api/yuling/inner'),{headers:logHeaders()});
       if(r.status===403){ innerBody.innerHTML='<div class="logempty">需要通話密語才能看，<br>請先到設定輸入密語。</div>'; return; }
       const items=(await r.json()).inner||[];
-      if(!items.length){ innerBody.innerHTML='<div class="logempty">還沒有內心獨白。<br>通一次話、掛斷後，AI 夥伴這通的內心話會出現在這裡。</div>'; return; }
+      if(!items.length){ innerBody.innerHTML='<div class="logempty">還沒有內心獨白。<br>通一次話、掛斷後，陳端倪這通的內心話會出現在這裡。</div>'; return; }
       innerBody.innerHTML='';
       items.forEach(e=>{
         const el=document.createElement('div'); el.className='inneritem';
@@ -2157,7 +2157,7 @@
   pollHealth();                     // 開機先點亮一次
   setInterval(pollHealth, 20000);   // 每 20 秒巡一次
 
-  // 台北時鐘 (跟AI 夥伴 prompt 同一套時間/時段, 視覺呈現)
+  // 台北時鐘 (跟陳端倪 prompt 同一套時間/時段, 視覺呈現)
   const clockEl=$('clock');
   function updateClock(){
     const t=new Date(Date.now()+ (new Date().getTimezoneOffset()*60000) + 8*3600000); // → UTC+8
