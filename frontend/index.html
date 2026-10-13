@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#000000" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-<meta name="apple-mobile-web-app-title" content="Voice Companion" />
-<title>Voice Companion · 跟AI 夥伴通話</title>
+<meta name="apple-mobile-web-app-title" content="YULING" />
+<title>YULING · 語靈通話</title>
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/yuling-icon-32.png" />
-<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/yuling-icon-180.png" />
+<link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icon-180.png" />
 <style>
   :root{ --ink:#000; --light:#fff; --dim:rgba(255,255,255,.55); --faint:rgba(255,255,255,.12);
          --live:#1d9e75; --warn:#d85a30; }
@@ -248,7 +248,6 @@
 <h2 class="sr-only">Voice Companion：點中間的綠色按鈕就能跟AI 夥伴即時語音通話。中央光球會隨聲音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
-<img id="bao-bg" src="avatar.png" alt="" aria-hidden="true" />
 
 <button class="gear" id="gear" aria-label="設定">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1729,7 +1728,7 @@
   }
 
   // 等待接聽鈴聲 (撥打 → AI 夥伴接聽之間的過渡期循環播放)
-  const ringback=new Audio('ringback.wav'); ringback.loop=true; ringback.volume=0.55;
+  const ringback=new Audio(); ringback.loop=true; ringback.volume=0.55;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
 
   async function startCall(){

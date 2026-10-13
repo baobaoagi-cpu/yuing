@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import sys
 import threading
 import time
 import zipfile
@@ -23,6 +24,10 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, request, send_from_directory, session
 
 ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+sys.path.insert(0, str(BACKEND_ROOT))
+from routes import yuling_bp  # noqa: E402
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
@@ -36,6 +41,7 @@ MAX_FILE = 5_000_000
 REMEMBER_SECONDS = 30 * 24 * 60 * 60
 SHORT_SECONDS = 12 * 60 * 60
 app = Flask(__name__, static_folder=None)
+app.register_blueprint(yuling_bp)
 app.config.update(
     SECRET_KEY=SESSION_SECRET or os.urandom(32),
     SESSION_COOKIE_NAME="yuling_preview",
@@ -48,6 +54,12 @@ app.config.update(
 )
 _failures = defaultdict(deque)
 _failure_lock = threading.Lock()
+
+
+@app.before_request
+def _protect_original_yuling_api():
+    if request.path.startswith("/api/yuling/"):
+        return _require_login(api=True)
 
 
 def _configured():
@@ -99,6 +111,22 @@ def login_page():
     if _signed_in():
         return redirect("/", code=303)
     return send_from_directory(ROOT, "login.html")
+
+
+@app.get("/call")
+def original_call_page():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", "index.html")
+
+
+@app.get("/manifest.webmanifest")
+def original_manifest():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", "manifest.webmanifest")
 
 
 @app.post("/api/login")

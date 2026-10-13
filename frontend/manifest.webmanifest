@@ -1,12 +1,12 @@
 {
-  "name": "Voice Companion",
-  "short_name": "Voice",
-  "start_url": "/",
+  "name": "YULING 語靈",
+  "short_name": "YULING",
+  "start_url": "/call",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
