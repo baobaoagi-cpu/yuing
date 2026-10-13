@@ -16,13 +16,13 @@ LLM 與 TTS 共用同一把 `MINIMAX_API_KEY`，只放在 Agent 服務端。國�
 
 ## 通話與文字記憶的邊界
 
-文字聊天和通話使用內容相同的兩份人格檔，但目前是兩條獨立的模型會話。文字聊天讀取登入帳號名下的 `ChatStore`；通話 Agent 不讀它，也不讀 LiveKit `identity`、`userId` 或 `convId` 當作身分證明。現有 `/api/yuling/token` 的 `identity` 是瀏覽器提交，且 Agent 與 PWA 位於不同 Railway 服務、沒有共享 SQLite 檔案。網頁寫回的通話轉錄只供使用者查看，不代表 Agent 在通話中看到了文字聊天或長期記憶。
+文字聊天和通話使用內容相同的兩份人格檔，但目前是兩條獨立的模型會話。文字聊天讀取登入帳號名下的 `ChatStore`；通話 Agent 不讀 LiveKit `identity`、`userId` 或 `convId` 當作身分證明。未啟用新功能時，`/api/yuling/token` 的舊版 `identity` 仍由瀏覽器提交，且 Agent 與 PWA 位於不同 Railway 服務、沒有共享 SQLite 檔案。網頁寫回的通話轉錄只供使用者查看，不代表 Agent 在通話中看到了文字聊天或長期記憶。
 
 `signed_context.py` 是**預設關閉**的接收端：沒有 `POC_VOICE_CONTEXT_HMAC_KEY` 就不讀任何上下文。即使設定密鑰，仍只有同一把伺服器端密鑰簽署、綁定實際 LiveKit 房間、有效期不超過兩分鐘的封包才會進入提示詞；只接受 `user_explicit` 的明示記憶，最多八筆。舊版未簽署 metadata 一律沒有記憶。這份接收端本身沒有讓現在線上服務接上記憶，也**不要單獨在 Railway 設定此變數就宣稱接通**。
 
-後續簽發端必須在 PWA 驗證登入 cookie 後，按 `session['account']` 查取該帳號的明示記憶，由伺服器建立 LiveKit 房間及 token，並把簽名封包放入 `roomConfig.agents[0].metadata.voice_context`。不能接受前端提交的 `owner_id`、記憶內容或授權身分。兩服務需要同一個獨立的 HMAC 密鑰，並且須先把 ChatStore 移到經驗證的持久儲存；目前 `/tmp` 資料會隨容器重建消失。簽發端完成後，測試甲帳號記憶只能進入甲的通話、乙帳號無法取得；再做實際通話的記憶回憶與刪除驗收。
+本機新增的簽發端在 `POC_VOICE_CONTEXT_ENABLED=1` 時才生效：PWA 驗證登入 cookie 與同源請求後，按 `session['account']` 查取該帳號的明示記憶，由伺服器建立 LiveKit 房間及 token，並把簽名封包放入 `roomConfig.agents[0].metadata.voice_context`。前端提交的 `identity`、`owner_id`、記憶內容或 metadata 不會選擇帳號。缺登入、簽名密鑰或儲存時拒絕簽發。兩服務需要同一個獨立的 HMAC 密鑰；目前 `/tmp` 資料會隨容器重建消失，仍須把 ChatStore 移到經驗證的持久儲存。**此功能尚未在 Railway 啟用，也未經實際通話回憶與刪除驗收。**
 
-本機接收端驗證：`python3 -m unittest poc_agent.test_signed_context -v`。測試涵蓋缺密鑰、舊 metadata、有效封包、房間錯誤、過期、竄改及推測記憶拒絕；它不等於線上通話驗收。
+本機簽發與接收端驗證：`python3 -m unittest deploy_pwa.test_voice_context_issuer poc_agent.test_signed_context -v`。測試涵蓋缺密鑰、舊 metadata、跨帳號、同源、房間錯誤、過期、竄改及推測記憶拒絕；它不等於線上通話驗收。
 
 ## 本機
 

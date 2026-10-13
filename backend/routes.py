@@ -17,6 +17,8 @@ import os
 import time
 import urllib.error
 import urllib.request
+import sqlite3
+from uuid import uuid4
 
 import jwt
 from flask import Blueprint, Response, jsonify, request
@@ -140,6 +142,8 @@ def api_yuling_token():
         return jsonify({"error": "LiveKit 未设置 (LIVEKIT_URL/API_KEY/API_SECRET)"}), 500
 
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "请求格式不正确"}), 400
 
     # access secret 防陌生人燒錢 (設了才檢查)
     if creds["access"]:
@@ -147,15 +151,41 @@ def api_yuling_token():
         if given != creds["access"]:
             return jsonify({"error": "forbidden"}), 403
 
-    identity = (body.get("identity") or "coach").strip()[:64] or "coach"
-    name = (body.get("name") or "使用者").strip()[:64]
-    # 房名必須 ailivex- 前綴: v9 agent 有 PROJECT_NAMESPACE 安全檢查, 缺前綴直接拒派工。
-    room = f"ailivex-yuling-{identity}-{int(time.time())}"
-    agent_meta = json.dumps({
-        "characterId": "default",
-        "userId": identity,
-        "convId": f"ailivex-voice-default-{identity}",  # 通話結束寫回記憶用
-    })
+    context_enabled = os.environ.get("POC_VOICE_CONTEXT_ENABLED", "") == "1"
+    if context_enabled:
+        # Only the authenticated PWA middleware may set this WSGI request key.
+        # In particular, body.identity, body.userId, and browser metadata are
+        # never sufficient to select another account's memory.
+        owner = request.environ.get("poc.authenticated_owner")
+        signing_key = os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", "")
+        if not isinstance(owner, str) or not owner:
+            return jsonify({"error": "请先登录"}), 401
+        if request.environ.get("poc.same_origin") is not True:
+            return jsonify({"error": "来源不符"}), 403
+        if len(signing_key.encode("utf-8")) < 32:
+            return jsonify({"error": "通话记忆尚未配置"}), 503
+        try:
+            from deploy_pwa.chat_store import ChatStore, StoreUnavailable
+            from deploy_pwa.voice_context_issuer import issue_voice_context
+            store = ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""), owner,
+                              legacy_owner_id=os.environ.get("POC_LEGACY_OWNER", ""))
+            memories = store.memories(limit=30)
+        except (OSError, ValueError, StoreUnavailable, sqlite3.Error):
+            return jsonify({"error": "通话记忆暂时不可用"}), 503
+        identity = "guest-" + uuid4().hex[:20]
+        name = "使用者"
+        room = "ailivex-yuling-" + uuid4().hex
+        agent_meta = issue_voice_context(signing_key, room, owner, memories)
+    else:
+        identity = (body.get("identity") or "coach").strip()[:64] or "coach"
+        name = (body.get("name") or "使用者").strip()[:64]
+        # 房名必須 ailivex- 前綴: v9 agent 有 PROJECT_NAMESPACE 安全檢查, 缺前綴直接拒派工。
+        room = f"ailivex-yuling-{identity}-{int(time.time())}"
+        agent_meta = json.dumps({
+            "characterId": "default",
+            "userId": identity,
+            "convId": f"ailivex-voice-default-{identity}",  # 通話結束寫回記憶用
+        })
 
     token = _mint_token(creds["key"], creds["secret"], identity, name, room, agent_meta)
 
