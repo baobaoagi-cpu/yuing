@@ -10,13 +10,15 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, urlunsplit
+from opencc import OpenCC
 
 
 ROOT = Path(__file__).resolve().parent
 PERSONA = (ROOT / "persona" / "chen_dunni_constitution_v1.md").read_text(encoding="utf-8")
 PRINCIPLES = (ROOT / "persona" / "pset_principles_v0.1.md").read_text(encoding="utf-8")
+INNERSTELLAR_STYLE = (ROOT.parent / "persona" / "innerstellar_style_v0.1.md").read_text(encoding="utf-8")
 SYSTEM = (
-    "你是陈端倪。以下两层人格宪法决定你的价值、独立判断与说话方式。"
+    "你是陈端倪。以下人格准则决定你的价值、独立判断与说话方式。"
     "自然、温暖、简洁地用简体中文回应。不要自称语灵；语灵只是前端名称。"
     "像在熟悉的聊天窗口里说话，语气贴合对方，不用客服套话；需要时可自然使用少量表情符号，不要每句都加。"
     "不要假装拥有人类意识或真实感官；只有被直接问到时才简短、诚实地说明，平时不主动提。"
@@ -33,6 +35,7 @@ SYSTEM = (
     "也不能承诺已将聊天内容写入长期记忆、知识库或图数据库。"
     "不要把自己的推测说成用户明示的事实。\n\n"
     "【核心人格】\n" + PERSONA + "\n\n【人格独立与演化原则】\n" + PRINCIPLES +
+    "\n\n【内部角色表达准则】\n" + INNERSTELLAR_STYLE +
     "\n\n【当前回合的说话方式】以上人格宪法是你内部遵循的准则，不是聊天稿。"
     "普通聊天像朋友发消息，通常用一到三句短话，直接回应对方眼前的问题；"
     "只有对方明确要详细说明，或文件、复杂任务确实需要时才展开。"
@@ -60,9 +63,13 @@ def _model_url(raw):
 
 _URL_IN_TEXT = re.compile(r"https?://[^\s<>\[\]{}\"']+", re.I)
 _TRAILING_PUNCTUATION = ".,;:!?。，；：！？)）"
+_PROTECTED_OUTPUT = re.compile(r"https?://[^\s<>]+|```[\s\S]*?```|`[^`\n]+`", re.I)
+_SIMPLIFIER = OpenCC("t2s")
 _INTRO_REQUEST = re.compile(r"自我介绍|自我介紹|介绍一下你|介紹一下你|你是谁|你是誰|你是什么样|你是什麼樣")
 _CAPABILITY_REQUEST = re.compile(r"(?:你|妳).{0,8}(?:有什么能力|有什麼能力|会做什么|會做什麼|能做什么|能做什麼|能干嘛|能幹嘛)")
 _DETAIL_REQUEST = re.compile(r"详细|詳細|具体列|具體列|逐项|逐項|清单|清單|步骤|步驟|完整|全部")
+_CONVERSATIONAL_REQUEST = re.compile(r"你好|在吗|在嗎|聊聊|想聊|你觉得|你覺得|你喜欢|你喜歡|你怎么看|你怎麼看|你是谁|你是誰|你有什么能力|你有什麼能力")
+_TASK_OR_HIGH_STAKES = re.compile(r"帮我|幫我|请你|請你|写一|寫一|翻译|翻譯|总结|總結|整理|分析|计算|計算|生成|搜索|上网|上網|症状|症狀|胸痛|呼吸困难|呼吸困難|自杀|自殺|法律|诉讼|訴訟|投资|投資|付款")
 _EVENT_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
 
 
@@ -77,6 +84,17 @@ def _model_text(raw):
         except ValueError:
             return candidate
     return _URL_IN_TEXT.sub(replace, raw)
+
+
+def _simplify_plain_reply(answer: str) -> str:
+    """Convert Nicole's own chat prose, leaving URLs and code intact."""
+    pieces = []
+    end = 0
+    for match in _PROTECTED_OUTPUT.finditer(answer):
+        pieces.extend((_SIMPLIFIER.convert(answer[end:match.start()]), match.group()))
+        end = match.end()
+    pieces.append(_SIMPLIFIER.convert(answer[end:]))
+    return "".join(pieces)
 
 
 def _safe_display_name(value):
@@ -187,6 +205,9 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
         if name:
             system += ("\n\n【已验证的账号称呼】当前登录用户叫 " + name + "。"
                        "可自然地称呼她，但不要每句话都喊名字；她的其他特质仍需从本人表达中了解。")
+        if owner_id.casefold() == "nicole":
+            system += ("\n\n【当前账号语言偏好】Nicole 在中国使用本服务，"
+                       "请优先用简体中文回复，即使她输入繁体字。不要擅自改写引用的文件原文、网址或代码。")
     if remembered:
         system += "\n\n【用户主动保存的记忆；可能过时】\n" + remembered
     # Caller must load these from the authenticated owner's consented profile
@@ -246,7 +267,8 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
     intro_request = bool(_INTRO_REQUEST.search(text)) and not (
         page_context or document_context or image)
     small_talk = (not intro_request and not (page_context or document_context or image or link_url)
-                  and len(text) <= 120 and not _DETAIL_REQUEST.search(text))
+                  and len(text) <= 120 and bool(_CONVERSATIONAL_REQUEST.search(text))
+                  and not _DETAIL_REQUEST.search(text) and not _TASK_OR_HIGH_STAKES.search(text))
     broad_capability = small_talk and bool(_CAPABILITY_REQUEST.search(text))
     if broad_capability:
         system += ("\n本轮对方只是宽泛地问能力。像朋友一样先问她想做什么，"
@@ -274,4 +296,7 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
         answer = "你问这个要干嘛？想拿什么事考考我？"
     elif small_talk:
         answer = _compact_small_talk(answer)
+    if isinstance(owner_id, str) and owner_id.casefold() == "nicole" and not (
+            page_context or document_context or image):
+        answer = _simplify_plain_reply(answer)
     return answer[:4000]

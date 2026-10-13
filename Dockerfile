@@ -3,6 +3,7 @@ WORKDIR /app
 COPY deploy_pwa/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY deploy_pwa/ /app/deploy_pwa/
+COPY persona/innerstellar_style_v0.1.md /app/persona/innerstellar_style_v0.1.md
 COPY frontend/ /app/frontend/
 COPY backend/ /app/backend/
 EXPOSE 8080

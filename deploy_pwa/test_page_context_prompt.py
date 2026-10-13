@@ -16,6 +16,27 @@ class _Response:
 
 
 class PageContextPromptTest(unittest.TestCase):
+    def test_nicole_receives_simplified_even_if_provider_mirrors_traditional(self):
+        captured = []
+
+        def open_fake(request, timeout):
+            captured.append(json.loads(request.data))
+            return _Response()
+
+        original = "我會先聽你說。這個連結 https://example.com/繁體?標記=繁體 和 `繁體變數` 留著。"
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-never-sent"}), \
+             patch.object(chat_api, "urlopen", side_effect=open_fake), \
+             patch.object(chat_api.json, "load", return_value={
+                 "content": [{"type": "text", "text": original}]}):
+            answer = chat_api.reply_to("你會聽我說嗎？", [], owner_id="nicole")
+            other = chat_api.reply_to("你會聽我說嗎？", [], owner_id="friend")
+        self.assertIn("即使她输入繁体字", captured[0]["system"])
+        self.assertNotIn("即使她输入繁体字", captured[1]["system"])
+        self.assertIn("我会先听你说", answer)
+        self.assertIn("https://example.com/繁體?標記=繁體", answer)
+        self.assertIn("`繁體變數`", answer)
+        self.assertEqual(other, original)
+
     def test_self_introduction_is_short_plain_chat_not_constitution_dump(self):
         captured = {}
 
@@ -109,7 +130,7 @@ class PageContextPromptTest(unittest.TestCase):
              patch.object(chat_api.json, "load", return_value={
                  "content": [{"type": "text", "text": quoted}]}):
             answer = chat_api.reply_to("请介绍一下你，并引用文件", [],
-                                       document_context=document)
+                                       document_context=document, owner_id="nicole")
         self.assertEqual(captured["body"]["max_tokens"], 400)
         self.assertEqual(answer, quoted)
 

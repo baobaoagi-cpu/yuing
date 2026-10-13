@@ -42,6 +42,7 @@ class SignedContextTest(unittest.TestCase):
         context = signed_context_text(envelope(owner_id="nicole", memories=[]),
                                       KEY, ROOM, now=110)
         self.assertIn("当前通话用户叫 Nicole", context)
+        self.assertIn("优先使用简体中文措辞", context)
         self.assertNotIn("用户主动保存的记忆", context)
         self.assertIsNone(signed_context_text(
             envelope(owner_id="friend", memories=[]), KEY, ROOM, now=110))

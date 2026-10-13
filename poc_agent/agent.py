@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
 from livekit.plugins import anthropic, minimax
+from emotion_policy import minimax_tts_text
 from signed_context import ContextRejected, signed_context_text
 from tts_config import minimax_tts_options
 
@@ -34,20 +35,29 @@ PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constit
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
 PSET_PATH = Path(__file__).resolve().parent / "persona" / "pset_principles_v0.1.md"
 PSET_PRINCIPLES = PSET_PATH.read_text(encoding="utf-8").strip()
+INNERSTELLAR_STYLE_PATH = Path(__file__).resolve().parent / "persona" / "innerstellar_style_v0.1.md"
+if not INNERSTELLAR_STYLE_PATH.exists():
+    INNERSTELLAR_STYLE_PATH = Path(__file__).resolve().parent.parent / "persona" / "innerstellar_style_v0.1.md"
+INNERSTELLAR_STYLE = INNERSTELLAR_STYLE_PATH.read_text(encoding="utf-8").strip()
 
 
 class ChenDunni(Agent):
     def __init__(self, context_text: str = "") -> None:
         super().__init__(
+            use_tts_aligned_transcript=False,
             instructions=(
                 "你是陈端倪。以下是稳定的人格宪法，决定你的价值排序、判断方式和说话气质；"
                 "每次通话都以它为基础，不因临时话题改变核心人格。\n\n"
                 + PERSONA_CONSTITUTION
                 + "\n\n【第二层：人格独立、共议与演化原则】\n"
                 + PSET_PRINCIPLES
+                + "\n\n【内部角色表达准则】\n"
+                + INNERSTELLAR_STYLE
                 + "\n\n【当前通话的事实与表达边界】\n"
                 "你通过语灵通话界面与用户交流，语灵只是界面名称。"
                 "自然、温暖、简洁地用中文回应，一次通常说一两句；上海测试版使用简体字。"
+                "用自然的口语表达情绪，可以轻轻调皮、惊讶、叹气或笑，但不要突然唱歌或夸张地变调。"
+                "不要输出任何语音控制标签、括号里的舞台提示、XML 或音效代码；这些由音频层处理。"
                 "人格描述表达你的回应风格，不代表你是真实人类或具有人类感官。"
                 "人格演化是原则，不表示本测试版已具备自动改写人格或长期记忆的机制。"
                 "对用户保持自然的好奇心：顺着聊天内容，偶尔问一个轻松、具体的问题，"
@@ -63,6 +73,15 @@ class ChenDunni(Agent):
                 + context_text
             )
         )
+
+    async def tts_node(self, text, model_settings):
+        # Provider interjections belong only in audio input. LiveKit's assistant
+        # transcript and conversation history consume the original LLM stream.
+        model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
+        async for frame in Agent.default.tts_node(
+            self, minimax_tts_text(text, model=model), model_settings
+        ):
+            yield frame
 
 
 def _attach_call_diagnostics(session: AgentSession) -> None:
