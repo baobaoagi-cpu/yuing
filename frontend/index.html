@@ -429,6 +429,8 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  const CHAT_SESSION_KEY='yuling_chat_session_v2';
+  let transcriptSaveQueue=Promise.resolve();
   const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
   const API_ROOT=(location.protocol==='file:')
     ? 'http://127.0.0.1:8080'
@@ -1756,7 +1758,7 @@
       agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
       audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'},
       stt:{ok:'本次已收到你的语音转写',warn:'等待本次语音转写'},
-      llm:{warn:'当前无法独立验证 LLM 响应'},
+      llm:{ok:'本次收到代理文字回复；未独立验证模型供应商',warn:'等待本次代理回复'},
       tts:{ok:'本次已检测到代理语音输出；未独立检测供应商',warn:'等待本次代理语音输出'}
     };
     const label=el.textContent.trim();
@@ -1798,6 +1800,35 @@
     muteBtn.classList.add('show');      // 确保通话中静音钮在外面
   }
 
+  function saveFinalTranscript(callId, speakerIdentity, segmentId, role, text){
+    // Serialize writes so the first segment can create one shared chat session.
+    transcriptSaveQueue=transcriptSaveQueue.then(async()=>{
+      const payload={call_id:callId, speaker_identity:speakerIdentity,
+        segment_id:segmentId, role, text};
+      const savedSession=localStorage.getItem(CHAT_SESSION_KEY);
+      if(savedSession) payload.session_id=savedSession;
+      const post=()=>fetch(apiUrl('/api/v2/call-transcript'),{
+        method:'POST', credentials:'same-origin', keepalive:true,
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+      });
+      let response=await post();
+      // A preview redeploy can erase the temporary SQLite file. Start a new
+      // session then, while still deduplicating by LiveKit's segment id.
+      if(response.status===404 && payload.session_id){
+        localStorage.removeItem(CHAT_SESSION_KEY);
+        delete payload.session_id;
+        response=await post();
+      }
+      if(!response.ok) throw new Error('transcript save '+response.status);
+      const result=await response.json();
+      if(result.session_id) localStorage.setItem(CHAT_SESSION_KEY,result.session_id);
+    }).catch(()=>{
+      // The call stays usable if the chat store is down. Never claim a failed
+      // browser-side receipt was written to the conversation history.
+      setStatus('通话中 · 逐字稿未能保存');
+    });
+  }
+
   // 等待接听铃声 (拨打 → 陈端倪接听之间的过渡期循环播放)
   const ringback=new Audio(); ringback.loop=true; ringback.volume=0.55;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
@@ -1820,9 +1851,21 @@
       currentCallId=d.room||'';
 
       room=new LK.Room({ adaptiveStream:true, dynacast:true });
-      room.on(LK.RoomEvent.TranscriptionReceived,(segments,participant)=>{
-        if(participant && participant.identity===room.localParticipant.identity &&
-           segments && segments.some(s=>s.final && String(s.text||'').trim())) setLamp('stt','ok');
+      const callRoom=room, callId=currentCallId;
+      // AgentSession publishes STT and spoken replies as lk.transcription text
+      // streams. The legacy TranscriptionReceived event does not receive them.
+      callRoom.registerTextStreamHandler('lk.transcription',async(reader,participantInfo)=>{
+        let transcript;
+        try{ transcript=String(await reader.readAll()).trim(); }catch(_){ return; }
+        const attributes=reader.info&&reader.info.attributes||{};
+        if(attributes['lk.transcription_final']!=='true' || !transcript) return;
+        const speakerIdentity=participantInfo&&participantInfo.identity;
+        const segmentId=attributes['lk.segment_id']||(reader.info&&reader.info.id);
+        if(!speakerIdentity || !segmentId || !callId) return;
+        const role=speakerIdentity===callRoom.localParticipant.identity?'user':'assistant';
+        if(role==='user') setLamp('stt','ok');
+        else setLamp('llm','ok');
+        saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
       });
       room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
         if(track.kind===LK.Track.Kind.Audio){
@@ -1881,6 +1924,7 @@
   }
   async function endCall(){
     if(room){ try{ await room.disconnect(); }catch(_){} }
+    await transcriptSaveQueue;
     cleanup('已挂断');
   }
   function toggleMute(){

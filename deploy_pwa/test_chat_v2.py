@@ -96,6 +96,50 @@ class ChatV2Test(unittest.TestCase):
                                      base_url=self.base, headers=self.headers)
         self.assertEqual(deleted.status_code, 200)
 
+    def test_final_call_transcript_joins_chat_history_once(self):
+        payload = {"call_id": "ailivex-yuling-coach-1791920000",
+                   "speaker_identity": "coach", "segment_id": "segment-1",
+                   "role": "user", "text": "今天想听你说说话"}
+        self.assertEqual(self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                          headers=self.headers, json=payload).status_code, 401)
+        self._login()
+        self.assertEqual(self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                          json=payload).status_code, 403)
+        first = self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                 headers=self.headers, json=payload)
+        self.assertEqual(first.status_code, 201)
+        self.assertTrue(first.json["created"])
+        sid = first.json["session_id"]
+        repeated = self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                    headers=self.headers,
+                                    json={**payload, "text": "中途修订文字"})
+        self.assertEqual(repeated.status_code, 200)
+        self.assertFalse(repeated.json["created"])
+        self.assertEqual(repeated.json["session_id"], sid)
+        agent = self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                 headers=self.headers,
+                                 json={**payload, "speaker_identity": "agent-1",
+                                       "segment_id": "segment-2", "role": "assistant",
+                                       "text": "好，我在听。", "session_id": sid})
+        self.assertEqual(agent.status_code, 201)
+        events = self.client.get("/api/v2/history?session_id=" + sid,
+                                 base_url=self.base).json["events"]
+        self.assertEqual([(x["role"], x["text"]) for x in events],
+                         [("user", payload["text"]), ("assistant", "好，我在听。")])
+        self.assertTrue(all(x["source_kind"] == "livekit_browser_transcript"
+                            for x in events))
+        with patch("deploy_pwa.server.reply_to", return_value="我记得刚才的话。") as model:
+            followup = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"session_id": sid, "text": "继续聊"})
+        self.assertEqual(followup.status_code, 200)
+        self.assertEqual([x["text"] for x in model.call_args.args[1]],
+                         [payload["text"], "好，我在听。"])
+        invalid = self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                   headers=self.headers,
+                                   json={**payload, "segment_id": "bad-id", "role": "system"})
+        self.assertEqual(invalid.status_code, 400)
+
     def test_browser_audio_event_contract(self):
         self._login()
         import storage

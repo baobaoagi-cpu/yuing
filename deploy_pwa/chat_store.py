@@ -32,6 +32,11 @@ class ChatStore:
                     source_kind TEXT NOT NULL, created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS events_session_time ON events(session_id, created_at);
+                CREATE TABLE IF NOT EXISTS call_transcripts (
+                    call_id TEXT NOT NULL, speaker_identity TEXT NOT NULL,
+                    segment_id TEXT NOT NULL, event_id TEXT NOT NULL REFERENCES events(id),
+                    PRIMARY KEY (call_id, speaker_identity, segment_id)
+                );
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, mime_type TEXT NOT NULL, data BLOB NOT NULL,
                     created_at REAL NOT NULL
@@ -62,6 +67,9 @@ class ChatStore:
         try:
             yield db
             db.commit()
+        except BaseException:
+            db.rollback()
+            raise
         finally:
             db.close()
 
@@ -86,6 +94,36 @@ class ChatStore:
         return {"id": eid, "session_id": sid, "role": role, "text": text,
                 "image_id": image_id, "url": link_url, "source_kind": source_kind,
                 "created_at": now}
+
+    def add_call_transcript(self, sid, call_id, speaker_identity, segment_id, role, text):
+        """Store one final LiveKit text segment exactly once, with its browser provenance."""
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT e.* FROM call_transcripts c JOIN events e ON e.id=c.event_id "
+                "WHERE c.call_id=? AND c.speaker_identity=? AND c.segment_id=?",
+                (call_id, speaker_identity, segment_id),
+            ).fetchone()
+            if existing:
+                return {"id": existing["id"], "session_id": existing["session_id"],
+                        "role": existing["role"], "text": existing["text"],
+                        "source_kind": existing["source_kind"],
+                        "created_at": existing["created_at"]}, False
+            if sid is None:
+                sid = str(uuid4())
+                db.execute("INSERT INTO sessions VALUES(?,?,?)", (sid, now, now))
+            elif not db.execute("SELECT 1 FROM sessions WHERE id=?", (sid,)).fetchone():
+                raise StoreUnavailable("会话不存在")
+            eid = str(uuid4())
+            db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+                       (eid, sid, role, text, None, None,
+                        "livekit_browser_transcript", now))
+            db.execute("INSERT INTO call_transcripts VALUES(?,?,?,?)",
+                       (call_id, speaker_identity, segment_id, eid))
+            db.execute("UPDATE sessions SET updated_at=? WHERE id=?", (now, sid))
+        return {"id": eid, "session_id": sid, "role": role, "text": text,
+                "source_kind": "livekit_browser_transcript", "created_at": now}, True
 
     def history(self, sid, limit=100):
         with self._connect() as db:

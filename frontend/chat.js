@@ -60,7 +60,7 @@ function linkCard(url) {
   return card;
 }
 
-function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "" }) {
+function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "" }) {
   intro.hidden = true;
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -87,7 +87,8 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
   if (parsed) bubble.append(linkCard(parsed));
   const meta = document.createElement("div");
   meta.className = "message-meta";
-  meta.textContent = status === "pending" ? "发送中…" : status === "failed" ? "发送失败 · 未保存" : displayTime(timestamp);
+  const sourceLabel = sourceKind === "livekit_browser_transcript" ? "语音转写 · " : "";
+  meta.textContent = status === "pending" ? "发送中…" : status === "failed" ? "发送失败 · 未保存" : sourceLabel + displayTime(timestamp);
   stack.append(bubble, meta);
   row.append(avatar, stack);
   list.append(row);
@@ -158,7 +159,8 @@ async function loadHistory() {
       if (!["user", "assistant"].includes(role)) continue;
       addMessage({ role, text: event.text || event.content || "",
         imageUrl: event.image_id ? `/api/v2/image/${encodeURIComponent(event.image_id)}` : "",
-        url: event.url || null, timestamp: event.created_at || event.timestamp });
+        url: event.url || null, timestamp: event.created_at || event.timestamp,
+        sourceKind: event.source_kind || "" });
     }
     if (events.length) showStatus("");
   } catch (error) {

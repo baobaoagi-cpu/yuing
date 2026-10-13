@@ -370,6 +370,52 @@ def conversation_history():
     return jsonify(sessions=store.recent_sessions(), events=[])
 
 
+@app.post("/api/v2/call-transcript")
+def save_call_transcript():
+    """Import final LiveKit segments observed by this authenticated call browser."""
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="逐字稿格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="逐字稿格式不正确"), 400
+    call_id = data.get("call_id")
+    speaker_identity = data.get("speaker_identity")
+    segment_id = data.get("segment_id")
+    role = data.get("role")
+    text_value = data.get("text")
+    if (not isinstance(call_id, str) or not 1 <= len(call_id) <= 128 or
+            not call_id.startswith("ailivex-yuling-") or
+            not re.fullmatch(r"[A-Za-z0-9_-]+", call_id)):
+        return jsonify(error="通话编号不正确"), 400
+    if (not isinstance(speaker_identity, str) or not 1 <= len(speaker_identity) <= 128 or
+            not re.fullmatch(r"[A-Za-z0-9_.:-]+", speaker_identity)):
+        return jsonify(error="说话者编号不正确"), 400
+    if (not isinstance(segment_id, str) or not 1 <= len(segment_id) <= 128 or
+            not re.fullmatch(r"[A-Za-z0-9_.:-]+", segment_id)):
+        return jsonify(error="片段编号不正确"), 400
+    if role not in {"user", "assistant"}:
+        return jsonify(error="说话者类型不正确"), 400
+    if not isinstance(text_value, str) or not 1 <= len(text_value.strip()) <= 4000:
+        return jsonify(error="逐字稿长度不正确"), 400
+    sid_raw = data.get("session_id")
+    sid = _uuid(sid_raw) if sid_raw else None
+    if sid_raw and not sid:
+        return jsonify(error="会话编号不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    try:
+        event, created = store.add_call_transcript(
+            sid, call_id, speaker_identity, segment_id, role, text_value.strip())
+    except StoreUnavailable:
+        return jsonify(error="会话不存在"), 404
+    return jsonify(session_id=event["session_id"], event=event,
+                   created=created), 201 if created else 200
+
+
 @app.post("/api/v2/chat")
 def conversation_chat():
     guard = _v2_guard(write=True)
