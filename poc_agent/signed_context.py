@@ -74,7 +74,7 @@ def signed_context_text(metadata: str, secret: str, room: str, now: int | None =
     clean = []
     for item in memories:
         if (not isinstance(item, dict) or item.get("source_kind") != "user_explicit" or
-                not isinstance(item.get("text"), str) or not 1 <= len(item["text"]) <= 400):
+                not isinstance(item.get("text"), str) or not 1 <= len(item["text"]) <= 500):
             raise ContextRejected("invalid memory source")
         clean.append({"text": item["text"], "source_kind": "user_explicit"})
     if not clean:

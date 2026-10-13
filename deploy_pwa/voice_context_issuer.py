@@ -29,7 +29,7 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
     clean = []
     for item in memories:
         if (isinstance(item, dict) and item.get("source_kind") == "user_explicit" and
-                isinstance(item.get("text"), str) and 1 <= len(item["text"]) <= 400):
+                isinstance(item.get("text"), str) and 1 <= len(item["text"]) <= 500):
             clean.append({"text": item["text"], "source_kind": "user_explicit"})
         if len(clean) == 8:
             break
@@ -43,7 +43,7 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         "memories": clean,
     }
     # The receiving agent rejects envelopes longer than 11,000 characters.
-    # Eight 400-character CJK memories can exceed that after base64 encoding.
+    # Eight 500-character CJK memories can exceed that after base64 encoding.
     while True:
         raw = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).digest()

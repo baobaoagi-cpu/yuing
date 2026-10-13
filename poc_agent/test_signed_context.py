@@ -59,7 +59,7 @@ class SignedContextTest(unittest.TestCase):
                 "text": "推测用户住上海", "source_kind": "inference_candidate"}]), KEY, ROOM, now=110)
         with self.assertRaises(ContextRejected):
             signed_context_text(envelope(memories=[{
-                "text": "x" * 401, "source_kind": "user_explicit"}]), KEY, ROOM, now=110)
+                "text": "x" * 501, "source_kind": "user_explicit"}]), KEY, ROOM, now=110)
 
 
 if __name__ == "__main__":

@@ -141,10 +141,32 @@ class VoiceContextIssuerTest(unittest.TestCase):
         from deploy_pwa.voice_context_issuer import issue_voice_context
         room = "ailivex-yuling-long-memories"
         metadata = issue_voice_context(SIGNING_KEY, room, "nicole", [
-            {"source_kind": "user_explicit", "text": "中" * 400} for _ in range(8)
+            {"source_kind": "user_explicit", "text": "中" * 500} for _ in range(8)
         ], now=100)
         self.assertLessEqual(len(json.loads(metadata)["voice_context"]), 11_000)
-        self.assertIn("中" * 400, signed_context_text(metadata, SIGNING_KEY, room, now=101))
+        self.assertIn("中" * 500, signed_context_text(metadata, SIGNING_KEY, room, now=101))
+
+    def test_maximum_saved_memory_reaches_agent_and_larger_value_is_rejected(self):
+        from deploy_pwa.voice_context_issuer import issue_voice_context
+        room = "ailivex-yuling-max-memory"
+        metadata = issue_voice_context(SIGNING_KEY, room, "nicole", [
+            {"source_kind": "user_explicit", "text": "记" * 500},
+            {"source_kind": "user_explicit", "text": "超" * 501},
+        ], now=100)
+        context = signed_context_text(metadata, SIGNING_KEY, room, now=101)
+        self.assertIn("记" * 500, context)
+        self.assertNotIn("超" * 501, context)
+
+    def test_api_saved_500_character_memory_is_present_in_new_call(self):
+        self._login()
+        saved = self.client.post("/api/v2/memories", base_url=self.base,
+                                 headers=self.headers, json={"text": "记" * 500})
+        self.assertEqual(saved.status_code, 201)
+        response = self._call()
+        self.assertEqual(response.status_code, 200)
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("记" * 500, context)
 
 
 if __name__ == "__main__":

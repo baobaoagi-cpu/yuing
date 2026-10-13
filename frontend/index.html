@@ -76,7 +76,7 @@
 
   /* Only components observable on the deployed call path are shown. */
   .lamps{ position:absolute; top:max(3vh,10px); left:0; right:0; display:flex;
-    flex-wrap:wrap; justify-content:center; gap:7px 12px; max-width:370px; margin:auto; padding:0 8px; }
+    flex-wrap:wrap; justify-content:center; gap:7px 12px; margin:auto; padding:0 8px; }
   .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
   .lamp .dot{ width:9px; height:9px; border-radius:50%; background:var(--faint);
@@ -239,10 +239,11 @@
   .swipehint.hide{ opacity:0; }
   @media (max-width:700px){
     .controls.callpane{ align-self:flex-start; margin-left:clamp(8px,7vw,36px); }
-    .lamps{ top:14px; }
-    .gear{ top:54px; left:12px; }
-    .chat-return{ top:54px; right:12px; }
-    .top.callpane{ margin-top:62px; }
+    .lamps{ top:14px; display:grid; grid-template-columns:repeat(3,max-content);
+      gap:7px 18px; justify-content:center; max-width:none; }
+    .gear{ top:76px; left:12px; }
+    .chat-return{ top:76px; right:12px; }
+    .top.callpane{ margin-top:86px; }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }

@@ -1,7 +1,8 @@
 """Isolated Chen Dunni phone POC: LiveKit STT -> MiniMax M3 -> MiniMax TTS.
 
-This worker uses the existing LiveKit project but a distinct agent name. It does
-not load private memory, Hermes, or a knowledge base until those are authorized.
+This worker uses the existing LiveKit project but a distinct agent name. It can
+read only server-signed, user-explicit memories for its room; Hermes and the
+knowledge base are not connected.
 """
 
 import os
