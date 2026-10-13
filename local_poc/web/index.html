@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>語靈 × Hermes｜本機實驗</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header><span class="mark">靈</span><div><small>YUING × HERMES</small><h1>和端倪說說話</h1></div><span class="badge">LOCAL POC</span></header>
+    <p class="intro">一個最小的本機回應鏈：語音轉文字 → 公開體驗人格 → 隔離測試記憶與知識 → Hermes HOME 所設定的本機模型。這不是正式端倪，也不會讀取她的私人記憶。</p>
+    <div id="status" role="status" class="status">正在確認本機模型…</div>
+    <section id="dialogue" class="dialogue" aria-label="對話紀錄">
+      <article class="assistant"><span>端倪・測試版</span><p>嗨，這是本機概念驗證。你可以打字，或按一次「錄音 6 秒」，看看語音與公開測試資料有沒有接上。</p></article>
+    </section>
+    <form id="form"><label for="message">想說什麼？</label><div class="composer"><textarea id="message" maxlength="500" rows="2" placeholder="例如：阿明喜歡喝什麼茶？"></textarea><button id="send" type="submit">送出</button></div></form>
+    <div class="controls"><button id="record" type="button">錄音 6 秒</button><label><input id="speak" type="checkbox"> 用裝置測試聲音朗讀（非正式端倪聲音）</label></div>
+    <p class="note">音訊只送到這台電腦的 127.0.0.1 做本機辨識；文字、記憶查詢和模型推論都留在本機。關閉頁面即清除本次對話畫面；不寫入人格、記憶或知識庫。</p>
+    <footer>本頁不啟動完整 Hermes Agent 或 yuing LiveKit；用於先驗證四個接點。即時雙向語音與 iPhone PWA 仍在獨立 POC 1.1 候選中。</footer>
+  </main><script src="/app.js"></script>
+</body></html>
