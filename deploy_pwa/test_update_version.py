@@ -25,14 +25,14 @@ class UpdateVersionTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v2/version", base_url=self.base).status_code, 401)
         self.assertEqual(self.client.get("/update.js", base_url=self.base).status_code, 303)
 
-    def test_deployment_id_changes_version_and_assets_are_not_cached(self):
+    def test_footer_shows_commit_and_refresh_uses_deployment_id(self):
         self.login()
         with patch.dict(os.environ, {
             "RAILWAY_DEPLOYMENT_ID": "12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             "RAILWAY_GIT_COMMIT_SHA": "a" * 40,
         }):
             response = self.client.get("/api/v2/version", base_url=self.base)
-        self.assertEqual(response.json["version"], "v12345678")
+        self.assertEqual(response.json["version"], "aaaaaaa")
         self.assertEqual(response.json["cache_key"], "12345678-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         self.assertEqual(response.json["commit"], "aaaaaaaa")
         self.assertEqual(response.headers["Cache-Control"], "no-store")

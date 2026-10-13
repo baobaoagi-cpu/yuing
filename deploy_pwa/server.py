@@ -564,8 +564,9 @@ def deployed_version():
     commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip().lower()
     deployment = deployment if _uuid(deployment) else ""
     commit = commit if re.fullmatch(r"[0-9a-f]{40}", commit) else ""
-    version = ("v" + deployment[:8] if deployment else
-               "v" + commit[:8] if commit else None)
+    # Show the code revision people can quote back to us. Keep the deployment
+    # ID as the refresh cache key, since a redeploy of the same commit is new.
+    version = commit[:7] if commit else ("v" + deployment[:8] if deployment else None)
     return jsonify(version=version,
                    cache_key=deployment or commit or None,
                    commit=commit[:8] if commit else None)

@@ -78,3 +78,30 @@ document.addEventListener('pointerdown', event => {
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !menu.hidden) { closeToolMenu(); menuButton.focus(); }
 });
+
+const logoutButton = document.getElementById('logout-button');
+const logoutStatus = document.getElementById('logout-status');
+logoutButton.addEventListener('click', async () => {
+  logoutButton.disabled = true;
+  logoutButton.textContent = '正在退出…';
+  logoutStatus.hidden = true;
+  try {
+    const response = await fetch('/api/logout', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    });
+    if (!response.ok && response.status !== 401) throw new Error('logout failed');
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (key === 'yuling_chat_session_v2' || key.startsWith('yuling_chat_session_v2:')) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch { /* Server session is already cleared. */ }
+    window.location.replace('/login');
+  } catch {
+    logoutStatus.textContent = '退出状态未确认，请重试。';
+    logoutStatus.hidden = false;
+    logoutButton.disabled = false;
+    logoutButton.textContent = '退出登录';
+  }
+});
