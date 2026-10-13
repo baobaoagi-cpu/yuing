@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3efe7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="端倪感知">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/icon-180.png">
+  <link rel="stylesheet" href="./style.css">
+  <title>端倪 · Railway 感知體驗</title>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">倪</span><span>陳端倪 <small>感知實驗室</small></span></div>
+      <span class="version">語靈分支 · Railway 感知預覽</span>
+    </header>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow">不是只有文字的對話</p>
+      <h1 id="hero-title">我聽見的，<br><em>不只是你說的話。</em></h1>
+      <p class="intro">這個網址先讓你在手機測試生活聲感知。聲音分類在手機瀏覽器進行；Hermes 本機模型、測試人格、記憶與知識的對話鏈目前只能在威廷的 Mac 上使用。</p>
+      <div class="hero-rule"></div>
+      <div class="sound-stage" id="sound-stage" aria-live="polite">
+        <div class="sound-orbit"><div class="sound-core"><svg viewBox="0 0 80 80" aria-hidden="true"><path d="M9 42c7 0 7-12 14-12s7 23 14 23 7-42 14-42 7 58 14 58 7-27 14-27"/></svg></div></div>
+        <p id="stage-title" class="stage-title">尚未開始聆聽</p>
+        <p id="stage-subtitle" class="stage-subtitle">聲音只在本機瀏覽器分類，不上傳錄音。</p>
+      </div>
+      <button class="primary-button" id="listen-button" type="button">開始聆聽</button>
+      <p class="button-note" id="button-note">需要麥克風權限 · 僅在此頁開啟期間使用</p>
+    </section>
+
+    <section class="results" aria-labelledby="results-title">
+      <div class="section-heading"><div><p class="eyebrow">感知紀錄</p><h2 id="results-title">剛剛發生了什麼</h2></div><span class="live-badge" id="live-badge">待機</span></div>
+      <div id="event-list" class="event-list"><p class="empty-state">開始聆聽後，辨識到的候選事件會出現在這裡。</p></div>
+      <div class="test-input">
+        <div><strong>用錄音檢查</strong><span>選擇手機上的音檔，檢查同一個分類器的結果。</span></div>
+        <label class="file-button" for="audio-file">選擇音檔</label>
+        <input id="audio-file" type="file" accept="audio/*">
+      </div>
+    </section>
+
+    <section class="scope" aria-labelledby="scope-title">
+      <p class="eyebrow">體驗範圍</p><h2 id="scope-title">這一版能做什麼</h2>
+      <div class="scope-grid">
+        <article><span class="scope-index">01</span><h3>聽生活聲</h3><p>對咳嗽、噴嚏、哭聲、車聲、碰撞聲與音樂提供分類候選及分數。</p><span class="tag ready">可測試</span></article>
+        <article><span class="scope-index">02</span><h3>自然回應</h3><p>在高把握度事件後顯示預寫的關心語句；尚非端倪模型生成。</p><span class="tag limited">預寫回應</span></article>
+        <article><span class="scope-index">03</span><h3>人格與對話</h3><p>yuing 人格介面、隔離測試記憶、知識與 Hermes 所選本機模型已在獨立的 Mac 測試入口串接；此公開網址尚未提供對話。</p><span class="tag pending">僅本機測試</span></article>
+      </div>
+    </section>
+
+    <footer>模型輸出是聲音事件的候選分數，不是事實判定。聽見碰撞聲不代表確認有人跌倒。<br>語靈 Railway 感知預覽 · 尚非完整陪伴對話服務</footer>
+  </main>
+  <script src="./assets/ort.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
