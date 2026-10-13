@@ -314,6 +314,28 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", document: 
   return { row, meta, footer, documentCard };
 }
 
+function showThinking() {
+  const row = document.createElement("div");
+  row.className = "message assistant thinking-message";
+  row.setAttribute("role", "status");
+  row.setAttribute("aria-label", "端倪正在思考");
+  const avatar = document.createElement("span");
+  avatar.className = "bubble-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  const bubble = document.createElement("span");
+  bubble.className = "bubble thinking-bubble";
+  const spinner = document.createElement("span");
+  spinner.className = "thinking-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.textContent = "端倪在想…";
+  bubble.append(spinner, label);
+  row.append(avatar, bubble);
+  list.append(row);
+  conversation.scrollTop = conversation.scrollHeight;
+  return row;
+}
+
 function attachKnowledgeAction(footer, eventId, originalText) {
   const content = originalText.trim().slice(0, 4000);
   if (!eventId || !content || footer.querySelector(".knowledge-action")) return;
@@ -514,6 +536,7 @@ form.addEventListener("submit", async (event) => {
   showStatus("");
   const visible = addMessage({ role: "user", text, imageUrl: messageImageUrl, imageName: file?.name,
     document: file && !imageFile ? { filename: file.name } : null, url, status: "pending" });
+  let thinkingRow = null;
   let documentId = "";
   let documentExtractStatus = "";
   function linkSavedDocument() {
@@ -556,6 +579,7 @@ form.addEventListener("submit", async (event) => {
     if (documentId) requestBody.document_id = documentId;
     if (url) requestBody.url = url.href;
     if (pageReadId) requestBody.page_read_id = pageReadId;
+    thinkingRow = showThinking();
     const postChat = () => fetch("/api/v2/chat", {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
     });
@@ -585,6 +609,8 @@ form.addEventListener("submit", async (event) => {
       attachKnowledgeAction(visible.footer, result.user_event.id, text);
       if (url) attachPageReadAction(visible.footer, result.user_event.id, url, visible.row, result.user_event.page_read || null);
     }
+    thinkingRow.remove();
+    thinkingRow = null;
     addMessage({ role: "assistant", text: result.reply,
       sourceCitation: result.assistant_event?.source_citation || null });
     input.value = "";
@@ -623,6 +649,7 @@ form.addEventListener("submit", async (event) => {
       }
     }
   } finally {
+    thinkingRow?.remove();
     sending = false;
     updateComposer();
   }
