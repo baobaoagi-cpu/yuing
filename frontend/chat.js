@@ -137,7 +137,7 @@ function showPageRead(row, originalUrl, pageRead) {
     title.textContent = source.hostname;
     const usable = pageReadReference(originalUrl, pageRead);
     subtitle.textContent = usable
-      ? `已读取摘录 · ${snapshotTime(pageRead.fetched_at)} · 尚未用于回答`
+      ? `已读取摘录 · ${snapshotTime(pageRead.fetched_at)} · 可引用提问`
       : "已读取快照 · 暂不可引用，请重新读取";
     card.title = pageRead.fetched_at ? `读取时间：${snapshotTime(pageRead.fetched_at)}` : "已读取的网页来源";
   } else if (pageRead?.status === "failed") {
