@@ -267,7 +267,7 @@
 </style>
 </head>
 <body>
-<h2 class="sr-only">Voice Companion：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
+<h2 class="sr-only">语灵：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
 <video id="dunni-portrait" src="/yuling-media/chen-dunni-loop.m4v"
@@ -429,6 +429,7 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  let callAttemptId=0;
   const CHAT_SESSION_KEY='yuling_chat_session_v2';
   let transcriptSaveQueue=Promise.resolve();
   const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
@@ -1835,6 +1836,8 @@
 
   async function startCall(){
     if(connecting||room) return;
+    const attempt=++callAttemptId;
+    let pendingRoom=null;
     connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
     setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
@@ -1845,12 +1848,14 @@
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ identity:'coach', name:'使用者' })
       });
+      if(attempt!==callAttemptId) return;
       if(res.status===403){ stopRing(); setStatus('通话权限未开放'); uiIdle(); return; }
       if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); setLamp('room','bad'); uiIdle(); return; }
       const d=await res.json();
+      if(attempt!==callAttemptId) return;
       currentCallId=d.room||'';
 
-      room=new LK.Room({ adaptiveStream:true, dynacast:true });
+      room=pendingRoom=new LK.Room({ adaptiveStream:true, dynacast:true });
       const callRoom=room, callId=currentCallId;
       // AgentSession publishes STT and spoken replies as lk.transcription text
       // streams. The legacy TranscriptionReceived event does not receive them.
@@ -1891,9 +1896,11 @@
       room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已挂断'); });
 
       await room.connect(d.url, d.token);
+      if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
       setLamp('room','ok');
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
+        if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
         setMic('ok');
         const mp=room.localParticipant.getTrackPublication(LK.Track.Source.Microphone);
         if(mp&&mp.track){
@@ -1909,6 +1916,7 @@
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
+      if(attempt!==callAttemptId){ try{ await pendingRoom?.disconnect(); }catch(_){} return; }
       stopRing(); setStatus('出错了：'+(e&&e.message?e.message:e)); setLamp('room','bad'); uiIdle(); room=null;
     }
   }
@@ -1923,8 +1931,10 @@
     setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setStatus(msg||'已挂断');
   }
   async function endCall(){
-    if(room){ try{ await room.disconnect(); }catch(_){} }
-    await transcriptSaveQueue;
+    callAttemptId++;
+    const endingRoom=room;
+    if(endingRoom){ try{ await endingRoom.disconnect(); }catch(_){} }
+    await Promise.race([transcriptSaveQueue, new Promise(resolve=>setTimeout(resolve,2500))]);
     cleanup('已挂断');
   }
   function toggleMute(){

@@ -45,11 +45,11 @@
         <span class="attachment-copy"><strong id="attachment-name"></strong><small>发送后会交给端倪查看</small></span>
         <button id="remove-attachment" type="button" aria-label="移除图片">×</button>
       </div>
-      <div id="url-preview" class="url-preview" hidden><span class="url-icon" aria-hidden="true">↗</span><span><small>网址预览</small><strong id="url-host"></strong></span><button id="remove-url" type="button" aria-label="取消网址预览">×</button></div>
+      <div id="url-preview" class="url-preview" hidden><span class="url-icon" aria-hidden="true">↗</span><span><small>网址卡片 · 未读取网页内容</small><strong id="url-host"></strong></span><button id="remove-url" type="button" aria-label="移除网址">×</button></div>
       <form id="chat-form" class="composer" autocomplete="off">
-        <label class="attach-button" for="image-input" title="添加图片" aria-label="添加图片">
+        <button class="attach-button" id="attach-button" type="button" title="添加图片" aria-label="添加图片">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </label>
+        </button>
         <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
         <label class="sr-only" for="message-input">发送消息</label>
         <textarea id="message-input" rows="1" maxlength="4000" placeholder="给端倪发消息…" enterkeyhint="send"></textarea>

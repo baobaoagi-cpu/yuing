@@ -54,7 +54,7 @@ function linkCard(url) {
   const title = document.createElement("strong");
   title.textContent = url.hostname;
   const subtitle = document.createElement("small");
-  subtitle.textContent = "打开网页";
+  subtitle.textContent = "外部链接 · 未读取网页内容";
   details.append(title, subtitle);
   card.append(icon, details);
   return card;
@@ -250,6 +250,7 @@ input.addEventListener("paste", (event) => {
   if (image) { event.preventDefault(); setImage(image); }
 });
 imageInput.addEventListener("change", () => { if (imageInput.files?.[0]) setImage(imageInput.files[0]); });
+$("attach-button").addEventListener("click", () => imageInput.click());
 $("remove-attachment").addEventListener("click", clearImage);
 $("remove-url").addEventListener("click", () => {
   const url = firstUrl(input.value);
