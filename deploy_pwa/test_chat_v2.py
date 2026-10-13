@@ -4,9 +4,11 @@ import json
 import os
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 from PIL import Image
+from openpyxl import Workbook
 
 
 _tmp = tempfile.TemporaryDirectory()
@@ -29,6 +31,21 @@ class ChatV2Test(unittest.TestCase):
                                     headers=self.headers,
                                     json={"username": "test-user", "password": "test-password"})
         self.assertEqual(response.status_code, 200)
+
+    def test_install_manifest_and_icons_are_public_but_app_is_protected(self):
+        manifest = self.client.get("/manifest.webmanifest", base_url=self.base)
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(manifest.mimetype, "application/manifest+json")
+        info = json.loads(manifest.data)
+        manifest.close()
+        self.assertEqual(info["start_url"], "/chat")
+        for icon in info["icons"]:
+            response = self.client.get(icon["src"], base_url=self.base)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, icon["type"])
+            response.close()
+        self.assertEqual(self.client.get("/chat", base_url=self.base).status_code, 303)
+        self.assertEqual(self.client.get("/api/v2/history", base_url=self.base).status_code, 401)
 
     def test_auth_csrf_and_persistent_history(self):
         self.assertEqual(self.client.get("/api/v2/history", base_url=self.base).status_code, 401)
@@ -84,6 +101,112 @@ class ChatV2Test(unittest.TestCase):
         stored = self.client.get(uploaded.json["url"], base_url=self.base)
         with Image.open(io.BytesIO(stored.data)) as decoded:
             self.assertIsNone(decoded.getexif().get(270))
+
+    def test_document_upload_chat_history_and_account_isolation(self):
+        self._login()
+        uploaded = self.client.post("/api/v2/upload-document", base_url=self.base,
+                                    headers=self.headers,
+                                    data={"file": (io.BytesIO("上海文件内容".encode()), "备忘.txt")})
+        self.assertEqual(uploaded.status_code, 201)
+        did = uploaded.json["document_id"]
+        self.assertEqual(uploaded.json["document"]["extract_status"], "text_preview")
+        with patch("deploy_pwa.server.reply_to", return_value="我读到了文字预览。") as model:
+            response = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "这份文件写什么？", "document_id": did})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("上海文件内容", model.call_args.kwargs["document_context"]["extracted_text"])
+        history = self.client.get("/api/v2/history?session_id=" + response.json["session_id"],
+                                  base_url=self.base).json["events"]
+        self.assertEqual(history[0]["document"]["filename"], "备忘.txt")
+        stored = self.client.get("/api/v2/document/" + did, base_url=self.base)
+        self.assertEqual(stored.status_code, 200)
+        self.assertEqual(stored.data, "上海文件内容".encode())
+        with patch("deploy_pwa.server.USERNAME", "friend"), patch(
+                "deploy_pwa.server.PASSWORD", "friend-password"):
+            other = app.test_client()
+            self.assertEqual(other.post("/api/login", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"username": "friend", "password": "friend-password"}).status_code, 200)
+            self.assertEqual(other.get("/api/v2/document/" + did, base_url=self.base).status_code, 404)
+            self.assertEqual(other.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "读别人的文件", "document_id": did}).status_code, 404)
+
+    def test_document_rejects_unsupported_invalid_and_oversize(self):
+        self._login()
+        for filename, content, status in [
+            ("old.doc", b"legacy", 400),
+            ("script.exe", b"MZbad", 415),
+            ("fake.pdf", b"not a pdf", 400),
+            ("huge.txt", b"x" * 5_000_001, 413),
+        ]:
+            response = self.client.post("/api/v2/upload-document", base_url=self.base,
+                                        headers=self.headers,
+                                        data={"file": (io.BytesIO(content), filename)})
+            self.assertEqual(response.status_code, status, filename)
+
+    def test_legacy_office_and_ofd_are_download_only(self):
+        self._login()
+        ole = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"placeholder"
+        ofd = io.BytesIO()
+        with zipfile.ZipFile(ofd, "w") as archive:
+            archive.writestr("OFD.xml", "<ofd/>")
+        for filename, content in [
+            ("旧稿.doc", ole), ("表格.xls", ole), ("演示.ppt", ole),
+            ("金山.wps", ole), ("金山.et", ole), ("金山.dps", ole),
+            ("发票.ofd", ofd.getvalue()),
+        ]:
+            uploaded = self.client.post("/api/v2/upload-document", base_url=self.base,
+                                        headers=self.headers,
+                                        data={"file": (io.BytesIO(content), filename)})
+            self.assertEqual(uploaded.status_code, 201, (filename, uploaded.json))
+            self.assertEqual(uploaded.json["document"]["extract_status"], "unsupported_extract")
+            self.assertIn("暂不支持内容解析", uploaded.json["note"])
+            did = uploaded.json["document_id"]
+            with patch("deploy_pwa.server.reply_to", return_value="目前只能保存，无法读取内容。") as model:
+                exchange = self.client.post("/api/v2/chat", base_url=self.base,
+                                            headers=self.headers,
+                                            json={"text": "这份文件是什么？", "document_id": did})
+            self.assertEqual(exchange.status_code, 200)
+            self.assertEqual(model.call_args.kwargs["document_context"]["extracted_text"], "")
+            self.assertEqual(self.client.get("/api/v2/document/" + did,
+                                             base_url=self.base).data, content)
+            with patch("deploy_pwa.server.USERNAME", "friend"), patch(
+                    "deploy_pwa.server.PASSWORD", "friend-password"):
+                other = app.test_client()
+                self.assertEqual(other.post("/api/login", base_url=self.base,
+                                            headers=self.headers,
+                                            json={"username": "friend", "password": "friend-password"}).status_code, 200)
+                self.assertEqual(other.get("/api/v2/document/" + did,
+                                           base_url=self.base).status_code, 404)
+
+    def test_docx_xlsx_and_gb18030_text_extraction(self):
+        self._login()
+        docx = io.BytesIO()
+        with zipfile.ZipFile(docx, "w") as archive:
+            archive.writestr("[Content_Types].xml", "<Types/>")
+            archive.writestr("word/document.xml",
+                             '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                             '<w:body><w:p><w:r><w:t>上海 Word 内容</w:t></w:r></w:p></w:body></w:document>')
+        workbook = Workbook()
+        workbook.active.title = "数据"
+        workbook.active.append(["城市", "上海"])
+        xlsx = io.BytesIO()
+        workbook.save(xlsx)
+        for filename, content, expected in [
+            ("说明.docx", docx.getvalue(), "上海 Word 内容"),
+            ("数据.xlsx", xlsx.getvalue(), "上海"),
+            ("备注.csv", "地址,上海".encode("gb18030"), "上海"),
+        ]:
+            response = self.client.post("/api/v2/upload-document", base_url=self.base,
+                                        headers=self.headers,
+                                        data={"file": (io.BytesIO(content), filename)})
+            self.assertEqual(response.status_code, 201, (filename, response.json))
+            from deploy_pwa.chat_store import ChatStore
+            store = ChatStore(os.environ["POC_CHAT_DB_PATH"], "test-user")
+            extracted = store.get_document(response.json["document_id"])["extracted_text"]
+            self.assertIn(expected, extracted)
 
     def test_explicit_memory_only_and_delete(self):
         self._login()

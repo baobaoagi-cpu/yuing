@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from hashlib import sha256
 import time
 import re
 from urllib.parse import urlsplit
@@ -20,7 +21,7 @@ class PageReadQuotaExceeded(RuntimeError):
     pass
 
 
-OWNER_TABLES = ("sessions", "images", "memories", "knowledge_items", "relation_candidates")
+OWNER_TABLES = ("sessions", "images", "documents", "memories", "knowledge_items", "relation_candidates")
 
 
 class ChatStore:
@@ -55,6 +56,12 @@ class ChatStore:
                 );
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, mime_type TEXT NOT NULL, data BLOB NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS documents (
+                    id TEXT PRIMARY KEY, filename TEXT NOT NULL, kind TEXT NOT NULL,
+                    mime_type TEXT NOT NULL, data BLOB NOT NULL, sha256 TEXT NOT NULL,
+                    extracted_text TEXT NOT NULL, extract_status TEXT NOT NULL,
                     created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS memories (
@@ -97,6 +104,7 @@ class ChatStore:
             db.execute("CREATE INDEX IF NOT EXISTS sessions_owner_time "
                        "ON sessions(owner_id, updated_at)")
             db.execute("CREATE INDEX IF NOT EXISTS images_owner ON images(owner_id, id)")
+            db.execute("CREATE INDEX IF NOT EXISTS documents_owner ON documents(owner_id, id)")
             db.execute("CREATE INDEX IF NOT EXISTS memories_owner_time "
                        "ON memories(owner_id, created_at)")
             knowledge_columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge_items)")}
@@ -109,6 +117,8 @@ class ChatStore:
             event_columns = {row[1] for row in db.execute("PRAGMA table_info(events)")}
             if "page_read_id" not in event_columns:
                 db.execute("ALTER TABLE events ADD COLUMN page_read_id TEXT")
+            if "document_id" not in event_columns:
+                db.execute("ALTER TABLE events ADD COLUMN document_id TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS events_page_read ON events(page_read_id)")
 
     @contextmanager
@@ -140,7 +150,7 @@ class ChatStore:
                               (sid, self.owner_id)).fetchone() is not None
 
     def add_event(self, sid, role, text, image_id=None, link_url=None,
-                  source_kind="conversation", page_read_id=None):
+                  source_kind="conversation", page_read_id=None, document_id=None):
         eid = str(uuid4())
         now = time.time()
         with self._connect() as db:
@@ -149,15 +159,20 @@ class ChatStore:
                 raise StoreUnavailable("会话不存在")
             if page_read_id and not self._usable_page_context(db, page_read_id, now, sid):
                 raise StoreUnavailable("网页读取记录不存在或已过期")
+            if document_id and not db.execute(
+                    "SELECT 1 FROM documents WHERE id=? AND owner_id=?",
+                    (document_id, self.owner_id)).fetchone():
+                raise StoreUnavailable("文件不存在")
             db.execute("INSERT INTO events(id,session_id,role,text,image_id,link_url,"
-                       "source_kind,created_at,page_read_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                       "source_kind,created_at,page_read_id,document_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
                        (eid, sid, role, text, image_id, link_url, source_kind, now,
-                        page_read_id))
+                        page_read_id, document_id))
             db.execute("UPDATE sessions SET updated_at=? WHERE id=?", (now, sid))
             citation = self._citation(self._usable_page_context(db, page_read_id, now, sid)) \
                 if page_read_id else None
         return {"id": eid, "session_id": sid, "role": role, "text": text,
-                "image_id": image_id, "url": link_url, "source_kind": source_kind,
+                "image_id": image_id, "document_id": document_id,
+                "url": link_url, "source_kind": source_kind,
                 "created_at": now, "source_citation": citation}
 
     def add_call_transcript(self, sid, call_id, speaker_identity, segment_id, role, text):
@@ -207,6 +222,7 @@ class ChatStore:
             event_ids = [row["id"] for row in rows]
             reads = {}
             citations = {}
+            documents = {}
             if event_ids:
                 placeholders = ",".join("?" for _ in event_ids)
                 found = db.execute(
@@ -221,6 +237,15 @@ class ChatStore:
                         "fetched_at": item["fetched_at"], "sha256": item["sha256"],
                         "content_type": item["content_type"],
                     })
+                document_ids = [row["document_id"] for row in rows if row["document_id"]]
+                if document_ids:
+                    doc_placeholders = ",".join("?" for _ in document_ids)
+                    found_docs = db.execute(
+                        "SELECT id,filename,kind,sha256,extract_status "
+                        "FROM documents WHERE owner_id=? AND id IN (" + doc_placeholders + ")",
+                        (self.owner_id, *document_ids),
+                    ).fetchall()
+                    documents = {row["id"]: dict(row) for row in found_docs}
                 cited_ids = [row["page_read_id"] for row in rows if row["page_read_id"]]
                 if cited_ids:
                     cited_placeholders = ",".join("?" for _ in cited_ids)
@@ -232,7 +257,8 @@ class ChatStore:
                     ).fetchall()
                     citations = {row["id"]: self._citation(row) for row in cited_rows}
         return [{"id": x["id"], "session_id": x["session_id"], "role": x["role"],
-                 "text": x["text"], "image_id": x["image_id"], "url": x["link_url"],
+                 "text": x["text"], "image_id": x["image_id"],
+                 "document": documents.get(x["document_id"]), "url": x["link_url"],
                  "source_kind": x["source_kind"], "created_at": x["created_at"],
                  "page_read": reads.get(x["id"]),
                  "source_citation": citations.get(x["page_read_id"])}
@@ -379,6 +405,29 @@ class ChatStore:
             row = db.execute("SELECT mime_type,data FROM images WHERE id=? AND owner_id=?",
                              (iid, self.owner_id)).fetchone()
         return (row["mime_type"], row["data"]) if row else None
+
+    def put_document(self, filename, kind, mime_type, data, extracted_text, extract_status):
+        did = str(uuid4())
+        digest = sha256(data).hexdigest()
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO documents(id,filename,kind,mime_type,data,sha256,"
+                "extracted_text,extract_status,created_at,owner_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (did, filename, kind, mime_type, data, digest, extracted_text,
+                 extract_status, time.time(), self.owner_id),
+            )
+        return {"id": did, "filename": filename, "kind": kind,
+                "sha256": digest, "extract_status": extract_status}
+
+    def get_document(self, did, include_data=False):
+        fields = "id,filename,kind,mime_type,sha256,extracted_text,extract_status"
+        if include_data:
+            fields += ",data"
+        with self._connect() as db:
+            row = db.execute("SELECT " + fields + " FROM documents "
+                             "WHERE id=? AND owner_id=?", (did, self.owner_id)).fetchone()
+        return dict(row) if row else None
 
     def add_memory(self, text, source_event_id=None):
         mid = str(uuid4())

@@ -20,10 +20,19 @@
         <span class="avatar" aria-hidden="true">倪<span class="avatar-light"></span></span>
         <span class="identity-copy"><strong>陈端倪</strong><span>语灵 · 陪你聊聊</span></span>
       </div>
-      <a class="call-link" href="/call" aria-label="进入语音通话">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7.4 3.7-2.3 1a2.3 2.3 0 0 0-1.3 2.6A17.8 17.8 0 0 0 16.7 20a2.3 2.3 0 0 0 2.6-1.3l1-2.3a1.6 1.6 0 0 0-.8-2.1l-2.8-1.2a1.6 1.6 0 0 0-1.8.4l-1.1 1.1a13.3 13.3 0 0 1-4.4-4.4l1.1-1.1a1.6 1.6 0 0 0 .4-1.8L9.5 4.5a1.6 1.6 0 0 0-2.1-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        <span>通话</span>
-      </a>
+      <div class="topbar-actions">
+        <button class="install-button" id="install-button" type="button" aria-label="安装语灵到手机" aria-expanded="false" aria-controls="install-panel" title="安装到手机">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <a class="call-link" href="/call" aria-label="进入语音通话" title="语音通话">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7.4 3.7-2.3 1a2.3 2.3 0 0 0-1.3 2.6A17.8 17.8 0 0 0 16.7 20a2.3 2.3 0 0 0 2.6-1.3l1-2.3a1.6 1.6 0 0 0-.8-2.1l-2.8-1.2a1.6 1.6 0 0 0-1.8.4l-1.1 1.1a13.3 13.3 0 0 1-4.4-4.4l1.1-1.1a1.6 1.6 0 0 0 .4-1.8L9.5 4.5a1.6 1.6 0 0 0-2.1-.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+      <div id="install-panel" class="install-panel" role="dialog" aria-labelledby="install-title" hidden>
+        <button id="install-close" class="install-close" type="button" aria-label="关闭安装说明">×</button>
+        <strong id="install-title">把语灵放到手机桌面</strong>
+        <p id="install-instructions"></p>
+      </div>
     </header>
 
     <main class="conversation" id="conversation" aria-label="对话内容">
@@ -32,7 +41,7 @@
           <div class="intro-mark" aria-hidden="true"><span></span><span></span><span></span></div>
           <p class="intro-overline">YULING / CHEN DUNNI</p>
           <h1>你好，我是端倪。</h1>
-          <p>想说什么就说吧。文字、图片或一个网址，都可以从这里开始。</p>
+          <p>想说什么就说吧。文字、图片、文件或一个网址，都可以从这里开始。</p>
           <span class="intro-note">对话能力测试中；回复和记录以实际服务结果为准。</span>
         </div>
       </div>
@@ -42,9 +51,10 @@
       <div id="global-status" class="global-status" role="status" aria-live="polite" hidden></div>
       <div id="emoji-panel" class="emoji-panel" hidden aria-label="选择表情"></div>
       <div id="attachment" class="attachment" hidden>
-        <img id="attachment-image" alt="待发送图片预览">
-        <span class="attachment-copy"><strong id="attachment-name"></strong><small>发送后会交给端倪查看</small></span>
-        <button id="remove-attachment" type="button" aria-label="移除图片">×</button>
+        <img id="attachment-image" alt="待发送图片预览" hidden>
+        <span id="attachment-file-icon" class="attachment-file-icon" aria-hidden="true" hidden>文</span>
+        <span class="attachment-copy"><strong id="attachment-name"></strong><small id="attachment-note">发送后会交给端倪查看</small></span>
+        <button id="remove-attachment" type="button" aria-label="移除附件">×</button>
       </div>
       <div id="url-preview" class="url-preview" hidden><span class="url-icon" aria-hidden="true">↗</span><span><small id="url-preview-status">网址卡片 · 未读取网页内容</small><strong id="url-host"></strong></span><button id="remove-url" type="button" aria-label="移除网址">×</button></div>
       <div id="page-reference" class="page-reference" hidden>
@@ -52,10 +62,10 @@
         <button id="remove-page-reference" type="button" aria-label="移除网页引用">×</button>
       </div>
       <form id="chat-form" class="composer" autocomplete="off">
-        <button class="attach-button" id="attach-button" type="button" title="添加图片" aria-label="添加图片">
+        <button class="attach-button" id="attach-button" type="button" title="添加图片或文件" aria-label="添加图片或文件">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
-        <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,.pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.doc,.xls,.ppt,.wps,.et,.dps,.ofd" hidden>
         <button class="emoji-button" id="emoji-button" type="button" title="选择表情" aria-label="选择表情" aria-expanded="false" aria-controls="emoji-panel">☺</button>
         <label class="sr-only" for="message-input">发送消息</label>
         <textarea id="message-input" rows="1" maxlength="4000" placeholder="给端倪发消息…" enterkeyhint="send"></textarea>
@@ -63,7 +73,7 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3.1-5.9L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m19 5-7.1 8.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </form>
-      <p class="composer-footnote">按回车发送 · 图片仅支持 JPG、PNG、WebP，最大 4 MB</p>
+      <p class="composer-footnote">按回车发送 · 图片 4 MB 内；文件 5 MB 内，旧版 Office、WPS、OFD 暂不解析内容</p>
     </div>
   </div>
   <script type="module" src="/chat.js"></script>

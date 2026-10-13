@@ -8,7 +8,9 @@ const imageInput = $("image-input");
 const sendButton = $("send-button");
 const attachment = $("attachment");
 const attachmentImage = $("attachment-image");
+const attachmentFileIcon = $("attachment-file-icon");
 const attachmentName = $("attachment-name");
+const attachmentNote = $("attachment-note");
 const urlPreview = $("url-preview");
 const urlHost = $("url-host");
 const urlPreviewStatus = $("url-preview-status");
@@ -19,9 +21,12 @@ const emojiButton = $("emoji-button");
 const emojiPanel = $("emoji-panel");
 const SESSION_KEY = "yuling_chat_session_v2";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const DOCUMENT_EXTENSIONS = new Set(["pdf", "docx", "pptx", "xlsx", "txt", "md", "csv"]);
+const DOWNLOAD_ONLY_EXTENSIONS = new Set(["doc", "xls", "ppt", "wps", "et", "dps", "ofd"]);
 const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_DOCUMENT_BYTES = 5_000_000;
 let sessionId = localStorage.getItem(SESSION_KEY) || "";
-let selectedImage = null;
+let selectedFile = null;
 let selectedImageUrl = "";
 let sending = false;
 let selectedPageRead = null;
@@ -210,7 +215,7 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
   addReferenceAction(pageRead);
 }
 
-function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null, sourceCitation = null }) {
+function addMessage({ role, text = "", imageUrl = "", imageName = "", document: documentInfo = null, url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null, sourceCitation = null }) {
   intro.hidden = true;
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -228,6 +233,32 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
     image.src = imageUrl;
     image.alt = imageName || "发送的图片";
     bubble.append(image);
+  }
+  let documentCard = null;
+  if (documentInfo?.filename) {
+    // Use a non-clickable card until the upload has a server-confirmed id.
+    documentCard = documentInfo.id ? document.createElement("a") : document.createElement("div");
+    documentCard.className = "document-card";
+    if (documentInfo.id) {
+      documentCard.href = `/api/v2/document/${encodeURIComponent(documentInfo.id)}`;
+      documentCard.download = documentInfo.filename;
+    }
+    const icon = document.createElement("span");
+    icon.className = "document-icon";
+    icon.textContent = "▤";
+    const name = document.createElement("span");
+    name.className = "document-name";
+    name.textContent = documentInfo.filename;
+    documentCard.append(icon, name);
+    if (["unsupported_extract", "no_text"].includes(documentInfo.extract_status)) {
+      const note = document.createElement("small");
+      note.className = "document-status";
+      note.textContent = documentInfo.extract_status === "unsupported_extract"
+        ? "已保存，可下载；此格式暂不支持内容解析"
+        : "已保存，可下载；未抽取到文字";
+      documentCard.append(note);
+    }
+    bubble.append(documentCard);
   }
   const body = document.createElement("div");
   body.className = "message-text";
@@ -259,7 +290,7 @@ function addMessage({ role, text = "", imageUrl = "", imageName = "", url = null
     attachPageReadAction(footer, eventId, parsed, row, pageRead);
   }
   conversation.scrollTop = conversation.scrollHeight;
-  return { row, meta, footer };
+  return { row, meta, footer, documentCard };
 }
 
 function attachKnowledgeAction(footer, eventId, originalText) {
@@ -304,7 +335,7 @@ function updateUrlPreview() {
 }
 
 function updateComposer() {
-  sendButton.disabled = sending || (!input.value.trim() && !selectedImage);
+  sendButton.disabled = sending || (!input.value.trim() && !selectedFile);
   input.style.height = "40px";
   input.style.height = `${Math.min(input.scrollHeight, 130)}px`;
   updateUrlPreview();
@@ -350,23 +381,43 @@ async function toggleEmojiPanel() {
   }
 }
 
-function clearImage() {
+function clearAttachment() {
   if (selectedImageUrl) URL.revokeObjectURL(selectedImageUrl);
   selectedImageUrl = "";
-  selectedImage = null;
+  selectedFile = null;
   imageInput.value = "";
   attachment.hidden = true;
   attachmentImage.removeAttribute("src");
+  attachmentImage.hidden = true;
+  attachmentFileIcon.hidden = true;
   updateComposer();
 }
 
-function setImage(file) {
-  if (!ALLOWED_TYPES.has(file.type)) { showStatus("图片格式不支持。请使用 JPG、PNG 或 WebP。"); return; }
-  if (file.size > MAX_IMAGE_BYTES) { showStatus("图片超过 4 MB，请换一张较小的图片。"); return; }
-  clearImage();
-  selectedImage = file;
-  selectedImageUrl = URL.createObjectURL(file);
-  attachmentImage.src = selectedImageUrl;
+function isImage(file) { return ALLOWED_TYPES.has(file.type); }
+function setAttachment(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const image = isImage(file);
+  if (!image && !DOCUMENT_EXTENSIONS.has(extension) && !DOWNLOAD_ONLY_EXTENSIONS.has(extension)) {
+    showStatus("格式暂不支持。可上传图片、PDF、Office、WPS 或 OFD 文件。");
+    return;
+  }
+  if (!file.size || file.size > (image ? MAX_IMAGE_BYTES : MAX_DOCUMENT_BYTES)) {
+    showStatus(image ? "图片大小需在 4 MB 内。" : "文件大小需在 5 MB 内。");
+    return;
+  }
+  clearAttachment();
+  selectedFile = file;
+  if (image) {
+    selectedImageUrl = URL.createObjectURL(file);
+    attachmentImage.src = selectedImageUrl;
+    attachmentImage.hidden = false;
+    attachmentNote.textContent = "发送后会交给端倪查看";
+  } else {
+    attachmentFileIcon.hidden = false;
+    attachmentNote.textContent = DOWNLOAD_ONLY_EXTENSIONS.has(extension)
+      ? "发送后可下载；此格式暂不支持内容解析"
+      : "仅抽取部分文字；扫描页与版式未必可读";
+  }
   attachmentName.textContent = file.name;
   attachment.hidden = false;
   showStatus("");
@@ -406,6 +457,7 @@ async function loadHistory() {
       if (!["user", "assistant"].includes(role)) continue;
       addMessage({ role, text: event.text || event.content || "",
         imageUrl: event.image_id ? `/api/v2/image/${encodeURIComponent(event.image_id)}` : "",
+        document: event.document || null,
         url: event.url || null, timestamp: event.created_at || event.timestamp,
         sourceKind: event.source_kind || "", eventId: event.id || "", pageRead: event.page_read || null,
         sourceCitation: event.source_citation || null });
@@ -427,27 +479,57 @@ form.addEventListener("submit", async (event) => {
   if (sending) return;
   const text = input.value.trim();
   const pageReadId = text ? selectedPageRead?.id || "" : "";
-  const file = selectedImage;
-  const messageImageUrl = file ? URL.createObjectURL(file) : "";
+  const file = selectedFile;
+  const imageFile = file && isImage(file);
+  const messageImageUrl = imageFile ? URL.createObjectURL(file) : "";
   if (messageImageUrl) messageImageUrls.add(messageImageUrl);
   const url = firstUrl(text);
   if (!text && !file) return;
   sending = true;
   updateComposer();
   showStatus("");
-  const visible = addMessage({ role: "user", text, imageUrl: messageImageUrl, imageName: file?.name, url, status: "pending" });
+  const visible = addMessage({ role: "user", text, imageUrl: messageImageUrl, imageName: file?.name,
+    document: file && !imageFile ? { filename: file.name } : null, url, status: "pending" });
+  let documentId = "";
+  let documentExtractStatus = "";
+  function linkSavedDocument() {
+    if (!documentId || !visible.documentCard || visible.documentCard.tagName === "A") return;
+    const linked = document.createElement("a");
+    linked.className = visible.documentCard.className;
+    linked.href = `/api/v2/document/${encodeURIComponent(documentId)}`;
+    linked.download = file.name;
+    linked.append(...visible.documentCard.childNodes);
+    if (["unsupported_extract", "no_text"].includes(documentExtractStatus)) {
+      const note = document.createElement("small");
+      note.className = "document-status";
+      note.textContent = documentExtractStatus === "unsupported_extract"
+        ? "已保存，可下载；此格式暂不支持内容解析"
+        : "已保存，可下载；未抽取到文字";
+      linked.append(note);
+    }
+    visible.documentCard.replaceWith(linked);
+  }
   try {
     let imageId = "";
     if (file) {
       const body = new FormData();
       body.append("file", file, file.name);
-      const uploaded = await jsonResponse(await fetch("/api/v2/upload-image", { method: "POST", credentials: "same-origin", body }));
-      imageId = uploaded.image_id || "";
-      if (!imageId) throw new Error("图片服务没有返回图片编号");
+      const uploaded = await jsonResponse(await fetch(imageFile ? "/api/v2/upload-image" : "/api/v2/upload-document", {
+        method: "POST", credentials: "same-origin", body,
+      }));
+      if (imageFile) {
+        imageId = uploaded.image_id || "";
+        if (!imageId) throw new Error("图片服务没有返回图片编号");
+      } else {
+        documentId = uploaded.document_id || "";
+        documentExtractStatus = uploaded.document?.extract_status || "";
+        if (!documentId) throw new Error("文件服务没有返回文件编号");
+      }
     }
     const requestBody = { text };
     if (sessionId) requestBody.session_id = sessionId;
     if (imageId) requestBody.image_id = imageId;
+    if (documentId) requestBody.document_id = documentId;
     if (url) requestBody.url = url.href;
     if (pageReadId) requestBody.page_read_id = pageReadId;
     const result = await jsonResponse(await fetch("/api/v2/chat", {
@@ -460,6 +542,7 @@ form.addEventListener("submit", async (event) => {
     }
     visible.row.classList.remove("pending");
     visible.meta.textContent = displayTime();
+    linkSavedDocument();
     if (result.user_event?.source_kind === "user_explicit") {
       attachKnowledgeAction(visible.footer, result.user_event.id, text);
       if (url) attachPageReadAction(visible.footer, result.user_event.id, url, visible.row, result.user_event.page_read || null);
@@ -469,12 +552,13 @@ form.addEventListener("submit", async (event) => {
     input.value = "";
     closeEmojiPanel();
     if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
-    clearImage();
+    clearAttachment();
     updateComposer();
     input.focus();
   } catch (error) {
     visible.row.classList.remove("pending");
     if (error.payload?.user_event) {
+      linkSavedDocument();
       if (error.payload.session_id) {
         sessionId = String(error.payload.session_id);
         localStorage.setItem(SESSION_KEY, sessionId);
@@ -487,7 +571,7 @@ form.addEventListener("submit", async (event) => {
       }
       input.value = "";
       if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
-      clearImage();
+      clearAttachment();
       showStatus(error.message || "消息已保存，端倪暂时无法回复。");
     } else {
       visible.row.classList.add("failed");
@@ -522,11 +606,11 @@ input.addEventListener("keydown", (event) => {
 });
 input.addEventListener("paste", (event) => {
   const image = [...(event.clipboardData?.files || [])].find((file) => ALLOWED_TYPES.has(file.type));
-  if (image) { event.preventDefault(); setImage(image); }
+  if (image) { event.preventDefault(); setAttachment(image); }
 });
-imageInput.addEventListener("change", () => { if (imageInput.files?.[0]) setImage(imageInput.files[0]); });
+imageInput.addEventListener("change", () => { if (imageInput.files?.[0]) setAttachment(imageInput.files[0]); });
 $("attach-button").addEventListener("click", () => imageInput.click());
-$("remove-attachment").addEventListener("click", clearImage);
+$("remove-attachment").addEventListener("click", clearAttachment);
 $("remove-page-reference").addEventListener("click", () => setPageReference(null));
 $("remove-url").addEventListener("click", () => {
   const url = firstUrl(input.value);
@@ -539,5 +623,76 @@ window.addEventListener("beforeunload", () => {
   if (selectedImageUrl) URL.revokeObjectURL(selectedImageUrl);
   for (const url of messageImageUrls) URL.revokeObjectURL(url);
 });
+
+const installButton = $("install-button");
+const installPanel = $("install-panel");
+const installInstructions = $("install-instructions");
+const standaloneMedia = window.matchMedia?.("(display-mode: standalone)");
+let deferredInstallPrompt = null;
+
+function isInstalled() {
+  return !!(standaloneMedia?.matches || navigator.standalone === true);
+}
+
+function closeInstallPanel() {
+  installPanel.hidden = true;
+  installButton.setAttribute("aria-expanded", "false");
+}
+
+function refreshInstallButton() {
+  installButton.hidden = isInstalled();
+  if (installButton.hidden) closeInstallPanel();
+}
+
+function installHelpText() {
+  const appleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (appleMobile) {
+    const safari = /Safari/i.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|MicroMessenger/i.test(navigator.userAgent);
+    return safari
+      ? "在 Safari 点底部的“分享”，再选“添加到主屏幕”。"
+      : "请先在 Safari 打开这个网址，再点“分享” → “添加到主屏幕”。";
+  }
+  return /Android/i.test(navigator.userAgent)
+    ? "在 Chrome 右上角菜单中选“安装应用”或“添加到主屏幕”。"
+    : "打开浏览器菜单，选择“安装应用”或“添加到桌面”。";
+}
+
+function openInstallPanel() {
+  installInstructions.textContent = installHelpText();
+  installPanel.hidden = false;
+  installButton.setAttribute("aria-expanded", "true");
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  refreshInstallButton();
+});
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  refreshInstallButton();
+});
+standaloneMedia?.addEventListener?.("change", refreshInstallButton);
+installButton.addEventListener("click", async () => {
+  if (deferredInstallPrompt) {
+    const prompt = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    try {
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
+      if (choice?.outcome === "accepted") { closeInstallPanel(); return; }
+    } catch { /* Offer manual browser steps if the native prompt is unavailable. */ }
+  }
+  if (installPanel.hidden) openInstallPanel(); else closeInstallPanel();
+});
+$("install-close").addEventListener("click", () => { closeInstallPanel(); installButton.focus(); });
+document.addEventListener("pointerdown", (event) => {
+  if (!installPanel.hidden && !installPanel.contains(event.target) && !installButton.contains(event.target)) closeInstallPanel();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !installPanel.hidden) { closeInstallPanel(); installButton.focus(); }
+});
+refreshInstallButton();
 updateComposer();
 loadHistory();

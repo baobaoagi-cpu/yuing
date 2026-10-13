@@ -199,10 +199,10 @@ def conversation_asset():
 
 @app.get("/manifest.webmanifest")
 def original_manifest():
-    guard = _require_login()
-    if guard:
-        return guard
-    return send_from_directory(PROJECT_ROOT / "frontend", "manifest.webmanifest")
+    # Browsers fetch manifests without the app's login cookie on some platforms.
+    # This file contains only public app metadata; the start_url remains protected.
+    return send_from_directory(PROJECT_ROOT / "frontend", "manifest.webmanifest",
+                               mimetype="application/manifest+json")
 
 
 @app.get("/yuling-assets/<path:filename>")
@@ -408,6 +408,96 @@ def chat_image(image_id):
                      download_name="image")
 
 
+DOCUMENT_MIMES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".txt": "text/plain", ".md": "text/markdown", ".csv": "text/csv",
+    ".doc": "application/octet-stream", ".xls": "application/octet-stream",
+    ".ppt": "application/octet-stream", ".wps": "application/octet-stream",
+    ".et": "application/octet-stream", ".dps": "application/octet-stream",
+    ".ofd": "application/octet-stream",
+}
+UNPARSED_DOCUMENT_EXTENSIONS = {".doc", ".xls", ".ppt", ".wps", ".et", ".dps", ".ofd"}
+OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def _valid_unparsed_document(ext, data):
+    if ext in {".doc", ".xls", ".ppt"}:
+        return data.startswith(OLE_SIGNATURE)
+    if ext in {".wps", ".et", ".dps"}:
+        return data.startswith(OLE_SIGNATURE) or data.startswith(b"PK\x03\x04")
+    if ext == ".ofd" and data.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                names = archive.namelist()
+                return (len(names) <= 1000 and
+                        sum(item.file_size for item in archive.infolist()) <= 20_000_000 and
+                        "OFD.xml" in names)
+        except zipfile.BadZipFile:
+            return False
+    return False
+
+
+@app.post("/api/v2/upload-document")
+def upload_chat_document():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="文件存储尚未配置"), 503
+    file = request.files.get("file")
+    if file is None:
+        return jsonify(error="请选择文件"), 400
+    filename = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not filename or len(filename) > 150 or any(ord(ch) < 32 for ch in filename):
+        return jsonify(error="文件名不正确"), 400
+    ext = Path(filename).suffix.lower()
+    if ext not in DOCUMENT_MIMES:
+        return jsonify(error="文件格式暂不支持上传"), 415
+    data = file.stream.read(MAX_FILE + 1)
+    if not data or len(data) > MAX_FILE:
+        return jsonify(error="文件大小需在 5 MB 内"), 413
+    if ext in UNPARSED_DOCUMENT_EXTENSIONS:
+        if not _valid_unparsed_document(ext, data):
+            return jsonify(error="文件内容与格式不符或暂无法验证"), 400
+        extracted = {"kind": ext[1:].upper(), "summary": "", "characters": 0}
+        status = "unsupported_extract"
+    else:
+        try:
+            extracted = extract_document(filename, data)
+        except (ValueError, zipfile.BadZipFile, ET.ParseError, ImportError, UnicodeDecodeError) as exc:
+            return jsonify(error=str(exc) or "无法读取文件"), 400
+        except Exception:
+            return jsonify(error="无法抽取此文件的文字"), 422
+        status = "text_preview" if extracted["characters"] else "no_text"
+    document = store.put_document(filename, extracted["kind"], DOCUMENT_MIMES[ext],
+                                  data, extracted["summary"] if status == "text_preview" else "",
+                                  status)
+    return jsonify(document_id=document["id"], document=document,
+                   characters=extracted["characters"],
+                   note=("已保存，可下载；此格式暂不支持内容解析。" if status == "unsupported_extract"
+                         else "仅抽取前 2500 字供本轮对话；图片、扫描页与版式未被理解。")), 201
+
+
+@app.get("/api/v2/document/<document_id>")
+def chat_document(document_id):
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="文件存储尚未配置"), 503
+    did = _uuid(document_id)
+    row = store.get_document(did, include_data=True) if did else None
+    if row is None:
+        abort(404)
+    return send_file(io.BytesIO(row["data"]), mimetype=row["mime_type"],
+                     as_attachment=True, download_name=row["filename"], conditional=False)
+
+
 @app.get("/api/v2/history")
 def conversation_history():
     guard = _v2_guard()
@@ -562,6 +652,9 @@ def conversation_chat():
     image_id = _uuid(data.get("image_id")) if data.get("image_id") else None
     if data.get("image_id") and not image_id:
         return jsonify(error="图片编号不正确"), 400
+    document_id = _uuid(data.get("document_id")) if data.get("document_id") else None
+    if data.get("document_id") and not document_id:
+        return jsonify(error="文件编号不正确"), 400
     page_read_id = _uuid(data.get("page_read_id")) if data.get("page_read_id") else None
     if data.get("page_read_id") and not page_read_id:
         return jsonify(error="网页读取编号不正确"), 400
@@ -572,8 +665,8 @@ def conversation_chat():
         if (not isinstance(link_url, str) or len(link_url) > 2048 or
                 urlparse(link_url).scheme not in {"http", "https"} or not urlparse(link_url).hostname):
             return jsonify(error="网址格式不正确"), 400
-    if not text_value and not image_id and not link_url and not page_read_id:
-        return jsonify(error="请输入文字、图片或网址"), 400
+    if not text_value and not image_id and not document_id and not link_url and not page_read_id:
+        return jsonify(error="请输入文字、图片、文件或网址"), 400
     store = _chat_store()
     if store is None:
         return jsonify(error="持久化存储尚未配置"), 503
@@ -582,6 +675,9 @@ def conversation_chat():
     image = store.get_image(image_id) if image_id else None
     if image_id and image is None:
         return jsonify(error="图片不存在"), 404
+    document = store.get_document(document_id) if document_id else None
+    if document_id and document is None:
+        return jsonify(error="文件不存在"), 404
     sid_raw = data.get("session_id")
     sid = _uuid(sid_raw) if sid_raw else None
     if sid_raw and not sid:
@@ -598,12 +694,13 @@ def conversation_chat():
     try:
         user_event = store.add_event(sid, "user", text_value, image_id=image_id,
                                      link_url=link_url, source_kind="user_explicit",
-                                     page_read_id=page_read_id)
+                                     page_read_id=page_read_id, document_id=document_id)
     except StoreUnavailable:
         return jsonify(error="网页读取记录不存在或已过期"), 404
     try:
         answer = reply_to(text_value, history, store.memories(), image=image,
-                          link_url=link_url, page_context=page_context)
+                          link_url=link_url, page_context=page_context,
+                          document_context=document)
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
     assistant_event = store.add_event(sid, "assistant", answer,
@@ -776,18 +873,39 @@ def extract_document(filename, data):
             raise ValueError("PDF 最多 20 页")
         text = "\n".join((page.extract_text() or "") for page in reader.pages)
         kind = "PDF"
-    elif ext in {".docx", ".pptx"}:
-        kind = "Word" if ext == ".docx" else "PowerPoint"
+    elif ext in {".docx", ".pptx", ".xlsx"}:
+        kind = {".docx": "Word", ".pptx": "PowerPoint", ".xlsx": "Excel"}[ext]
         parts = []
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             names = archive.namelist()
             if len(names) > 1000 or sum(x.file_size for x in archive.infolist()) > 20_000_000:
                 raise ValueError("文件内容过大")
+            if "[Content_Types].xml" not in names:
+                raise ValueError("Office 文件格式不正确")
             if ext == ".docx":
                 targets = [n for n in names if re.fullmatch(r"word/(document|header\d+|footer\d+)\.xml", n)]
-            else:
+            elif ext == ".pptx":
                 targets = sorted((n for n in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
                                  key=lambda n: int(re.search(r"slide(\d+)", n).group(1)))
+            else:
+                targets = []
+            if ext == ".xlsx":
+                from openpyxl import load_workbook
+                workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True,
+                                         keep_links=False)
+                try:
+                    for sheet in workbook.worksheets[:10]:
+                        parts.append("[" + sheet.title[:80] + "]")
+                        for row in sheet.iter_rows(max_row=min(500, sheet.max_row or 500),
+                                                   max_col=min(30, sheet.max_column or 30),
+                                                   values_only=True):
+                            cells = [str(value)[:200] for value in row if value is not None]
+                            if cells:
+                                parts.append(" | ".join(cells))
+                        if (sheet.max_row or 0) > 500 or (sheet.max_column or 0) > 30:
+                            parts.append("…（仅读取前 500 行、30 列）")
+                finally:
+                    workbook.close()
             for name in targets[:100]:
                 raw = archive.read(name)
                 if len(raw) > 2_000_000:
@@ -798,8 +916,16 @@ def extract_document(filename, data):
                                                       "{http://schemas.openxmlformats.org/drawingml/2006/main}t"}
                                       and node.text and node.text.strip()))
         text = "\n".join(parts)
+    elif ext in {".txt", ".md", ".csv"}:
+        kind = {".txt": "文本", ".md": "Markdown", ".csv": "CSV"}[ext]
+        if b"\x00" in data[:4096]:
+            raise ValueError("文本文件格式不正确")
+        try:
+            text = data.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = data.decode("gb18030")
     else:
-        raise ValueError("仅支持 PDF、DOCX、PPTX")
+        raise ValueError("支持 PDF、DOCX、PPTX、XLSX、TXT、MD、CSV；DOC、WPS、OFD 等格式请先转为 PDF 或 DOCX")
     clean = re.sub(r"[ \t]+", " ", text).strip()
     if not clean:
         return {"kind": kind, "summary": "未抽出文字；扫描图片或图表内容尚未支持。", "characters": 0}
@@ -906,7 +1032,8 @@ def files(filename=""):
         if guard:
             return guard
         return redirect("/chat", code=303)
-    public = {"style.css", "login.js", "assets/icon.svg", "assets/icon-180.png"}
+    public = {"style.css", "login.js", "assets/icon.svg", "assets/icon-180.png",
+              "assets/icon-192.png", "assets/icon-512.png"}
     if filename not in public:
         guard = _require_login()
         if guard:
