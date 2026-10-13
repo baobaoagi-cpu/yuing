@@ -17,7 +17,7 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="identity" aria-label="正在与陈端倪对话">
-        <span class="avatar" aria-hidden="true">倪<span class="avatar-light"></span></span>
+        <span class="avatar" aria-hidden="true"><span class="avatar-light"></span></span>
         <span class="identity-copy"><strong>陈端倪</strong><span>语灵 · 陪你聊聊</span></span>
       </div>
       <div class="topbar-actions">
@@ -36,14 +36,11 @@
     </header>
 
     <main class="conversation" id="conversation" aria-label="对话内容">
-      <div class="conversation-inner" id="message-list">
-        <div class="intro" id="intro">
-          <div class="intro-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <p class="intro-overline">YULING / CHEN DUNNI</p>
-          <h1>你好，我是端倪。</h1>
-          <p>想说什么就说吧。文字、图片、文件或一个网址，都可以从这里开始。</p>
-          <span class="intro-note">对话能力测试中；回复和记录以实际服务结果为准。</span>
-        </div>
+      <div class="conversation-inner" id="message-list"></div>
+      <div class="intro" id="intro" aria-label="陈端倪在这里陪你聊天">
+        <video id="intro-video" class="intro-video" src="/yuling-media/chen-dunni-loop.m4v"
+          poster="/yuling-media/chen-dunni-poster.jpg" autoplay muted loop playsinline
+          preload="metadata" aria-hidden="true"></video>
       </div>
     </main>
 

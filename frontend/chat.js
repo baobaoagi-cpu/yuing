@@ -2,6 +2,15 @@ const $ = (id) => document.getElementById(id);
 const conversation = $("conversation");
 const list = $("message-list");
 const intro = $("intro");
+const introVideo = $("intro-video");
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+function syncIntroVideo() {
+  if (reducedMotion.matches || intro.hidden || document.hidden) introVideo.pause();
+  else introVideo.play().catch(() => {});
+}
+reducedMotion.addEventListener?.("change", syncIntroVideo);
+document.addEventListener("visibilitychange", syncIntroVideo);
+syncIntroVideo();
 const form = $("chat-form");
 const input = $("message-input");
 const imageInput = $("image-input");
@@ -217,13 +226,14 @@ function attachPageReadAction(footer, eventId, url, row, pageRead = null) {
 
 function addMessage({ role, text = "", imageUrl = "", imageName = "", document: documentInfo = null, url = null, timestamp = null, status = "", sourceKind = "", eventId = "", pageRead = null, sourceCitation = null }) {
   intro.hidden = true;
+  syncIntroVideo();
   const row = document.createElement("article");
   row.className = `message ${role === "user" ? "user" : "assistant"}`;
   if (status) row.classList.add(status);
   const avatar = document.createElement("span");
   avatar.className = "bubble-avatar";
   avatar.setAttribute("aria-hidden", "true");
-  avatar.textContent = role === "user" ? "我" : "倪";
+  if (role === "user") avatar.textContent = "我";
   const stack = document.createElement("div");
   stack.className = "bubble-stack";
   const bubble = document.createElement("div");
