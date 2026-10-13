@@ -87,7 +87,16 @@ _failure_lock = threading.Lock()
 @app.before_request
 def _protect_original_yuling_api():
     if request.path.startswith("/api/yuling/"):
-        return _require_login(api=True)
+        guard = _require_login(api=True)
+        if guard:
+            return guard
+        if request.path == "/api/yuling/token" and request.method == "POST":
+            if not _same_origin():
+                return jsonify(error="来源不符"), 403
+            request.environ["poc.same_origin"] = True
+        # This value is written after the server validates its login cookie.
+        # The token route must never derive memory ownership from browser JSON.
+        request.environ["poc.authenticated_owner"] = session["account"]
 
 
 def _configured():
@@ -605,6 +614,61 @@ def delete_knowledge_item(item_id):
     kid = _uuid(item_id)
     if not kid or not store.delete_knowledge_item(kid):
         return jsonify(error="知识条目不存在"), 404
+    return jsonify(ok=True)
+
+
+@app.get("/api/v2/relations")
+def list_relation_candidates():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="关系存储尚未配置"), 503
+    return jsonify(items=store.relation_candidates(), status="candidate_only")
+
+
+@app.post("/api/v2/relations")
+def save_relation_candidate():
+    """Record an explicitly sourced possibility, not an established cause."""
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="关系格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="关系格式不正确"), 400
+    subject_id = _uuid(data.get("subject_id"))
+    object_id = _uuid(data.get("object_id"))
+    source_event_id = _uuid(data.get("source_event_id"))
+    predicate = data.get("predicate")
+    if not subject_id or not object_id or not source_event_id:
+        return jsonify(error="请提供本账号的知识条目与来源消息"), 400
+    if not isinstance(predicate, str) or not 1 <= len(predicate.strip()) <= 120:
+        return jsonify(error="关系描述需在 1 至 120 字内"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="关系存储尚未配置"), 503
+    try:
+        relation = store.add_relation_candidate(subject_id, predicate.strip(),
+                                                object_id, source_event_id)
+    except StoreUnavailable:
+        return jsonify(error="知识条目或来源消息不存在"), 404
+    return jsonify(item=relation), 201
+
+
+@app.delete("/api/v2/relations/<relation_id>")
+def delete_relation_candidate(relation_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="关系存储尚未配置"), 503
+    rid = _uuid(relation_id)
+    if not rid or not store.delete_relation_candidate(rid):
+        return jsonify(error="关系候选不存在"), 404
     return jsonify(ok=True)
 
 

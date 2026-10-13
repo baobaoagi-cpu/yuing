@@ -4,6 +4,10 @@
 
 `POST /api/v2/knowledge` 可將使用者已送出的原始訊息整理成知識條目，須帶該訊息的 `source_event_id`、`title`、`content`；後端只接受同帳號的使用者明示訊息。`GET /api/v2/knowledge` 列出同帳號條目，`DELETE /api/v2/knowledge/{id}` 可撤回。這些條目是有來源的使用者筆記，不代表內容已查證，也沒有向量檢索或圖推理；目前資料庫若在 `/tmp`，知識同樣會在重新部署時消失。貼網址只儲存網址，不會自動抓取網頁內容。
 
+`POST /api/v2/relations` 可用同帳號兩個知識條目 ID、關係描述及一則使用者來源訊息 ID 保存**關係候選**；`GET /api/v2/relations` 與 `DELETE /api/v2/relations/{id}` 供列出和撤回。狀態固定為 `candidate`，不表示因果已證實。刪除知識條目會同步清除與其相連的候選關係。目前只是 SQLite 來源紀錄，沒有圖資料庫查詢或自動推論。
+
+通話記憶簽發是預設關閉的 POC 功能。必須由 PWA 與 Agent 各自設定相同、至少 32 bytes 的 `POC_VOICE_CONTEXT_HMAC_KEY`，再於 PWA 設定 `POC_VOICE_CONTEXT_ENABLED=1`；缺任一條件時不能宣稱語音可讀記憶。簽發只取已登入帳號的使用者明示記憶，不使用前端提交的 identity、owner 或 metadata。啟用前先驗證同源檢查、跨帳號拒絕、部署後持久性及真人通話；現有 `/tmp` 資料仍會在重建時消失。
+
 `Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除目前瀏覽器的 Cookie；更換帳密或簽章祕密會使相應舊登入失效。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
 
 ### 可選的個別測試帳號

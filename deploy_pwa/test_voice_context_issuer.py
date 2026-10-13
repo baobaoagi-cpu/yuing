@@ -115,6 +115,8 @@ class VoiceContextIssuerTest(unittest.TestCase):
         with patch.dict(os.environ, {"POC_VOICE_CONTEXT_ENABLED": "0"}):
             response = self._call(identity="legacy-user")
         self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(response.json["identity"], "legacy-user")
+        self.assertTrue(response.json["room"].startswith("ailivex-yuling-"))
         metadata, _ = self._agent_metadata(response)
         self.assertIsNone(signed_context_text(metadata, SIGNING_KEY, response.json["room"]))
 

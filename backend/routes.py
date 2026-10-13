@@ -168,7 +168,8 @@ def api_yuling_token():
             from deploy_pwa.chat_store import ChatStore, StoreUnavailable
             from deploy_pwa.voice_context_issuer import issue_voice_context
             store = ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""), owner,
-                              legacy_owner_id=os.environ.get("POC_LEGACY_OWNER", ""))
+                              legacy_owner_id=os.environ.get(
+                                  "POC_LEGACY_OWNER", os.environ.get("POC_PREVIEW_USER", owner)))
             memories = store.memories(limit=30)
         except (OSError, ValueError, StoreUnavailable, sqlite3.Error):
             return jsonify({"error": "通话记忆暂时不可用"}), 503
@@ -177,10 +178,11 @@ def api_yuling_token():
         room = "ailivex-yuling-" + uuid4().hex
         agent_meta = issue_voice_context(signing_key, room, owner, memories)
     else:
-        identity = (body.get("identity") or "coach").strip()[:64] or "coach"
-        name = (body.get("name") or "使用者").strip()[:64]
-        # 房名必須 ailivex- 前綴: v9 agent 有 PROJECT_NAMESPACE 安全檢查, 缺前綴直接拒派工。
-        room = f"ailivex-yuling-{identity}-{int(time.time())}"
+        # Keep calls separate even before voice-memory context is enabled.
+        # Browser identity is neither an account proof nor a safe room key.
+        identity = "guest-" + uuid4().hex[:20]
+        name = "使用者"
+        room = "ailivex-yuling-" + uuid4().hex
         agent_meta = json.dumps({
             "characterId": "default",
             "userId": identity,

@@ -123,6 +123,36 @@ class ChatV2Test(unittest.TestCase):
         self.assertEqual(self.client.delete("/api/v2/knowledge/" + saved.json["item"]["id"],
                                             base_url=self.base, headers=self.headers).status_code, 200)
 
+    def test_relation_is_only_a_sourced_candidate(self):
+        self._login()
+        with patch("deploy_pwa.server.reply_to", return_value="我会把关系先标成候选。"):
+            exchange = self.client.post("/api/v2/chat", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"text": "测试：甲可能影响乙"})
+        self.assertEqual(exchange.status_code, 200)
+        source = exchange.json["user_event"]["id"]
+        ids = []
+        for title in ("甲", "乙"):
+            saved = self.client.post("/api/v2/knowledge", base_url=self.base,
+                                     headers=self.headers,
+                                     json={"title": title, "content": "测试条目" + title,
+                                           "source_event_id": source})
+            self.assertEqual(saved.status_code, 201)
+            ids.append(saved.json["item"]["id"])
+        payload = {"subject_id": ids[0], "predicate": "可能影响",
+                   "object_id": ids[1], "source_event_id": source}
+        self.assertEqual(self.client.post("/api/v2/relations", base_url=self.base,
+                                          json=payload).status_code, 403)
+        saved = self.client.post("/api/v2/relations", base_url=self.base,
+                                 headers=self.headers, json=payload)
+        self.assertEqual(saved.status_code, 201)
+        self.assertEqual(saved.json["item"]["status"], "candidate")
+        listed = self.client.get("/api/v2/relations", base_url=self.base).json
+        self.assertEqual(listed["status"], "candidate_only")
+        self.assertIn(saved.json["item"]["id"], [item["id"] for item in listed["items"]])
+        self.assertEqual(self.client.delete("/api/v2/relations/" + saved.json["item"]["id"],
+                                            base_url=self.base, headers=self.headers).status_code, 200)
+
     def test_final_call_transcript_joins_chat_history_once(self):
         payload = {"call_id": "ailivex-yuling-coach-1791920000",
                    "speaker_identity": "coach", "segment_id": "segment-1",
