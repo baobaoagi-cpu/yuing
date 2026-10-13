@@ -251,6 +251,16 @@ def api_yuling_health():
         return jsonify(_health_cache["data"])
 
     creds = _load_livekit_creds()
+    if AGENT_NAME != "ailivex-realtime-v9":
+        # Hosted Builder runs outside this server. Its model/log status cannot be
+        # inferred from the legacy local worker keys or files.
+        configured = all((creds["url"], creds["key"], creds["secret"]))
+        data = {"llm": "unknown", "stt": "unknown", "tts": "unknown",
+                "livekit": "unknown" if configured else "bad", "memory": "bad",
+                "agent": AGENT_NAME}
+        _health_cache["ts"] = now
+        _health_cache["data"] = data
+        return jsonify(data)
     log = _scan_agent_log()
 
     provider = (_env_or_file("YULING_REALTIME_LLM_PROVIDER") or "minimax_m3").lower()
