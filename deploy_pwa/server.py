@@ -1,16 +1,17 @@
-"""Small password gate for the Railway sensory preview.
-
-This is an internal preview gate, not the future multi-user account system.
-No user records, private memory, microphone audio or model requests are stored.
-"""
+"""Single-owner preview login and PWA API. This is not a multi-user account system."""
 from __future__ import annotations
 
-import base64
+from collections import defaultdict, deque
+from datetime import timedelta
+from functools import wraps
+from hashlib import sha256
 import hmac
 import io
 import json
 import os
 import re
+import threading
+import time
 import zipfile
 from email.parser import BytesParser
 from email import policy
@@ -18,12 +19,13 @@ from xml.etree import ElementTree as ET
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from flask import Flask, abort, jsonify, redirect, request, send_from_directory, session
 
 ROOT = Path(__file__).resolve().parent
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
+SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
 BRIDGE = os.environ.get("POC_LOCAL_BRIDGE_URL", "").rstrip("/")
 _bridge_url = urlparse(BRIDGE)
 if BRIDGE and (_bridge_url.scheme != "http" or _bridge_url.hostname not in {"127.0.0.1", "localhost"}):
@@ -31,6 +33,137 @@ if BRIDGE and (_bridge_url.scheme != "http" or _bridge_url.hostname not in {"127
 MAX_JSON = 16_384
 MAX_AUDIO = 2_000_000
 MAX_FILE = 5_000_000
+REMEMBER_SECONDS = 30 * 24 * 60 * 60
+SHORT_SECONDS = 12 * 60 * 60
+app = Flask(__name__, static_folder=None)
+app.config.update(
+    SECRET_KEY=SESSION_SECRET or os.urandom(32),
+    SESSION_COOKIE_NAME="yuling_preview",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=not bool(BRIDGE),
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    SESSION_REFRESH_EACH_REQUEST=False,
+    MAX_CONTENT_LENGTH=MAX_FILE + 10_000,
+)
+_failures = defaultdict(deque)
+_failure_lock = threading.Lock()
+
+
+def _configured():
+    return bool(USERNAME and PASSWORD and SESSION_SECRET and len(SESSION_SECRET) >= 32)
+
+
+def _credential_tag():
+    return hmac.new(SESSION_SECRET.encode(), f"{USERNAME}\0{PASSWORD}".encode(), sha256).hexdigest()[:24]
+
+
+def _signed_in():
+    return (_configured() and session.get("account") == USERNAME and
+            session.get("credential_tag") == _credential_tag() and
+            isinstance(session.get("until"), (int, float)) and session["until"] > time.time())
+
+
+def _require_login(api=False):
+    if _signed_in():
+        return None
+    if api:
+        return jsonify(error="請先登入"), 401
+    return redirect("/login", code=303)
+
+
+def _same_origin():
+    origin = request.headers.get("Origin", "")
+    scheme = "http" if BRIDGE else "https"
+    return origin == f"{scheme}://{request.host}" and request.headers.get("Sec-Fetch-Site", "same-origin") != "cross-site"
+
+
+@app.after_request
+def _headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    if request.path.startswith("/api/") or response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/healthz")
+def healthz():
+    return ("", 200 if _configured() else 503)
+
+
+@app.get("/login")
+def login_page():
+    if not _configured():
+        abort(503)
+    if _signed_in():
+        return redirect("/", code=303)
+    return send_from_directory(ROOT, "login.html")
+
+
+@app.post("/api/login")
+def login():
+    if not _configured():
+        return jsonify(error="登入服務未設定"), 503
+    if not _same_origin() or request.mimetype != "application/json" or request.content_length is None or request.content_length > 4096:
+        return jsonify(error="請求格式不正確"), 403
+    key = request.remote_addr or "unknown"
+    now = time.time()
+    with _failure_lock:
+        recent = _failures[key]
+        while recent and now - recent[0] > 900:
+            recent.popleft()
+        if len(recent) >= 8:
+            return jsonify(error="請稍後再試"), 429
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="請求格式不正確"), 400
+    username, password = data.get("username"), data.get("password")
+    if not isinstance(username, str) or not isinstance(password, str):
+        return jsonify(error="帳號或密碼不正確"), 401
+    correct = hmac.compare_digest(username, USERNAME) & hmac.compare_digest(password, PASSWORD)
+    if not correct:
+        with _failure_lock:
+            _failures[key].append(now)
+        return jsonify(error="帳號或密碼不正確"), 401
+    with _failure_lock:
+        _failures.pop(key, None)
+    remember = data.get("remember") is True
+    session.clear()
+    session.permanent = remember
+    session["account"] = USERNAME
+    session["credential_tag"] = _credential_tag()
+    session["until"] = now + (REMEMBER_SECONDS if remember else SHORT_SECONDS)
+    return jsonify(ok=True, remember=remember)
+
+
+@app.post("/api/logout")
+def logout():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if not _same_origin():
+        return jsonify(error="來源不符"), 403
+    session.clear()
+    return jsonify(ok=True)
+
+
+def _bridge(path, body=None, content_type=None):
+    headers = {"Host": _bridge_url.netloc, "Origin": BRIDGE}
+    if content_type:
+        headers["Content-Type"] = content_type
+    call = Request(BRIDGE + path, data=body, headers=headers,
+                   method="POST" if body is not None else "GET")
+    try:
+        with urlopen(call, timeout=90) as response:
+            return response.status, json.load(response)
+    except HTTPError as exc:
+        try:
+            return exc.code, json.load(exc)
+        except (ValueError, UnicodeDecodeError):
+            return exc.code, {"error": "本機橋接服務失敗"}
+    except (URLError, TimeoutError):
+        return 503, {"error": "本機橋接服務無法連線"}
 
 
 def extract_document(filename, data):
@@ -80,151 +213,117 @@ def extract_document(filename, data):
             "note": "這是文字抽取預覽，尚未經模型理解或摘要。"}
 
 
-class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+@app.get("/api/capabilities")
+def capabilities():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    ready = False
+    if BRIDGE:
+        status, payload = _bridge("/api/status")
+        ready = status == 200 and bool(payload.get("ready"))
+    vision_ready = ready and os.path.exists("/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk")
+    return jsonify(
+        text=ready, turn_voice=ready, live_voice=False,
+        image=vision_ready, files=True, sound_events=True,
+        image_mode="本機 OCR 與粗分類" if vision_ready else "未接入",
+        file_mode="PDF/DOCX/PPTX 文字抽取預覽",
+        mode="local_bridge" if BRIDGE else "railway_preview",
+        reason="本機 Hermes/Whisper 已連線" if ready else "雲端尚未接入對話模型；生活聲辨識在手機端執行",
+    )
 
-    def _authorized(self):
-        if not USERNAME or not PASSWORD:
-            self.send_error(503, "Preview credentials not configured")
-            return False
-        try:
-            scheme, value = self.headers.get("Authorization", "").split(" ", 1)
-            if scheme.lower() != "basic":
-                raise ValueError
-            received = base64.b64decode(value, validate=True).decode("utf-8")
-        except (ValueError, UnicodeDecodeError):
-            received = ""
-        expected = f"{USERNAME}:{PASSWORD}"
-        if not hmac.compare_digest(received, expected):
-            self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="Duanni internal POC"')
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return False
-        return True
 
-    def _json(self, status, payload):
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _bridge(self, path, body=None, content_type=None):
-        headers = {"Host": _bridge_url.netloc, "Origin": BRIDGE}
-        if content_type:
-            headers["Content-Type"] = content_type
-        request = Request(BRIDGE + path, data=body, headers=headers,
-                          method="POST" if body is not None else "GET")
-        try:
-            with urlopen(request, timeout=90) as response:
-                return response.status, json.load(response)
-        except HTTPError as exc:
-            try:
-                return exc.code, json.load(exc)
-            except (ValueError, UnicodeDecodeError):
-                return exc.code, {"error": "本機橋接服務失敗"}
-        except (URLError, TimeoutError):
-            return 503, {"error": "本機橋接服務無法連線"}
-
-    def do_GET(self):
-        if self.path == "/healthz":
-            self.send_response(200 if USERNAME and PASSWORD else 503)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        if not self._authorized():
-            return
-        if self.path == "/api/capabilities":
-            ready = False
-            if BRIDGE:
-                status, payload = self._bridge("/api/status")
-                ready = status == 200 and bool(payload.get("ready"))
-            vision_ready = ready and os.path.exists("/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk")
-            return self._json(200, {
-                "text": ready, "turn_voice": ready, "live_voice": False,
-                "image": vision_ready, "files": True, "sound_events": True,
-                "image_mode": "本機 OCR 與粗分類" if vision_ready else "未接入",
-                "file_mode": "PDF/DOCX/PPTX 文字抽取預覽",
-                "mode": "local_bridge" if BRIDGE else "railway_preview",
-                "reason": "本機 Hermes/Whisper 已連線" if ready else "雲端尚未接入對話模型；生活聲辨識在手機端執行",
-            })
-        return super().do_GET()
-
-    def do_POST(self):
-        if not self._authorized():
-            return
-        origin = self.headers.get("Origin")
-        expected = f"https://{self.headers.get('Host')}" if os.environ.get("RAILWAY_ENVIRONMENT_ID") else f"http://{self.headers.get('Host')}"
-        if origin and origin != expected:
-            return self._json(403, {"error": "來源不符"})
-        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].lower()
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            length = 0
-        if self.path == "/api/analyze":
-            if content_type != "multipart/form-data" or not 0 < length <= MAX_FILE + 10_000:
-                return self._json(413, {"error": "請上傳 5 MB 內的 PDF、DOCX 或 PPTX"})
-            try:
-                raw = self.rfile.read(length)
-                header = self.headers.get("Content-Type", "")
-                message = BytesParser(policy=policy.default).parsebytes(
-                    b"MIME-Version: 1.0\r\nContent-Type: " + header.encode("ascii") + b"\r\n\r\n" + raw)
-                parts = list(message.iter_parts())
-                if len(parts) != 1:
-                    raise ValueError("請一次上傳一個檔案")
-                part = parts[0]
-                filename = part.get_filename() or ""
-                data = part.get_payload(decode=True) or b""
-                if not 0 < len(data) <= MAX_FILE:
-                    raise ValueError("檔案大小需在 5 MB 內")
-                content_type = part.get_content_type().lower()
-                if content_type in {"image/png", "image/jpeg", "image/webp"}:
-                    if not BRIDGE:
-                        return self._json(503, {"error": "此網址尚未接入圖片辨識"})
-                    if len(data) > 4_000_000:
-                        raise ValueError("圖片需在 4 MB 內")
-                    status, result = self._bridge("/api/analyze", data, content_type)
-                    if status != 200:
-                        return self._json(status, result)
-                    words = ", ".join(result.get("text", []))[:2000]
-                    labels = ", ".join(str(x.get("name", "")) for x in result.get("labels", [])[:3])
-                    preview = f"圖片文字：{words or '未辨識到'}。粗分類：{labels or '未辨識到'}。"
-                    return self._json(200, {"kind": "image", "summary": preview,
-                        "note": "本機 Vision OCR 與粗分類結果；尚非完整圖片問答。"})
-                return self._json(200, extract_document(filename, data))
-            except (ValueError, zipfile.BadZipFile, ET.ParseError, ImportError) as exc:
-                return self._json(400, {"error": str(exc)})
-            except Exception:
-                return self._json(422, {"error": "無法抽取此檔案的文字"})
+@app.post("/api/analyze")
+def analyze():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if not _same_origin():
+        return jsonify(error="來源不符"), 403
+    file = request.files.get("file")
+    if file is None:
+        return jsonify(error="請上傳一個檔案"), 400
+    data = file.stream.read(MAX_FILE + 1)
+    if not 0 < len(data) <= MAX_FILE:
+        return jsonify(error="檔案大小需在 5 MB 內"), 413
+    content_type = (file.content_type or "").lower()
+    if content_type in {"image/png", "image/jpeg", "image/webp"}:
         if not BRIDGE:
-            return self._json(503, {"error": "此 Railway 預覽尚未接入對話服務"})
-        if self.path == "/api/chat" and content_type == "application/json" and 0 < length <= MAX_JSON:
-            try:
-                data = json.loads(self.rfile.read(length))
-                text = str(data.get("message", ""))[:4000]
-            except (ValueError, TypeError):
-                return self._json(400, {"error": "文字格式不正確"})
-            status, result = self._bridge("/api/chat", json.dumps({"text": text, "history": []}).encode(), "application/json")
-            return self._json(status, result)
-        if self.path == "/api/transcribe" and content_type == "audio/wav" and 44 <= length <= MAX_AUDIO:
-            status, result = self._bridge("/api/transcribe", self.rfile.read(length), "audio/wav")
-            return self._json(status, result)
-        return self._json(415, {"error": "此功能或檔案格式尚未啟用"})
+            return jsonify(error="此網址尚未接入圖片辨識"), 503
+        if len(data) > 4_000_000:
+            return jsonify(error="圖片需在 4 MB 內"), 413
+        status, result = _bridge("/api/analyze", data, content_type)
+        if status != 200:
+            return jsonify(result), status
+        words = ", ".join(result.get("text", []))[:2000]
+        labels = ", ".join(str(x.get("name", "")) for x in result.get("labels", [])[:3])
+        return jsonify(kind="image", summary=f"圖片文字：{words or '未辨識到'}。粗分類：{labels or '未辨識到'}。",
+                       note="本機 Vision OCR 與粗分類結果；尚非完整圖片問答。")
+    try:
+        return jsonify(extract_document(file.filename or "", data))
+    except (ValueError, zipfile.BadZipFile, ET.ParseError, ImportError) as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception:
+        return jsonify(error="無法抽取此檔案的文字"), 422
 
-    def do_HEAD(self):
-        if not self._authorized():
-            return
-        return super().do_HEAD()
+
+@app.post("/api/chat")
+def chat():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if not _same_origin():
+        return jsonify(error="來源不符"), 403
+    if not BRIDGE:
+        return jsonify(error="此 Railway 預覽尚未接入對話服務"), 503
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="文字格式不正確"), 415
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="文字格式不正確"), 400
+    text = str(body.get("message", ""))[:4000]
+    status, result = _bridge("/api/chat", json.dumps({"text": text, "history": []}).encode(), "application/json")
+    return jsonify(result), status
+
+
+@app.post("/api/transcribe")
+def transcribe():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if not _same_origin():
+        return jsonify(error="來源不符"), 403
+    if not BRIDGE:
+        return jsonify(error="此 Railway 預覽尚未接入回合語音"), 503
+    if request.mimetype != "audio/wav" or not request.content_length or not 44 <= request.content_length <= MAX_AUDIO:
+        return jsonify(error="音訊格式不正確"), 415
+    status, result = _bridge("/api/transcribe", request.get_data(), "audio/wav")
+    return jsonify(result), status
+
+
+@app.get("/")
+@app.get("/<path:filename>")
+def files(filename="index.html"):
+    public = {"style.css", "login.js", "assets/icon.svg", "assets/icon-180.png"}
+    if filename not in public:
+        guard = _require_login()
+        if guard:
+            return guard
+    if filename in {"login.html", "server.py"} or filename.startswith("."):
+        abort(404)
+    return send_from_directory(ROOT, filename)
+
+
+@app.errorhandler(413)
+def too_large(_error):
+    if request.path.startswith("/api/"):
+        return jsonify(error="檔案大小超過限制"), 413
+    return "檔案大小超過限制", 413
 
 
 if __name__ == "__main__":
+    if not _configured():
+        raise SystemExit("Preview login variables are not configured")
     port = int(os.environ.get("PORT", "8080"))
     host = "127.0.0.1" if BRIDGE else "0.0.0.0"
-    ThreadingHTTPServer((host, port), Handler).serve_forever()
+    app.run(host=host, port=port, threaded=True)

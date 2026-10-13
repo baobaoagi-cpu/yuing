@@ -209,6 +209,20 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden && running)
 window.addEventListener('pagehide',()=>{if(running) stopListening();});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
+document.querySelector('#logout-button')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/logout', {method: 'POST', credentials: 'same-origin', cache: 'no-store'});
+    if(!response.ok) throw new Error('登出請求失敗');
+    window.location.replace('/login');
+  } catch (_) {
+    button.disabled = false;
+    const status = document.querySelector('#action-status');
+    if(status) status.textContent='登出未完成，請檢查連線後再試。';
+  }
+});
+
 // These controls fail closed. The server advertises only capabilities backed by
 // a real endpoint; an unavailable feature stays visible but cannot be used.
 const assistantUi = {

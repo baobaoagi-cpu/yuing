@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3efe7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="YULING">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+  <title>登入 · YULING 語靈</title>
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <header class="login-header">
+      <div class="brand" aria-label="YULING 語靈"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M5 18h4l3-8 5 16 4-12 3 4h7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word">YULING <small>語靈 · 陳端倪</small></span></div>
+      <span class="login-edition">PRIVATE PREVIEW / 01</span>
+    </header>
+    <section class="login-layout" aria-labelledby="login-title">
+      <div class="login-story">
+        <p class="eyebrow">一個懂得傾聽的開始</p>
+        <h1>聽見你，<br><em>也聽見生活。</em></h1>
+        <p>歡迎來到語靈。登入後，在 iPhone 上體驗端倪的聲音感知與目前已接通的基礎能力。</p>
+        <div class="login-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="login-card">
+        <p class="login-card-kicker">YULING ACCESS</p>
+        <h2 id="login-title">歡迎回來</h2>
+        <p class="login-card-intro">輸入帳號與密碼，繼續測試語靈。</p>
+        <form id="login-form" novalidate>
+          <label for="username">帳號</label>
+          <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="請輸入帳號">
+          <label for="password">密碼</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="請輸入密碼">
+          <label class="remember-row" for="remember"><input id="remember" name="remember" type="checkbox"><span>保持登入 30 天</span></label>
+          <p class="login-error" id="login-error" role="alert" aria-live="polite" hidden></p>
+          <button class="login-submit" type="submit" id="login-submit">登入語靈 <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="login-note">僅供授權的內部測試者使用。</p>
+      </div>
+    </section>
+    <footer class="login-footer"><span>YULING · PRIVATE PREVIEW</span><span>陪伴，從聽見開始。</span></footer>
+  </main>
+  <script type="module" src="/login.js"></script>
+</body>
+</html>
