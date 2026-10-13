@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from hashlib import sha256
 import time
 import re
@@ -54,6 +55,16 @@ class ChatStore:
                     segment_id TEXT NOT NULL, event_id TEXT NOT NULL REFERENCES events(id),
                     PRIMARY KEY (call_id, speaker_identity, segment_id)
                 );
+                CREATE TABLE IF NOT EXISTS call_reflections (
+                    owner_id TEXT NOT NULL, call_id TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('processing','generated','skipped','failed')),
+                    text TEXT, source_event_ids TEXT NOT NULL,
+                    model TEXT, prompt_version TEXT NOT NULL,
+                    created_at REAL NOT NULL, updated_at REAL NOT NULL,
+                    PRIMARY KEY (owner_id, call_id)
+                );
+                CREATE INDEX IF NOT EXISTS call_reflections_owner_time
+                    ON call_reflections(owner_id, updated_at DESC);
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, mime_type TEXT NOT NULL, data BLOB NOT NULL,
                     created_at REAL NOT NULL
@@ -211,6 +222,103 @@ class ChatStore:
             db.execute("UPDATE sessions SET updated_at=? WHERE id=?", (now, sid))
         return {"id": eid, "session_id": sid, "role": role, "text": text,
                 "source_kind": "livekit_browser_transcript", "created_at": now}, True
+
+    def recent_calls(self, limit=30):
+        """Only calls with saved final browser transcripts owned by this account."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT c.call_id, MIN(e.created_at) AS started_at, "
+                "MAX(e.created_at) AS last_at, COUNT(*) AS turns "
+                "FROM call_transcripts c JOIN events e ON e.id=c.event_id "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE s.owner_id=? AND e.source_kind='livekit_browser_transcript' "
+                "GROUP BY c.call_id ORDER BY last_at DESC LIMIT ?",
+                (self.owner_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def call_transcript(self, call_id, limit=500):
+        """Return an owner's saved turns; a different owner's ID looks absent."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT e.role,e.text,e.created_at,e.rowid AS seq "
+                "FROM call_transcripts c JOIN events e ON e.id=c.event_id "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE c.call_id=? AND s.owner_id=? "
+                "AND e.source_kind='livekit_browser_transcript' "
+                "ORDER BY e.created_at,e.rowid LIMIT ?",
+                (call_id, self.owner_id, limit + 1),
+            ).fetchall()
+        if not rows:
+            return None
+        return {"call_id": call_id, "turns": [
+            {"role": row["role"], "text": row["text"], "created_at": row["created_at"]}
+            for row in rows[:limit]], "truncated": len(rows) > limit,
+            "audio_saved": False}
+
+    def call_reflection(self, call_id):
+        with self._connect() as db:
+            row = db.execute("SELECT call_id,status,text,source_event_ids,model,"
+                             "prompt_version,created_at,updated_at FROM call_reflections "
+                             "WHERE owner_id=? AND call_id=?",
+                             (self.owner_id, call_id)).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["source_event_ids"] = json.loads(item["source_event_ids"])
+        return item
+
+    def recent_call_reflections(self, limit=30):
+        with self._connect() as db:
+            rows = db.execute("SELECT call_id,status,text,source_event_ids,model,"
+                              "prompt_version,created_at,updated_at FROM call_reflections "
+                              "WHERE owner_id=? ORDER BY updated_at DESC LIMIT ?",
+                              (self.owner_id, limit)).fetchall()
+        return [{**dict(row), "source_event_ids": json.loads(row["source_event_ids"])}
+                for row in rows]
+
+    def claim_call_reflection(self, call_id, prompt_version, retry=False):
+        """Atomically claim a call and return only this owner's immutable source events."""
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                "SELECT e.id,e.role,e.text FROM call_transcripts c "
+                "JOIN events e ON e.id=c.event_id JOIN sessions s ON s.id=e.session_id "
+                "WHERE c.call_id=? AND s.owner_id=? "
+                "AND e.source_kind='livekit_browser_transcript' "
+                "ORDER BY e.created_at,e.rowid LIMIT 501", (call_id, self.owner_id)
+            ).fetchall()
+            if not rows:
+                return None, None
+            existing = db.execute(
+                "SELECT status FROM call_reflections WHERE owner_id=? AND call_id=?",
+                (self.owner_id, call_id)).fetchone()
+            if existing:
+                if existing["status"] != "failed" or not retry:
+                    return "existing", None
+                db.execute("UPDATE call_reflections SET status='processing',text=NULL,"
+                           "source_event_ids=?,model=NULL,prompt_version=?,updated_at=? "
+                           "WHERE owner_id=? AND call_id=?",
+                           (json.dumps([r["id"] for r in rows]), prompt_version, now,
+                            self.owner_id, call_id))
+            else:
+                db.execute("INSERT INTO call_reflections "
+                           "(owner_id,call_id,status,text,source_event_ids,model,"
+                           "prompt_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                           (self.owner_id, call_id, "processing", None,
+                            json.dumps([r["id"] for r in rows]), None,
+                            prompt_version, now, now))
+        return "claimed", [dict(row) for row in rows]
+
+    def finish_call_reflection(self, call_id, status, text=None, model=None):
+        if status not in {"generated", "skipped", "failed"}:
+            raise ValueError("invalid reflection status")
+        with self._connect() as db:
+            db.execute("UPDATE call_reflections SET status=?,text=?,model=?,updated_at=? "
+                       "WHERE owner_id=? AND call_id=? AND status='processing'",
+                       (status, text if status == "generated" else None, model,
+                        time.time(), self.owner_id, call_id))
 
     def history(self, sid, limit=100):
         with self._connect() as db:

@@ -1,4 +1,15 @@
 const $ = (id) => document.getElementById(id);
+// The mobile keyboard can shrink and pan the visible viewport without changing 100dvh.
+// Keep the app shell inside that viewport; only the conversation is scrollable.
+function syncChatViewport() {
+  const viewport = window.visualViewport;
+  document.documentElement.style.setProperty("--chat-viewport-height", `${viewport?.height ?? window.innerHeight}px`);
+  document.documentElement.style.setProperty("--chat-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+}
+window.visualViewport?.addEventListener("resize", syncChatViewport);
+window.visualViewport?.addEventListener("scroll", syncChatViewport);
+window.addEventListener("resize", syncChatViewport);
+syncChatViewport();
 const conversation = $("conversation");
 const list = $("message-list");
 const intro = $("intro");

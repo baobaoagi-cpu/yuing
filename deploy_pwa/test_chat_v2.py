@@ -63,6 +63,22 @@ class ChatV2Test(unittest.TestCase):
         self.assertEqual(events[0]["source_kind"], "user_explicit")
         self.assertEqual(events[1]["source_kind"], "model_generated")
 
+    def test_status_does_not_claim_persistence_from_a_path_alone(self):
+        self._login()
+        with patch.dict(os.environ, {"POC_CHAT_DB_PATH": os.path.join(_tmp.name, "chat.sqlite3"),
+                                     "RAILWAY_SERVICE_ID": "test-service",
+                                     "RAILWAY_VOLUME_MOUNT_PATH": ""}):
+            status = self.client.get("/api/v2/status", base_url=self.base)
+        self.assertEqual(status.status_code, 200)
+        self.assertFalse(status.json["persistent_history"])
+        self.assertEqual(status.json["memory_persistence"], "ephemeral")
+
+        with patch.dict(os.environ, {"RAILWAY_SERVICE_ID": "",
+                                     "RAILWAY_VOLUME_MOUNT_PATH": ""}):
+            status = self.client.get("/api/v2/status", base_url=self.base)
+        self.assertFalse(status.json["persistent_history"])
+        self.assertEqual(status.json["memory_persistence"], "path_configured_unverified")
+
     def test_image_is_validated_and_sent_to_adapter(self):
         self._login()
         bad = self.client.post("/api/v2/upload-image", base_url=self.base,
@@ -308,6 +324,16 @@ class ChatV2Test(unittest.TestCase):
                          [("user", payload["text"]), ("assistant", "好，我在听。")])
         self.assertTrue(all(x["source_kind"] == "livekit_browser_transcript"
                             for x in events))
+        calls = self.client.get("/api/v2/calls", base_url=self.base)
+        self.assertEqual(calls.status_code, 200)
+        self.assertFalse(calls.json["audio_saved"])
+        listed = next(x for x in calls.json["calls"] if x["call_id"] == payload["call_id"])
+        self.assertEqual(listed["turns"], 2)
+        detail = self.client.get("/api/v2/calls/" + payload["call_id"], base_url=self.base)
+        self.assertEqual(detail.status_code, 200)
+        self.assertFalse(detail.json["audio_saved"])
+        self.assertEqual([(x["role"], x["text"]) for x in detail.json["turns"]],
+                         [("user", payload["text"]), ("assistant", "好，我在听。")])
         with patch("deploy_pwa.server.reply_to", return_value="我记得刚才的话。") as model:
             followup = self.client.post("/api/v2/chat", base_url=self.base,
                                         headers=self.headers,
@@ -319,6 +345,32 @@ class ChatV2Test(unittest.TestCase):
                                    headers=self.headers,
                                    json={**payload, "segment_id": "bad-id", "role": "system"})
         self.assertEqual(invalid.status_code, 400)
+
+    def test_saved_call_list_and_detail_are_account_scoped(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {"POC_CHAT_DB_PATH": os.path.join(directory, "calls.sqlite3")}
+        ):
+            self.assertEqual(self.client.get("/api/v2/calls", base_url=self.base).status_code, 401)
+            self._login()
+            call_id = "ailivex-yuling-owner-1791920000"
+            posted = self.client.post("/api/v2/call-transcript", base_url=self.base,
+                                      headers=self.headers,
+                                      json={"call_id": call_id, "speaker_identity": "owner",
+                                            "segment_id": "segment-1", "role": "user",
+                                            "text": "只属于这个账号"})
+            self.assertEqual(posted.status_code, 201)
+            with patch("deploy_pwa.server.USERNAME", "friend"), patch(
+                    "deploy_pwa.server.PASSWORD", "friend-password"):
+                other = app.test_client()
+                self.assertEqual(other.post("/api/login", base_url=self.base,
+                                            headers=self.headers,
+                                            json={"username": "friend", "password": "friend-password"}).status_code, 200)
+                self.assertEqual(other.get("/api/v2/calls", base_url=self.base).json["calls"], [])
+                self.assertEqual(other.get("/api/v2/calls/" + call_id,
+                                           base_url=self.base).status_code, 404)
+            self.assertEqual(self.client.get("/api/v2/calls/" + call_id,
+                                             base_url=self.base).json["turns"][0]["text"],
+                             "只属于这个账号")
 
     def test_browser_audio_event_contract(self):
         self._login()

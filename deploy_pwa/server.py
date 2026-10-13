@@ -32,6 +32,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
 from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
 from deploy_pwa.chat_api import reply_to, ProviderError
+from deploy_pwa.call_reflection import PROMPT_VERSION, substantial_call, generate_reflection
 from deploy_pwa.public_page_reader import PageReadError, _validated_url, read_public_page
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
@@ -330,10 +331,15 @@ def conversation_status():
     store = _chat_store()
     store_path = os.path.realpath(str(store.path)) if store else ""
     temporary = store_path.startswith(("/tmp/", "/private/tmp/"))
+    # A configured absolute path does not prove that Railway mounted durable
+    # storage there. Report persistence only after a separate restore check.
+    railway_without_volume = bool(os.environ.get("RAILWAY_SERVICE_ID")) and not bool(
+        os.environ.get("RAILWAY_VOLUME_MOUNT_PATH"))
     persistence = ("unavailable" if store is None else
-                   "ephemeral" if temporary else "path_configured_unverified")
+                   "ephemeral" if temporary or railway_without_volume else
+                   "path_configured_unverified")
     return jsonify(text_model=bool(os.environ.get("MINIMAX_API_KEY", "").strip()),
-                   persistent_history=store is not None and not temporary,
+                   persistent_history=False,
                    memory_persistence=persistence,
                    image_upload=store is not None,
                    image_understanding=bool(os.environ.get("MINIMAX_API_KEY", "").strip()),
@@ -633,6 +639,82 @@ def save_call_transcript():
         return jsonify(error="会话不存在"), 404
     return jsonify(session_id=event["session_id"], event=event,
                    created=created), 201 if created else 200
+
+
+@app.get("/api/v2/calls")
+def saved_calls():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    return jsonify(calls=store.recent_calls(), audio_saved=False,
+                   source="final_browser_transcript")
+
+
+@app.get("/api/v2/calls/<call_id>")
+def saved_call(call_id):
+    guard = _v2_guard()
+    if guard:
+        return guard
+    if not re.fullmatch(r"ailivex-yuling-[A-Za-z0-9_-]{1,113}", call_id):
+        abort(404)
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    detail = store.call_transcript(call_id)
+    if detail is None:
+        abort(404)
+    return jsonify(detail)
+
+
+@app.get("/api/v2/call-reflections")
+def saved_call_reflections():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    return jsonify(items=store.recent_call_reflections(),
+                   source="saved_final_call_transcript")
+
+
+@app.post("/api/v2/calls/<call_id>/reflection")
+def reflect_on_call(call_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if not re.fullmatch(r"ailivex-yuling-[A-Za-z0-9_-]{1,113}", call_id):
+        abort(404)
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > 256:
+        return jsonify(error="请求格式不正确"), 415
+    data = request.get_json(silent=True)
+    if (not isinstance(data, dict) or set(data) - {"retry"} or
+            type(data.get("retry", False)) is not bool):
+        return jsonify(error="请求格式不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="对话存储尚未配置"), 503
+    claim, events = store.claim_call_reflection(
+        call_id, PROMPT_VERSION, retry=data.get("retry") is True)
+    if claim is None:
+        abort(404)
+    if claim == "existing":
+        return jsonify(item=store.call_reflection(call_id), created=False)
+    if not substantial_call(events):
+        store.finish_call_reflection(call_id, "skipped")
+        return jsonify(item=store.call_reflection(call_id), created=True), 201
+    try:
+        note, model = generate_reflection(events)
+    except (ProviderError, ValueError, TypeError):
+        store.finish_call_reflection(call_id, "failed")
+        return jsonify(item=store.call_reflection(call_id),
+                       error="通话后心声未生成，请稍后手动重试"), 502
+    store.finish_call_reflection(call_id, "generated" if note else "skipped",
+                                 note, model)
+    return jsonify(item=store.call_reflection(call_id), created=True), 201
 
 
 @app.post("/api/v2/chat")

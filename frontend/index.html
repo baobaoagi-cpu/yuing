@@ -34,7 +34,7 @@
     object-fit:contain; background:#000; user-select:none; -webkit-user-drag:none; }
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:3; }
-  .gear, .lamps, .panel{ z-index:4; }
+  .menu-toggle, .lamps, .panel{ z-index:4; }
 
   .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
   .btn{ border:none; background:none; color:var(--light); cursor:pointer;
@@ -54,15 +54,18 @@
   .btn[disabled]{ opacity:.3; pointer-events:none; }
   .hidden{ display:none !important; }
 
-  .gear{ position:absolute; top:max(4vh,18px); left:20px; color:var(--dim);
-    background:none; border:none; cursor:pointer; padding:8px; }
-  .gear svg{ width:22px; height:22px; }
-  .chat-return{ position:absolute; top:max(4vh,18px); right:20px; z-index:3;
-    display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:0 11px;
-    border:1px solid rgba(255,255,255,.15); border-radius:11px; background:rgba(0,0,0,.56);
-    color:rgba(255,255,255,.82); font-size:12px; cursor:pointer; backdrop-filter:blur(8px); }
-  .chat-return:hover{ border-color:rgba(255,255,255,.38); color:#fff; }
-  .chat-return:focus-visible{ outline:2px solid #1d9e75; outline-offset:3px; }
+  .nav-control{ position:absolute; top:max(4vh,18px); display:grid; place-items:center;
+    width:44px; height:44px; padding:0; border:1px solid rgba(255,255,255,.15);
+    border-radius:12px; background:rgba(0,0,0,.56); color:rgba(255,255,255,.82);
+    cursor:pointer; backdrop-filter:blur(8px); }
+  .nav-control svg{ width:22px; height:22px; }
+  .nav-control:hover{ border-color:rgba(255,255,255,.38); color:#fff; }
+  .nav-control:focus-visible,.panel-close:focus-visible{ outline:2px solid #1d9e75; outline-offset:3px; }
+  .chat-return{ left:20px; z-index:4; }
+  .menu-toggle{ right:20px; }
+  .panel-close{ position:absolute; top:max(4vh,18px); right:20px; display:grid; place-items:center;
+    width:44px; height:44px; border:1px solid var(--faint); border-radius:12px;
+    background:rgba(255,255,255,.04); color:var(--light); font-size:24px; cursor:pointer; }
   .leave-dialog{ position:fixed; inset:0; z-index:9; display:grid; place-items:center;
     padding:20px; background:rgba(0,0,0,.78); backdrop-filter:blur(10px); }
   .leave-dialog-card{ width:min(100%,340px); padding:24px; text-align:left; border-radius:18px;
@@ -243,8 +246,9 @@
     .lamps{ top:var(--phone-top); display:grid;
       grid-template-columns:repeat(5,max-content); gap:7px 9px;
       justify-content:center; max-width:100%; }
-    .gear{ top:calc(var(--phone-top) + 52px); left:12px; }
-    .chat-return{ top:calc(var(--phone-top) + 52px); right:12px; }
+    .chat-return{ top:calc(var(--phone-top) + 52px); left:12px; }
+    .menu-toggle{ top:calc(var(--phone-top) + 52px); right:12px; }
+    .panel-close{ top:calc(var(--phone-top) + 52px); right:12px; }
     .top.callpane{ margin-top:calc(76px + max(0px,env(safe-area-inset-top) - 14px)); }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
@@ -277,10 +281,12 @@
   poster="/yuling-media/chen-dunni-poster.jpg" autoplay muted loop playsinline
   preload="metadata" aria-hidden="true"></video>
 
-<button class="gear" id="gear" aria-label="设置">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+<button class="nav-control menu-toggle" id="menuToggle" type="button" aria-label="打开菜单" aria-controls="panel" aria-expanded="false">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
 </button>
-<button class="chat-return" id="chatReturn" type="button" aria-label="返回文字聊天"><span aria-hidden="true">‹</span> 返回聊天</button>
+<button class="nav-control chat-return" id="chatReturn" type="button" aria-label="返回上一页，文字聊天">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg>
+</button>
 
 <div class="leave-dialog hidden" id="leaveDialog" role="dialog" aria-modal="true" aria-labelledby="leaveTitle" aria-describedby="leaveText">
   <div class="leave-dialog-card">
@@ -294,12 +300,12 @@
 </div>
 
 <div class="lamps" id="lamps" aria-label="系统健康状态">
-  <span class="lamp" id="lamp-service"><i class="dot"></i>服务</span>
-  <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
-  <span class="lamp" id="lamp-livekit"><i class="dot"></i>接口</span>
-  <span class="lamp" id="lamp-room"><i class="dot"></i>房间</span>
-  <span class="lamp" id="lamp-agent"><i class="dot"></i>语灵</span>
-  <span class="lamp" id="lamp-audio"><i class="dot"></i>音轨</span>
+  <span class="lamp" id="lamp-service"><i class="dot"></i>S</span>
+  <span class="lamp" id="lamp-mic"><i class="dot"></i>M</span>
+  <span class="lamp" id="lamp-livekit"><i class="dot"></i>L</span>
+  <span class="lamp" id="lamp-room"><i class="dot"></i>R</span>
+  <span class="lamp" id="lamp-agent"><i class="dot"></i>A</span>
+  <span class="lamp" id="lamp-audio"><i class="dot"></i>O</span>
   <span class="lamp" id="lamp-stt"><i class="dot"></i>STT</span>
   <span class="lamp" id="lamp-llm"><i class="dot"></i>LLM</span>
   <span class="lamp" id="lamp-tts"><i class="dot"></i>TTS</span>
@@ -385,16 +391,17 @@
 </div>
 
 <div class="panel hidden" id="panel">
+  <button class="panel-close" id="panelClose" type="button" aria-label="关闭菜单">×</button>
   <button class="linkbtn" id="logOpenBtn">📜 对话记录</button>
-  <button class="linkbtn" id="innerOpenBtn">🤍 内心独白</button>
+  <button class="linkbtn" id="innerOpenBtn">🤍 通话后心声</button>
   <div class="hint" id="historyHealth">对话记录：检查中</div>
-  <div class="hint" id="innerHealth">内心独白：检查中</div>
+  <div class="hint" id="innerHealth">通话后心声：检查中</div>
 </div>
 
 <div class="panel hidden logpanel" id="innerPanel">
   <div class="logbar">
     <button id="innerBack" aria-label="返回">‹</button>
-    <span class="ttl">内心独白</span>
+    <span class="ttl">通话后心声</span>
   </div>
   <div class="logbody" id="innerBody"></div>
 </div>
@@ -415,7 +422,7 @@
   const statusEl=$('status');
   const callBtn=$('callBtn'), callCircle=$('callCircle'), callIcon=$('callIcon'), callLabel=$('callLabel');
   const muteBtn=$('muteBtn'), muteCircle=$('muteCircle'), muteLabel=$('muteLabel');
-  const gear=$('gear'), panel=$('panel');
+  const menuToggle=$('menuToggle'), panel=$('panel'), panelClose=$('panelClose');
   const chatReturn=$('chatReturn'), leaveDialog=$('leaveDialog');
   const leaveCancel=$('leaveCancel'), leaveConfirm=$('leaveConfirm');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
@@ -435,6 +442,7 @@
   let callAttemptId=0;
   const CHAT_SESSION_KEY='yuling_chat_session_v2';
   let transcriptSaveQueue=Promise.resolve();
+  const savedTranscriptCalls=new Set(), failedTranscriptCalls=new Set();
   const MEETING_ENABLED=false; // Call POC: keep the original recorder code, disable its UI and gestures.
   const API_ROOT=(location.protocol==='file:')
     ? 'http://127.0.0.1:8080'
@@ -1208,7 +1216,7 @@
     if(micRaw>0.08) lastUserVoiceAt=ts;
     if(baoRaw>0.06){
       lastBaoVoiceAt=ts;
-      if(room) setLamp('tts','ok'); // 只证实本次收到代理语音，不代表独立探测供应商
+      if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
     }
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
@@ -1774,44 +1782,66 @@
     }catch(_){ return false; }
   }
 
-  function setLamp(id, state){
+  function setLamp(id, state, detail){
     const el=$('lamp-'+id); if(!el) return;
     el.classList.remove('ok','bad','warn');
     if(state) el.classList.add(state);
     const meanings={
-      service:{ok:'Railway API 已回应',bad:'Railway API 无法回应'},
+      service:{ok:'网页 API 已回应',bad:'网页 API 无法回应',warn:'登录状态需要检查'},
       mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
       livekit:{ok:'LiveKit API 凭证已验证',bad:'LiveKit API 凭证无效或缺少设置',warn:'LiveKit API 暂时无法验证'},
       room:{ok:'本次已加入 LiveKit 房间',bad:'本次无法加入 LiveKit 房间',warn:'正在加入 LiveKit 房间'},
-      agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
-      audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'},
+      agent:{ok:'陈端倪 Agent 已加入房间',bad:'陈端倪 Agent 无法加入房间',warn:'等待陈端倪 Agent 加入'},
+      audio:{ok:'已收到 Agent 音轨',bad:'未能收到 Agent 音轨',warn:'等待 Agent 音轨'},
       stt:{ok:'本次已收到你的语音转写',warn:'等待本次语音转写'},
-      llm:{ok:'本次收到代理文字回复；未独立验证模型供应商',warn:'等待本次代理回复'},
-      tts:{ok:'本次已检测到代理语音输出；未独立检测供应商',warn:'等待本次代理语音输出'}
+      llm:{warn:'等待本次 Agent 回复；模型供应商尚未独立验证'},
+      tts:{warn:'等待本次 Agent 声音；MiniMax TTS 尚未独立验证'}
     };
     const label=el.textContent.trim();
-    const meaning=(meanings[id]&&meanings[id][state])||'尚未开始测试';
+    const meaning=detail||(meanings[id]&&meanings[id][state])||'尚未开始测试';
     el.setAttribute('aria-label',`${label}：${meaning}`);
     el.title=`${label}：${meaning}`;
   }
   function setMic(state){ setLamp('mic', state); }
+  function isAgentParticipant(p){
+    return !!p && (p.kind===LK.ParticipantKind.AGENT ||
+      !!(p.attributes&&p.attributes['lk.agent.state']));
+  }
+  function syncAgentLamp(callRoom){
+    const present=Array.from(callRoom.remoteParticipants.values()).some(isAgentParticipant);
+    setLamp('agent',present?'ok':'warn');
+    return present;
+  }
 
   async function pollHealth(){
     // This request proves the Railway API responds; provider status is verified in-call.
     try{
       const r=await fetch(apiUrl('/api/yuling/health'),{cache:'no-store'});
+      if(r.status===401 || r.status===403){
+        setLamp('service','warn','登录已过期，请重新登录');
+        setLamp('livekit','');
+        $('historyHealth').textContent='对话记录：登录后检查';
+        $('innerHealth').textContent='通话后心声：登录后检查';
+        return;
+      }
       if(!r.ok) throw 0;
       const h=await r.json();
+      if(h.service && h.service!=='ok') throw 0;
       setLamp('service','ok');
       setLamp('livekit',h.call_config==='verified'?'ok':
         (h.call_config==='invalid'||h.call_config==='missing'?'bad':'warn'));
-      $('historyHealth').textContent=`对话记录：${h.history_health==='ok'?'正常':'未接入'}`;
-      $('innerHealth').textContent=`内心独白：${h.inner_health==='ok'?'正常':'未接入'}`;
+      try{
+        const historyResponse=await fetch(apiUrl('/api/v2/calls'),{credentials:'same-origin',cache:'no-store'});
+        $('historyHealth').textContent=historyResponse.ok?'对话记录：逐字稿可读取（目前未验证跨部署保存）':
+          historyResponse.status===401?'对话记录：登录后检查':'对话记录：暂不可用';
+      }catch(_){ $('historyHealth').textContent='对话记录：暂不可用'; }
+      const reflectionHealth=await fetch(apiUrl('/api/v2/call-reflections'),{credentials:'same-origin'});
+      $('innerHealth').textContent=`通话后心声：${reflectionHealth.ok?'记录接口正常':'记录接口不可用'}`;
     }catch(_){
       setLamp('service','bad');
-      setLamp('livekit','warn');
+      setLamp('livekit','');
       $('historyHealth').textContent='对话记录：无法检查';
-      $('innerHealth').textContent='内心独白：无法检查';
+      $('innerHealth').textContent='通话后心声：无法检查';
     }
   }
 
@@ -1826,6 +1856,10 @@
     callCircle.className='circle call end';
     callLabel.textContent='挂断';
     muteBtn.classList.add('show');      // 确保通话中静音钮在外面
+  }
+  function resetCallLampsAfterFailure(detail){
+    setMic(''); setLamp('room','bad',detail); setLamp('agent',''); setLamp('audio','');
+    setLamp('stt',''); setLamp('llm',''); setLamp('tts','');
   }
 
   function saveFinalTranscript(callId, speakerIdentity, segmentId, role, text){
@@ -1850,7 +1884,9 @@
       if(!response.ok) throw new Error('transcript save '+response.status);
       const result=await response.json();
       if(result.session_id) localStorage.setItem(CHAT_SESSION_KEY,result.session_id);
+      savedTranscriptCalls.add(callId);
     }).catch(()=>{
+      failedTranscriptCalls.add(callId);
       // The call stays usable if the chat store is down. Never claim a failed
       // browser-side receipt was written to the conversation history.
       setStatus('通话中 · 逐字稿未能保存');
@@ -1876,8 +1912,8 @@
         body:JSON.stringify({ identity:'coach', name:'使用者' })
       });
       if(attempt!==callAttemptId) return;
-      if(res.status===403){ stopRing(); setStatus('通话权限未开放'); uiIdle(); return; }
-      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); setLamp('room','bad'); uiIdle(); return; }
+      if(res.status===403){ stopRing(); setStatus('通话权限未开放'); resetCallLampsAfterFailure('通话凭证被拒绝，尚未入房'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); resetCallLampsAfterFailure('无法取得通话凭证，尚未入房'); uiIdle(); return; }
       const d=await res.json();
       if(attempt!==callAttemptId) return;
       currentCallId=d.room||'';
@@ -1896,11 +1932,11 @@
         if(!speakerIdentity || !segmentId || !callId) return;
         const role=speakerIdentity===callRoom.localParticipant.identity?'user':'assistant';
         if(role==='user') setLamp('stt','ok');
-        else setLamp('llm','ok');
+        else setLamp('llm','warn','本次已收到 Agent 文字回复；模型供应商尚未独立验证');
         saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
       });
-      room.on(LK.RoomEvent.TrackSubscribed,(track)=>{
-        if(track.kind===LK.Track.Kind.Audio){
+      room.on(LK.RoomEvent.TrackSubscribed,(track,publication,participant)=>{
+        if(track.kind===LK.Track.Kind.Audio && isAgentParticipant(participant)){
           setLamp('audio','ok');
           stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
@@ -1910,12 +1946,19 @@
           baoCalc=makeVol(track);          // 陈端倪发声 → 光球反应
         }
       });
+      room.on(LK.RoomEvent.TrackUnsubscribed,(track,publication,participant)=>{
+        if(track.kind===LK.Track.Kind.Audio && isAgentParticipant(participant)){
+          baoCalc=null;
+          setLamp('audio','warn');
+        }
+      });
       room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
+        if(!isAgentParticipant(p)) return;
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
         if(s) applyAgentState(s); else setStatus('通话中');
       });
-      room.on(LK.RoomEvent.ParticipantDisconnected,()=>setLamp('agent','warn'));
+      room.on(LK.RoomEvent.ParticipantDisconnected,()=>syncAgentLamp(callRoom));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
@@ -1941,14 +1984,18 @@
       const others=room.numParticipants||0;
       setStatus(others>0?'通话中':'陈端倪接通中…');
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
-      try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
+      try{ room.remoteParticipants.forEach(p=>{ if(!isAgentParticipant(p)) return; setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
       if(attempt!==callAttemptId){ try{ await pendingRoom?.disconnect(); }catch(_){} return; }
-      stopRing(); setStatus('出错了：'+(e&&e.message?e.message:e)); setLamp('room','bad'); uiIdle(); room=null;
+      stopRing();
+      try{ await pendingRoom?.disconnect(); }catch(_){}
+      setStatus('出错了：'+(e&&e.message?e.message:e));
+      resetCallLampsAfterFailure(); uiIdle(); room=null;
     }
   }
 
   function cleanup(msg){
+    const finishedCallId=currentCallId;
     stopRing();
     try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
     try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
@@ -1956,12 +2003,26 @@
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
     room=null; muted=false; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
     setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setStatus(msg||'已挂断');
+    if(finishedCallId){
+      // The server reads only this authenticated owner's saved final events.
+      // No transcript text travels in this request. Never auto-retry a paid call.
+      transcriptSaveQueue.then(async()=>{
+        if(failedTranscriptCalls.has(finishedCallId) || !savedTranscriptCalls.has(finishedCallId)) return;
+        try{
+          await fetch(apiUrl('/api/v2/calls/'+encodeURIComponent(finishedCallId)+'/reflection'),{
+            method:'POST', credentials:'same-origin',
+            headers:{'Content-Type':'application/json'}, body:'{}'
+          });
+          if(!innerPanel.classList.contains('hidden')) loadInner();
+        }catch(_){ /* The menu shows a failed or pending state for manual retry. */ }
+      });
+    }
   }
   async function endCall(){
     callAttemptId++;
     const endingRoom=room;
     if(endingRoom){ try{ await endingRoom.disconnect(); }catch(_){} }
-    await Promise.race([transcriptSaveQueue, new Promise(resolve=>setTimeout(resolve,2500))]);
+    await transcriptSaveQueue;
     cleanup('已挂断');
   }
   function toggleMute(){
@@ -1998,16 +2059,20 @@
       if(!activeOverlayOpen()) toggleMeetingView();
     }
   });
-  gear.addEventListener('click',()=>panel.classList.remove('hidden'));
-  panel.addEventListener('click',e=>{ if(e.target===panel) panel.classList.add('hidden'); });
+  function closeMenu(returnFocus=true){ panel.classList.add('hidden'); menuToggle.setAttribute('aria-expanded','false'); if(returnFocus) menuToggle.focus(); }
+  menuToggle.addEventListener('click',()=>{ panel.classList.remove('hidden'); menuToggle.setAttribute('aria-expanded','true'); panelClose.focus(); });
+  panelClose.addEventListener('click',closeMenu);
+  panel.addEventListener('click',e=>{ if(e.target===panel) closeMenu(); });
 
   // ── 对话记录 ──
   const logPanel=$('logPanel'), logBody=$('logBody'), logTitle=$('logTitle'), logBack=$('logBack');
   function logHeaders(){
     return {};
   }
-  function fmtWhen(ts){            // "2026-06-15 21:00:05" → "6/15（周日）21:00"
+  function fmtWhen(ts){            // API epoch seconds, or legacy local timestamp.
     if(!ts) return '';
+    if(typeof ts==='number') return new Date(ts*1000).toLocaleString('zh-CN',{
+      month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
     const m=ts.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
     if(!m) return ts;
     const wd='日一二三四五六'[new Date(+m[1],+m[2]-1,+m[3]).getDay()];
@@ -2019,119 +2084,48 @@
     logTitle.textContent='对话记录'; logBack.dataset.mode='close';
     logBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
-      const r=await fetch(apiUrl('/api/yuling/calls'),{headers:logHeaders()});
-      if(r.status===403){ logBody.innerHTML='<div class="logempty">目前没有读取权限。</div>'; return; }
+      const r=await fetch(apiUrl('/api/v2/calls'),{credentials:'same-origin'});
+      if(r.status===401){ logBody.innerHTML='<div class="logempty">请重新登录后查看对话记录。</div>'; return; }
+      if(r.status===503){ logBody.innerHTML='<div class="logempty">对话存储暂不可用，记录无法读取。</div>'; return; }
       if(!r.ok) throw new Error('history request failed');
       const payload=await r.json();
-      if(payload.available===false){ logBody.innerHTML='<div class="logempty">对话记录尚未接入保存服务。</div>'; return; }
       const calls=payload.calls||[];
-      if(!calls.length){ logBody.innerHTML='<div class="logempty">还没有对话记录。<br>跟陈端倪通一次话就会出现在这里。</div>'; return; }
+      if(!calls.length){ logBody.innerHTML='<div class="logempty">还没有已保存的通话逐字稿。通话中收到的最终文字才会出现在这里；目前不保存录音。</div>'; return; }
       logBody.innerHTML='';
       calls.forEach(c=>{
         const el=document.createElement('button'); el.className='callitem';
-        const audit=c.audit||{};
-        const aq=audit.status==='bad'?'⚠️ 异常':(audit.status==='warn'?'△ 待检':'✓ 正常');
-        const ltag=c.latency_events?`⏱ ${c.latency_events}点`:'';
-        const etag=c.audio_events?`👂 ${c.audio_events}声`:'';
-        const badges=[c.audio?'🔊 有录音':'', c.kept?'⭐ 已保存':'', aq, ltag, etag].filter(Boolean).join('　');
-        el.innerHTML=`<div class="when">${esc(fmtWhen(c.started))}</div>`+
-          `<div class="meta">${c.turns} 句 · 起 ${esc((c.started||'').slice(11,19))} 讫 ${esc((c.ended||'').slice(11,19))}</div>`+
-          (badges?`<div class="badges">${badges}</div>`:'')+
-          `<div class="prev">${esc(c.preview)}</div>`;
-        el.addEventListener('click',()=>openCall(c.call_id, fmtWhen(c.started)));
+        el.innerHTML=`<div class="when">${esc(fmtWhen(c.started_at))}</div>`+
+          `<div class="meta">${Number(c.turns)||0} 句 · 最后文字 ${esc(fmtWhen(c.last_at))}</div>`+
+          '<div class="badges">已保存逐字稿 · 无录音</div>';
+        el.addEventListener('click',()=>openCall(c.call_id, fmtWhen(c.started_at)));
         logBody.appendChild(el);
       });
     }catch(e){ logBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
-  }
-  const audioObjectUrls = new Set();
-  function revokeAudioUrls(){
-    audioObjectUrls.forEach(u=>URL.revokeObjectURL(u));
-    audioObjectUrls.clear();
-  }
-  async function loadAudioSrc(audioEl, callId){
-    const r=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(callId)+'/audio'),{headers:logHeaders()});
-    if(!r.ok) throw new Error('audio '+r.status);
-    const url=URL.createObjectURL(await r.blob());
-    audioObjectUrls.add(url);
-    audioEl.src=url;
   }
   async function openCall(id, title){
     logBody.classList.add('detail');
     logTitle.textContent=title||'对话'; logBack.dataset.mode='list';
     logBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
-      const r=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(id)),{headers:logHeaders()});
+      const r=await fetch(apiUrl('/api/v2/calls/'+encodeURIComponent(id)),{credentials:'same-origin'});
+      if(!r.ok) throw new Error('call detail '+r.status);
       const d=await r.json(); const turns=d.turns||[];
       logBody.innerHTML='';
       const detail=document.createElement('div'); detail.className='detailgrid';
-      const meta=document.createElement('div'); meta.className='detailmeta';
       const timeline=document.createElement('div'); timeline.className='timelinecard';
       const turnList=document.createElement('div'); turnList.className='turnlist';
-      // 声音条: 播放 + 正式保存
       const bar=document.createElement('div'); bar.className='audiobar primary';
-      if(d.audio){
-        const au=document.createElement('audio'); au.controls=true; au.preload='none';
-        loadAudioSrc(au,id).catch(()=>{ bar.innerHTML='<div class="noaud">录音读取失败</div>'; });
-        bar.appendChild(au);
-        const row=document.createElement('div'); row.className='keeprow';
-        const kb=document.createElement('button');
-        const st=document.createElement('span'); st.className='keepstatus';
-        const paint=k=>{ kb.className='keepbtn'+(k?' on':''); kb.textContent=k?'✓ 已正式保存':'正式保存';
-          st.textContent=k?'永久保留':'未保存 · 3天后自动删除录音'; };
-        paint(d.kept);
-        kb.addEventListener('click',async()=>{
-          const next=!kb.classList.contains('on'); kb.disabled=true;
-          try{
-            const rr=await fetch(apiUrl('/api/yuling/calls/'+encodeURIComponent(id)+'/keep'),{
-              method:'POST',headers:Object.assign({'Content-Type':'application/json'},logHeaders()),
-              body:JSON.stringify({keep:next})});
-            paint((await rr.json()).kept);
-          }catch(e){}
-          kb.disabled=false;
-        });
-        row.appendChild(kb); row.appendChild(st); bar.appendChild(row);
-      } else { bar.innerHTML='<div class="noaud">（这通没有录音）</div>'; }
+      bar.innerHTML='<div class="noaud">只保存通话中收到的最终逐字稿；目前没有录音。</div>';
       detail.appendChild(bar);
-      const audit=d.audit||{};
-      const issues=audit.issues||[];
-      const ab=document.createElement('div'); ab.className='audiobar';
-      const title=audit.status==='bad'?'通话检查：异常':(audit.status==='warn'?'通话检查：待检':'通话检查：正常');
-      ab.innerHTML='<div class="keepstatus">'+esc(title)+'　分数 '+esc(String(audit.score??100))+'</div>'+
-        (issues.length?'<div class="keepstatus">'+issues.map(i=>esc(i.message)).join('<br>')+'</div>':'');
-      meta.appendChild(ab);
-      const latency=d.latency||[];
-      const lb=document.createElement('div'); lb.className='audiobar';
-      if(latency.length){
-        lb.innerHTML='<div class="keepstatus">延迟仪表</div>'+
-          '<div class="keepstatus">'+latency.map(e=>{
-            const dt=Number.isFinite(e.delta_ms)?` +${e.delta_ms}ms`:'';
-            return esc((e.stage||'')+dt);
-          }).join('<br>')+'</div>';
-      }else{
-        lb.innerHTML='<div class="keepstatus">延迟仪表：这通尚无打点</div>';
-      }
-      meta.appendChild(lb);
-      const events=d.audio_events||[];
-      const eb=document.createElement('div'); eb.className='audiobar';
-      if(events.length){
-        const names={cough:'咳嗽',sneeze:'喷嚏',impact:'撞击'};
-        eb.innerHTML='<div class="keepstatus">现场声音</div>'+
-          '<div class="keepstatus">'+events.map(e=>{
-            const pct=Math.round((e.confidence||0)*100);
-            return esc((names[e.label]||e.label||'声音')+' '+pct+'%');
-          }).join('<br>')+'</div>';
-      }else{
-        eb.innerHTML='<div class="keepstatus">现场声音：这通尚无事件</div>';
-      }
-      meta.appendChild(eb);
-      detail.appendChild(meta);
+      if(d.truncated){ const note=document.createElement('div'); note.className='logempty';
+        note.textContent='这通内容较长，仅显示前 500 句。'; detail.appendChild(note); }
       // 逐句气泡
       if(!turns.length){ const e=document.createElement('div'); e.className='logempty'; e.textContent='这通没有逐字内容。'; timeline.appendChild(e); }
       turns.forEach(t=>{
         const bao=t.role==='assistant';
         const el=document.createElement('div');
         el.className='turn '+(bao?'bao':'coach');
-        el.innerHTML=`<span class="tts">${bao?'陈端倪':'使用者'} · ${esc((t.ts||'').slice(11,19))}</span>${esc(t.text)}`;
+        el.innerHTML=`<span class="tts">${bao?'陈端倪':'使用者'} · ${esc(fmtWhen(t.created_at))}</span>${esc(t.text)}`;
         turnList.appendChild(el);
       });
       timeline.appendChild(turnList);
@@ -2139,9 +2133,8 @@
       logBody.appendChild(detail);
     }catch(e){ logBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
-  $('logOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); logPanel.classList.remove('hidden'); loadCallList(); });
+  $('logOpenBtn').addEventListener('click',()=>{ closeMenu(false); logPanel.classList.remove('hidden'); loadCallList(); });
   logBack.addEventListener('click',()=>{
-    revokeAudioUrls();
     if(logBack.dataset.mode==='list') loadCallList();          // 详情 → 回列表
     else logPanel.classList.add('hidden');                      // 列表 → 关闭
   });
@@ -2170,27 +2163,50 @@
   verBack.addEventListener('click',()=>verPanel.classList.add('hidden'));
   verPanel.addEventListener('click',e=>{ if(e.target===verPanel) verPanel.classList.add('hidden'); });
 
-  // ── 内心独白 ──
+  // ── 通话后心声：公开的逐字稿回望，不声称隐藏思想 ──
   const innerPanel=$('innerPanel'), innerBody=$('innerBody'), innerBack=$('innerBack');
+  async function retryReflection(callId){
+    const button=innerBody.querySelector('[data-retry-call="'+callId+'"]');
+    if(button) button.disabled=true;
+    try{
+      await fetch(apiUrl('/api/v2/calls/'+encodeURIComponent(callId)+'/reflection'),{
+        method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({retry:true})
+      });
+    }catch(_){ /* The saved failure stays visible after refreshing the list. */
+    }finally{ await loadInner(); }
+  }
   async function loadInner(){
     innerBody.innerHTML='<div class="logempty">载入中…</div>';
     try{
-      const r=await fetch(apiUrl('/api/yuling/inner'),{headers:logHeaders()});
-      if(r.status===403){ innerBody.innerHTML='<div class="logempty">目前没有读取权限。</div>'; return; }
+      const r=await fetch(apiUrl('/api/v2/call-reflections'),{credentials:'same-origin'});
+      if(r.status===401){ innerBody.innerHTML='<div class="logempty">请先登录。</div>'; return; }
       if(!r.ok) throw new Error('inner request failed');
       const payload=await r.json();
-      if(payload.available===false){ innerBody.innerHTML='<div class="logempty">内心独白尚未接入保存服务。</div>'; return; }
-      const items=payload.inner||[];
-      if(!items.length){ innerBody.innerHTML='<div class="logempty">还没有内心独白。<br>通一次话、挂断后，陈端倪这通的内心话会出现在这里。</div>'; return; }
+      const items=payload.items||[];
+      if(!items.length){ innerBody.innerHTML='<div class="logempty">还没有通话后心声。内容较多且有具体重点的通话，挂断后才会生成。</div>'; return; }
       innerBody.innerHTML='';
       items.forEach(e=>{
         const el=document.createElement('div'); el.className='inneritem';
-        el.innerHTML=`<div class="it">🤍 ${esc(fmtWhen(e.ts))}</div><div class="ix">${esc(e.text)}</div>`;
+        const detail=e.status==='generated'
+          ? esc(e.text||'')
+          : e.status==='skipped' ? '这通内容没有需要记录的心声。'
+          : e.status==='processing' ? '正在根据这通逐字稿整理…'
+          : '这通未生成心声。';
+        el.innerHTML=`<div class="it">🤍 ${esc(fmtWhen(e.created_at))} · 根据本次通话逐字稿生成</div>`+
+          `<div class="ix">${detail}</div>`;
+        if(e.status==='failed'){
+          const retry=document.createElement('button');
+          retry.type='button'; retry.textContent='手动重试';
+          retry.dataset.retryCall=e.call_id;
+          retry.addEventListener('click',()=>retryReflection(e.call_id));
+          el.appendChild(retry);
+        }
         innerBody.appendChild(el);
       });
     }catch(err){ innerBody.innerHTML='<div class="logempty">读取失败，请稍后再试。</div>'; }
   }
-  $('innerOpenBtn').addEventListener('click',()=>{ panel.classList.add('hidden'); innerPanel.classList.remove('hidden'); loadInner(); });
+  $('innerOpenBtn').addEventListener('click',()=>{ closeMenu(false); innerPanel.classList.remove('hidden'); loadInner(); });
   innerBack.addEventListener('click',()=>innerPanel.classList.add('hidden'));
   innerPanel.addEventListener('click',e=>{ if(e.target===innerPanel) innerPanel.classList.add('hidden'); });
 
