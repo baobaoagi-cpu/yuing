@@ -29,7 +29,8 @@ form.addEventListener('submit', async (event) => {
       throw new Error(response.status === 401 ? '帳號或密碼不正確。' : '目前無法登入，請稍後再試。');
     }
     passwordInput.value = '';
-    window.location.replace('/');
+    const next = new URLSearchParams(window.location.search).get('next');
+    window.location.replace(next === '/call' ? '/call' : '/');
   } catch (cause) {
     error.textContent = cause.message || '目前無法登入，請稍後再試。';
     error.hidden = false;

@@ -81,7 +81,8 @@ def _require_login(api=False):
         return None
     if api:
         return jsonify(error="請先登入"), 401
-    return redirect("/login", code=303)
+    login_url = "/login?next=/call" if request.path == "/call" else "/login"
+    return redirect(login_url, code=303)
 
 
 def _same_origin():
@@ -109,7 +110,7 @@ def login_page():
     if not _configured():
         abort(503)
     if _signed_in():
-        return redirect("/", code=303)
+        return redirect("/call" if request.args.get("next") == "/call" else "/", code=303)
     return send_from_directory(ROOT, "login.html")
 
 
