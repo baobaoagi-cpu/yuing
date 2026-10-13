@@ -63,9 +63,9 @@
     flex-wrap:wrap; justify-content:center; gap:7px 12px; max-width:370px; margin:auto; padding:0 8px; }
   .lamp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
-  .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
+  .lamp .dot{ width:9px; height:9px; border-radius:50%; background:var(--faint);
     flex:none; transition:background .3s, box-shadow .3s; }
-  .lamp.ok   .dot{ background:var(--live); box-shadow:0 0 6px rgba(29,158,117,.7); }
+  .lamp.ok   .dot{ background:var(--live); box-shadow:0 0 9px rgba(29,158,117,.9); }
   .lamp.bad  .dot{ background:var(--warn); box-shadow:0 0 6px rgba(216,90,48,.7); }
   .lamp.warn .dot{ background:#e0a52e; box-shadow:0 0 6px rgba(224,165,46,.6); }
   .lamp.ok{ color:rgba(255,255,255,.8); }
@@ -260,7 +260,8 @@
 <div class="lamps" id="lamps" aria-label="系统健康状态">
   <span class="lamp" id="lamp-service"><i class="dot"></i>服务</span>
   <span class="lamp" id="lamp-mic"><i class="dot"></i>收音</span>
-  <span class="lamp" id="lamp-livekit"><i class="dot"></i>连接</span>
+  <span class="lamp" id="lamp-livekit"><i class="dot"></i>接口</span>
+  <span class="lamp" id="lamp-room"><i class="dot"></i>房间</span>
   <span class="lamp" id="lamp-agent"><i class="dot"></i>语灵</span>
   <span class="lamp" id="lamp-audio"><i class="dot"></i>音轨</span>
   <span class="lamp" id="lamp-stt"><i class="dot"></i>STT</span>
@@ -1710,7 +1711,8 @@
     const meanings={
       service:{ok:'Railway API 已回应',bad:'Railway API 无法回应'},
       mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
-      livekit:{ok:'已加入 LiveKit 房间',bad:'无法连接 LiveKit 房间或缺少设置',warn:'正在连接 LiveKit 房间'},
+      livekit:{ok:'LiveKit API 凭证已验证',bad:'LiveKit API 凭证无效或缺少设置',warn:'LiveKit API 暂时无法验证'},
+      room:{ok:'本次已加入 LiveKit 房间',bad:'本次无法加入 LiveKit 房间',warn:'正在加入 LiveKit 房间'},
       agent:{ok:'语灵 Agent 已加入房间',bad:'语灵 Agent 无法加入房间',warn:'等待语灵 Agent 加入'},
       audio:{ok:'已收到远端音轨',bad:'未能收到远端音轨',warn:'等待远端音轨'},
       stt:{ok:'本次已收到你的语音转写',warn:'等待本次语音转写'},
@@ -1731,11 +1733,13 @@
       if(!r.ok) throw 0;
       const h=await r.json();
       setLamp('service','ok');
-      if(!room && !connecting) setLamp('livekit',h.call_config==='verified'?'':'bad');
+      setLamp('livekit',h.call_config==='verified'?'ok':
+        (h.call_config==='invalid'||h.call_config==='missing'?'bad':'warn'));
       $('historyHealth').textContent=`对话记录：${h.history_health==='ok'?'正常':'未接入'}`;
       $('innerHealth').textContent=`内心独白：${h.inner_health==='ok'?'正常':'未接入'}`;
     }catch(_){
       setLamp('service','bad');
+      setLamp('livekit','warn');
       $('historyHealth').textContent='对话记录：无法检查';
       $('innerHealth').textContent='内心独白：无法检查';
     }
@@ -1761,7 +1765,7 @@
   async function startCall(){
     if(connecting||room) return;
     connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
-    setLamp('livekit','warn'); setLamp('agent','warn'); setLamp('audio','');
+    setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
     setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
     muteBtn.classList.add('show');   // 连接中→静音钮慢慢从挂断球长出来
     ringback.currentTime=0; ringback.play().catch(()=>{});   // 开始播等待接听音效
@@ -1771,7 +1775,7 @@
         body:JSON.stringify({ identity:'coach', name:'使用者' })
       });
       if(res.status===403){ stopRing(); setStatus('通话权限未开放'); uiIdle(); return; }
-      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); setLamp('livekit','bad'); uiIdle(); return; }
+      if(!res.ok){ stopRing(); setStatus('通话服务无法签发凭证（'+res.status+'）'); setLamp('room','bad'); uiIdle(); return; }
       const d=await res.json();
       currentCallId=d.room||'';
 
@@ -1804,7 +1808,7 @@
       room.on(LK.RoomEvent.Disconnected,()=>{ cleanup('已挂断'); });
 
       await room.connect(d.url, d.token);
-      setLamp('livekit','ok');
+      setLamp('room','ok');
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
         setMic('ok');
@@ -1822,7 +1826,7 @@
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
-      stopRing(); setStatus('出错了：'+(e&&e.message?e.message:e)); setLamp('livekit','bad'); uiIdle(); room=null;
+      stopRing(); setStatus('出错了：'+(e&&e.message?e.message:e)); setLamp('room','bad'); uiIdle(); room=null;
     }
   }
 
@@ -1832,7 +1836,7 @@
     try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
-    room=null; muted=false; currentCallId=''; setMic(''); setLamp('livekit',''); setLamp('agent',''); setLamp('audio','');
+    room=null; muted=false; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
     setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setStatus(msg||'已挂断');
   }
   async function endCall(){
