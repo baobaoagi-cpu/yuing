@@ -32,6 +32,8 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
 from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
 from deploy_pwa.chat_api import reply_to, ProviderError
+from deploy_pwa.nico_profile_store import NicoProfileStore
+from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
 from deploy_pwa.call_reflection import PROMPT_VERSION, substantial_call, generate_reflection
 from deploy_pwa.public_page_reader import PageReadError, _validated_url, read_public_page
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
@@ -309,6 +311,46 @@ def _chat_store():
         return None
 
 
+def _companion_root():
+    """Optional directory for separately stored profile and skill candidates."""
+    value = os.environ.get("POC_COMPANION_ROOT", "").strip()
+    root = Path(value).expanduser() if value else None
+    if root is None or not root.is_absolute():
+        return None
+    # Railway's container filesystem is disposable. Do not invite a person to
+    # opt into long-term profile capture unless the intended directory is on
+    # the attached volume. Local test installations need only an absolute path.
+    if os.environ.get("RAILWAY_SERVICE_ID"):
+        mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+        if not mount or not root.resolve().is_relative_to(Path(mount).resolve()):
+            return None
+    return root
+
+
+def _profile_store(chat_store):
+    root = _companion_root()
+    if root is None or chat_store is None:
+        return None
+    if os.environ.get("RAILWAY_SERVICE_ID"):
+        mount = Path(os.environ["RAILWAY_VOLUME_MOUNT_PATH"]).resolve()
+        if not chat_store.path.resolve().is_relative_to(mount):
+            return None
+    try:
+        return NicoProfileStore(str(chat_store.path), chat_store.owner_id, str(root))
+    except (ValueError, OSError):
+        return None
+
+
+def _skill_store():
+    root = _companion_root()
+    if root is None:
+        return None
+    try:
+        return SkillGrowthStore(str(root / "skills.sqlite3"))
+    except (ValueError, OSError):
+        return None
+
+
 def _uuid(value):
     try:
         return str(UUID(value)) if isinstance(value, str) else None
@@ -323,6 +365,65 @@ def _v2_guard(write=False):
     if write and not _same_origin():
         return jsonify(error="来源不符"), 403
     return None
+
+
+@app.get("/api/v2/profile")
+def companion_profile():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    profile = _profile_store(_chat_store())
+    if profile is None:
+        return jsonify(error="个人资料存储尚未配置"), 503
+    return jsonify(identity=profile.identity(),
+                   consent_enabled=profile.consent_status(),
+                   consent_decided=profile.consent_decided(),
+                   facts=profile.facts())
+
+
+@app.post("/api/v2/profile/consent")
+def set_companion_profile_consent():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if (request.mimetype != "application/json" or not request.content_length or
+            request.content_length > 256):
+        return jsonify(error="同意设置格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"enabled"} or type(data["enabled"]) is not bool:
+        return jsonify(error="同意设置格式不正确"), 400
+    profile = _profile_store(_chat_store())
+    if profile is None:
+        return jsonify(error="个人资料存储尚未配置"), 503
+    enabled = profile.set_consent(data["enabled"])
+    return jsonify(consent_enabled=enabled, consent_decided=True)
+
+
+@app.delete("/api/v2/profile/facts/<fact_id>")
+def delete_companion_profile_fact(fact_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    fact_id = _uuid(fact_id)
+    if fact_id is None:
+        return jsonify(error="记忆编号不正确"), 400
+    profile = _profile_store(_chat_store())
+    if profile is None:
+        return jsonify(error="个人资料存储尚未配置"), 503
+    if not profile.delete_fact(fact_id):
+        return jsonify(error="记忆不存在"), 404
+    return jsonify(ok=True)
+
+
+@app.get("/api/v2/skill-requests")
+def companion_skill_requests():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    skills = _skill_store()
+    if skills is None:
+        return jsonify(error="技能候选存储尚未配置"), 503
+    return jsonify(candidates=skills.list(session["account"]))
 
 
 @app.get("/api/v2/version")
@@ -799,10 +900,35 @@ def conversation_chat():
                                      page_read_id=page_read_id, document_id=document_id)
     except StoreUnavailable:
         return jsonify(error="网页读取记录不存在或已过期"), 404
+    # Profile candidates come only from the authenticated user's own saved
+    # event, and only after that account has explicitly opted in. They are
+    # candidates, not established personal facts or model instructions.
+    profile = _profile_store(store)
+    if profile is not None and profile.consent_status() and text_value:
+        try:
+            profile.propose_from_user_event(user_event["id"])
+        except Exception:
+            app.logger.exception("profile candidate capture failed")
+    need = explicit_skill_need(text_value)
+    if need:
+        skills = _skill_store()
+        if skills is not None:
+            try:
+                skills.propose(owner_id=store.owner_id,
+                               source_event_id=user_event["id"], user_need=need,
+                               name=need[:120], kind="local_feature",
+                               source_url=None, license_id="unknown",
+                               requested_scopes=[], cost="unknown")
+            except Exception:
+                app.logger.exception("skill candidate capture failed")
     try:
         answer = reply_to(text_value, history, store.memories(), image=image,
                           link_url=link_url, page_context=page_context,
-                          document_context=document)
+                          document_context=document, owner_id=store.owner_id,
+                          display_name=(profile.identity() or {}).get("display_name")
+                          if profile is not None else None,
+                          profile_candidates=profile.facts(limit=4)
+                          if profile is not None and profile.consent_status() else ())
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
     assistant_event = store.add_event(sid, "assistant", answer,

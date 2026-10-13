@@ -1,4 +1,4 @@
-"""Server-only issuer for the optional, room-bound voice memory context.
+"""Server-only issuer for optional, room-bound voice account and memory context.
 
 Never pass browser-supplied owner IDs, memory text, or room names to this module.
 The receiving agent validates the envelope again before using any context.
@@ -19,7 +19,7 @@ def _b64url(data: bytes) -> str:
 
 def issue_voice_context(secret: str, room: str, owner_id: str,
                         memories: list[dict], now: int | None = None) -> str:
-    """Return agent metadata containing only bounded, explicit saved memories."""
+    """Sign the authenticated owner and bounded, explicit saved memories."""
     if not isinstance(secret, str) or len(secret.encode("utf-8")) < 32:
         raise ValueError("voice context signing key is missing or too short")
     if not isinstance(room, str) or not room.startswith("ailivex-yuling-"):

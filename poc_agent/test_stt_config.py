@@ -15,7 +15,8 @@ class SttConfigTest(unittest.TestCase):
         )
         self.assertEqual(stt._opts.model, "deepgram/nova-3")
         self.assertEqual(stt._opts.language, "zh-CN")
-        self.assertEqual(stt._opts.extra_kwargs, {"keyterm": ["陈端倪"]})
+        self.assertEqual(stt._opts.extra_kwargs,
+                         {"keyterm": ["陈端倪", "Nicole"]})
         self.assertTrue(stt.capabilities.keyterms)
 
 

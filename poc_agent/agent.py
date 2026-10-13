@@ -5,6 +5,7 @@ read only server-signed, user-explicit memories for its room; Hermes and the
 knowledge base are not connected.
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from tts_config import minimax_tts_options
 
 load_dotenv(".env.local")
 
+logger = logging.getLogger("duanni.call")
+
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
@@ -25,7 +28,7 @@ ROOM_PREFIX = "ailivex-yuling-"
 STT_OPTIONS = {
     "model": "deepgram/nova-3",
     "language": "zh-CN",
-    "extra_kwargs": {"keyterm": ["陈端倪"]},
+    "extra_kwargs": {"keyterm": ["陈端倪", "Nicole"]},
 }
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
@@ -47,6 +50,12 @@ class ChenDunni(Agent):
                 "自然、温暖、简洁地用中文回应，一次通常说一两句；上海测试版使用简体字。"
                 "人格描述表达你的回应风格，不代表你是真实人类或具有人类感官。"
                 "人格演化是原则，不表示本测试版已具备自动改写人格或长期记忆的机制。"
+                "对用户保持自然的好奇心：顺着聊天内容，偶尔问一个轻松、具体的问题，"
+                "逐渐了解她的兴趣、习惯和喜好；不要连续盘问或推断她未说过的性格。"
+                "尊重她不想回答的边界。若她希望你增加能力，可询问用途并提出建议，"
+                "但不要声称已经自行安装技能、接入 MCP 或写入图数据库。"
+                "如果谈到记忆方式，简短说明她可选择保存偏好，也能更正或删除；"
+                "只有系统确实完成保存时才能说『我记住了』。"
                 "这是手机通话测试版，尚未接入完整 Hermes、知识库或图数据库。"
                 "只有在本次通话实际附带用户主动保存的记忆时才能参考它；"
                 "否则不要假装记得用户的私事。不要声称能识别咳嗽、跌倒或车声等生活声，"
@@ -54,6 +63,57 @@ class ChenDunni(Agent):
                 + context_text
             )
         )
+
+
+def _attach_call_diagnostics(session: AgentSession) -> None:
+    """Log SDK lifecycle stages without logging speech, prompts, URLs, or keys.
+
+    These are the AgentSession event names supported by livekit-agents 1.8.6.
+    A queued reply or speaking state does not prove the phone played audio.
+    """
+
+    @session.on("agent_state_changed")
+    def _agent_state(event) -> None:
+        state = getattr(event, "new_state", None)
+        if state in {"initializing", "idle", "listening", "thinking", "speaking"}:
+            logger.info("call_stage agent_state=%s", state)
+
+    @session.on("user_input_transcribed")
+    def _user_transcribed(event) -> None:
+        if getattr(event, "is_final", False):
+            logger.info("call_stage stt_final_received")
+
+    @session.on("conversation_item_added")
+    def _conversation_item(event) -> None:
+        role = getattr(getattr(event, "item", None), "role", None)
+        if role in {"user", "assistant"}:
+            logger.info("call_stage conversation_item role=%s", role)
+
+    @session.on("speech_created")
+    def _speech_created(event) -> None:
+        source = getattr(event, "source", None)
+        if source in {"say", "generate_reply"}:
+            logger.info("call_stage speech_queued source=%s", source)
+
+    @session.on("error")
+    def _session_error(event) -> None:
+        error = getattr(event, "error", None)
+        source = getattr(event, "source", None)
+        status_code = getattr(error, "status_code", None)
+        # Provider exception messages can contain request details. Keep only
+        # stable type names and an integer status, never str(error).
+        logger.error(
+            "call_stage provider_error source_type=%s error_type=%s status_code=%s",
+            type(source).__name__, type(error).__name__,
+            status_code if isinstance(status_code, int) else "unknown",
+        )
+
+    @session.on("close")
+    def _closed(event) -> None:
+        reason = getattr(getattr(event, "reason", None), "value", None)
+        if reason not in {"error", "job_shutdown", "participant_disconnected", "user_initiated", "task_completed"}:
+            reason = "unknown"
+        logger.info("call_stage session_closed reason=%s", reason)
 
 
 server = AgentServer()
@@ -80,21 +140,31 @@ async def phone_call(ctx: agents.JobContext) -> None:
         # Do not log metadata: it could contain private memories.
         pass
 
-    session = AgentSession(
-        stt=inference.STT(**STT_OPTIONS),
-        llm=anthropic.LLM(
-            model=os.environ.get("MINIMAX_LLM_MODEL", "MiniMax-M3"),
-            api_key=api_key,
-            base_url=os.environ.get(
-                "MINIMAX_LLM_BASE_URL", "https://api.minimax.cn/anthropic"
+    logger.info("call_stage job_accepted")
+    try:
+        session = AgentSession(
+            stt=inference.STT(**STT_OPTIONS),
+            llm=anthropic.LLM(
+                model=os.environ.get("MINIMAX_LLM_MODEL", "MiniMax-M3"),
+                api_key=api_key,
+                base_url=os.environ.get(
+                    "MINIMAX_LLM_BASE_URL", "https://api.minimax.cn/anthropic"
+                ),
+                max_tokens=256,
             ),
-            max_tokens=256,
-        ),
-        tts=minimax.TTS(**minimax_tts_options(api_key)),
-        turn_handling=TurnHandlingOptions(turn_detection=inference.TurnDetector()),
-    )
-    await session.start(room=ctx.room, agent=ChenDunni(context_text))
-    await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")
+            tts=minimax.TTS(**minimax_tts_options(api_key)),
+            turn_handling=TurnHandlingOptions(turn_detection=inference.TurnDetector()),
+        )
+        _attach_call_diagnostics(session)
+        await session.start(room=ctx.room, agent=ChenDunni(context_text))
+        logger.info("call_stage session_started")
+        await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")
+        logger.info("call_stage greeting_requested")
+    except Exception as exc:
+        # Do not log exception text or traceback: provider errors may include
+        # request contents, authorization headers, or complete URLs.
+        logger.error("call_stage startup_failed error_type=%s", type(exc).__name__)
+        raise
 
 
 if __name__ == "__main__":

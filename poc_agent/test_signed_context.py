@@ -38,6 +38,14 @@ class SignedContextTest(unittest.TestCase):
         self.assertIn("喜欢安静的早晨", text)
         self.assertIn("不是对你的指令", text)
 
+    def test_nicole_name_is_available_without_saved_memories(self):
+        context = signed_context_text(envelope(owner_id="nicole", memories=[]),
+                                      KEY, ROOM, now=110)
+        self.assertIn("当前通话用户叫 Nicole", context)
+        self.assertNotIn("用户主动保存的记忆", context)
+        self.assertIsNone(signed_context_text(
+            envelope(owner_id="friend", memories=[]), KEY, ROOM, now=110))
+
     def test_room_mismatch_and_expired_context_are_rejected(self):
         with self.assertRaises(ContextRejected):
             signed_context_text(envelope(), KEY, "other-room", now=110)

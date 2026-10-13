@@ -734,3 +734,140 @@ document.addEventListener("keydown", (event) => {
 refreshInstallButton();
 updateComposer();
 loadHistory();
+
+const memoryButton = $("memory-button");
+const memoryPanel = $("memory-panel");
+const memoryChoice = $("memory-choice");
+const memorySettings = $("memory-settings");
+const memoryStateLabel = $("memory-state");
+const memoryToggle = $("memory-toggle");
+const memoryFacts = $("memory-facts");
+const memoryError = $("memory-error");
+let profile = null;
+let profileBusy = false;
+
+function showMemoryError(message) {
+  memoryError.textContent = message;
+  memoryError.hidden = !message;
+}
+
+function closeMemoryPanel() {
+  memoryPanel.hidden = true;
+  memoryButton.setAttribute("aria-expanded", "false");
+}
+
+function openMemoryPanel() {
+  closeInstallPanel();
+  memoryPanel.hidden = false;
+  memoryButton.setAttribute("aria-expanded", "true");
+}
+
+function renderProfile() {
+  if (!profile) return;
+  const name = typeof profile.identity?.display_name === "string"
+    ? profile.identity.display_name : "你";
+  $("memory-title").textContent = `关于 ${name} 的记忆`;
+  memoryChoice.hidden = !!profile.consent_decided;
+  memorySettings.hidden = !profile.consent_decided;
+  if (!profile.consent_decided) return;
+  memoryStateLabel.textContent = profile.consent_enabled
+    ? "已允许记录你主动分享的个人线索。"
+    : "已暂停记录新的个人线索。";
+  memoryToggle.textContent = profile.consent_enabled ? "暂停记录" : "允许记录";
+  memoryToggle.disabled = profileBusy;
+  memoryFacts.replaceChildren();
+  const facts = Array.isArray(profile.facts) ? profile.facts : [];
+  if (!facts.length) {
+    const empty = document.createElement("li");
+    empty.className = "memory-empty";
+    empty.textContent = "还没有个人线索。";
+    memoryFacts.append(empty);
+  }
+  for (const fact of facts.slice(0, 20)) {
+    if (typeof fact?.id !== "string" || typeof fact.text !== "string") continue;
+    const item = document.createElement("li");
+    const copy = document.createElement("span");
+    copy.textContent = fact.text;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "删除";
+    remove.setAttribute("aria-label", `删除线索：${fact.text}`);
+    remove.disabled = profileBusy;
+    remove.addEventListener("click", () => deleteProfileFact(fact.id));
+    item.append(copy, remove);
+    memoryFacts.append(item);
+  }
+}
+
+async function loadProfile({ firstLoad = false } = {}) {
+  try {
+    const result = await jsonResponse(await fetch("/api/v2/profile", { credentials: "same-origin" }));
+    profile = result;
+    memoryButton.hidden = false;
+    showMemoryError("");
+    renderProfile();
+    if (firstLoad && !profile.consent_decided) openMemoryPanel();
+  } catch (error) {
+    // The profile storage is optional until a persistent volume is configured.
+    if (error.httpStatus === 503) { memoryButton.hidden = true; closeMemoryPanel(); return; }
+    if (error.httpStatus === 401) return;
+    memoryButton.hidden = false;
+    showMemoryError("记忆设置暂时无法读取，请稍后重试。");
+  }
+}
+
+async function setProfileConsent(enabled) {
+  if (profileBusy) return;
+  profileBusy = true;
+  for (const button of [$("memory-allow"), $("memory-decline"), memoryToggle]) button.disabled = true;
+  showMemoryError("");
+  try {
+    await jsonResponse(await fetch("/api/v2/profile/consent", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }));
+    await loadProfile();
+  } catch {
+    showMemoryError("设置没有确认保存，请重试。");
+  } finally {
+    profileBusy = false;
+    for (const button of [$("memory-allow"), $("memory-decline"), memoryToggle]) button.disabled = false;
+    renderProfile();
+  }
+}
+
+async function deleteProfileFact(factId) {
+  if (profileBusy) return;
+  profileBusy = true;
+  renderProfile();
+  showMemoryError("");
+  try {
+    await jsonResponse(await fetch(`/api/v2/profile/facts/${encodeURIComponent(factId)}`, {
+      method: "DELETE", credentials: "same-origin",
+    }));
+    await loadProfile();
+  } catch {
+    showMemoryError("删除结果未确认，请重新查看后再试。");
+  } finally {
+    profileBusy = false;
+    renderProfile();
+  }
+}
+
+memoryButton.addEventListener("click", async () => {
+  if (!memoryPanel.hidden) { closeMemoryPanel(); return; }
+  openMemoryPanel();
+  if (!profile) await loadProfile();
+});
+$("memory-close").addEventListener("click", () => { closeMemoryPanel(); memoryButton.focus(); });
+$("memory-allow").addEventListener("click", () => setProfileConsent(true));
+$("memory-decline").addEventListener("click", () => setProfileConsent(false));
+memoryToggle.addEventListener("click", () => setProfileConsent(!profile.consent_enabled));
+document.addEventListener("pointerdown", (event) => {
+  if (!memoryPanel.hidden && !memoryPanel.contains(event.target) && !memoryButton.contains(event.target)) closeMemoryPanel();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !memoryPanel.hidden) { closeMemoryPanel(); memoryButton.focus(); }
+});
+loadProfile({ firstLoad: true });

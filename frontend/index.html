@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#000000" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <meta name="apple-mobile-web-app-title" content="Dunni" />
 <title>YULING · 语灵通话</title>
@@ -82,7 +83,7 @@
 
   /* Only components observable on the deployed call path are shown. */
   .lamps{ grid-column:2; grid-row:1; min-width:0; display:flex; align-items:center;
-    justify-content:center; gap:2px; overflow:hidden; white-space:nowrap; }
+    justify-content:center; gap:6px; overflow:hidden; white-space:nowrap; }
   .lamp{ display:flex; align-items:center; gap:2px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
   .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
@@ -272,8 +273,8 @@
   }
   @media (max-width:340px){
     .lamp{ font-size:9px; gap:1px; }
-    .lamp .dot{ width:6px; height:6px; }
-    .lamps{ gap:2px; }
+    .lamp .dot{ width:5px; height:5px; }
+    .lamps{ gap:5px; }
   }
 </style>
 </head>
@@ -445,6 +446,11 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  let audioRetryHandler=null;
+  function clearAudioRetry(){
+    if(audioRetryHandler) document.removeEventListener('pointerdown',audioRetryHandler);
+    audioRetryHandler=null;
+  }
   let callAttemptId=0;
   const CHAT_SESSION_KEY='yuling_chat_session_v2';
   let transcriptSaveQueue=Promise.resolve();
@@ -1191,7 +1197,6 @@
   vizResize(); addEventListener('resize', vizResize);
 
   let micCalc=null, baoCalc=null;   // 实时声浪 0..1 (track 就绪才接)
-  let boostedAudioNodes=[];
   let mLvl=0, bLvl=0;               // 平滑后的等级 (禅意: 缓起缓落)
   let lastVizTelemetryAt=0;
   const lerp=(a,b,k)=>a+(b-a)*k;
@@ -1771,23 +1776,6 @@
     }catch(_){}
   }
 
-  function boostRemoteAudio(track, attachedEl){
-    try{
-      const mst=track.mediaStreamTrack||(track.mediaStream&&track.mediaStream.getAudioTracks()[0]);
-      if(!mst) return false;
-      const AC=window.AudioContext||window.webkitAudioContext;
-      const ac=window._yac||(window._yac=new AC());
-      if(ac.state==='suspended') ac.resume();
-      const src=ac.createMediaStreamSource(new MediaStream([mst]));
-      const gain=ac.createGain();
-      gain.gain.value=1.65;
-      src.connect(gain); gain.connect(ac.destination);
-      boostedAudioNodes.push({src,gain});
-      if(attachedEl) attachedEl.muted=true;
-      return true;
-    }catch(_){ return false; }
-  }
-
   function setLamp(id, state, detail){
     const el=$('lamp-'+id); if(!el) return;
     el.classList.remove('ok','bad','warn');
@@ -1863,8 +1851,8 @@
     callLabel.textContent='挂断';
     muteBtn.classList.add('show');      // 确保通话中静音钮在外面
   }
-  function resetCallLampsAfterFailure(detail){
-    setMic(''); setLamp('room','bad',detail); setLamp('agent',''); setLamp('audio','');
+  function resetCallLampsAfterFailure(detail, roomJoined=false){
+    setMic(''); setLamp('room',roomJoined?'':'bad',detail); setLamp('agent',''); setLamp('audio','');
     setLamp('stt',''); setLamp('llm',''); setLamp('tts','');
   }
 
@@ -1907,6 +1895,7 @@
     if(connecting||room) return;
     const attempt=++callAttemptId;
     let pendingRoom=null;
+    let roomJoined=false;
     connecting=true; setStatus('拨号中…'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
     setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
@@ -1942,18 +1931,38 @@
         saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
       });
       room.on(LK.RoomEvent.TrackSubscribed,(track,publication,participant)=>{
-        if(track.kind===LK.Track.Kind.Audio && isAgentParticipant(participant)){
-          setLamp('audio','ok');
+        // A call token joins a private, server-created agent room. Play every
+        // remote audio track: some LiveKit clients report the worker as a
+        // standard participant before its agent attributes arrive.
+        if(track.kind===LK.Track.Kind.Audio){
+          setLamp('audio','warn','已收到远端音轨，等待浏览器播放');
           stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
-          el.play&&el.play().catch(()=>{});
-          boostRemoteAudio(track, el);
+          // Keep the native media element audible. The optional WebAudio
+          // booster can remain suspended in mobile browsers; muting this
+          // element then silences an otherwise healthy remote track.
+          if(el.play) Promise.resolve(el.play()).then(()=>{
+            if(room===callRoom) setLamp('audio','ok');
+          }).catch(()=>{
+            if(room!==callRoom) return;
+            setLamp('audio','bad','已收到音轨，但浏览器阻止播放；请点屏幕重试或用外部浏览器打开');
+            setStatus('已收到声音，但浏览器阻止播放；请点屏幕重试');
+            clearAudioRetry();
+            audioRetryHandler=()=>{
+              audioRetryHandler=null;
+              if(room!==callRoom) return;
+              Promise.resolve(el.play()).then(()=>{
+                if(room===callRoom) setLamp('audio','ok');
+              }).catch(()=>{});
+            };
+            document.addEventListener('pointerdown',audioRetryHandler,{once:true});
+          });
           baoCalc=makeVol(track);          // 陈端倪发声 → 光球反应
         }
       });
       room.on(LK.RoomEvent.TrackUnsubscribed,(track,publication,participant)=>{
-        if(track.kind===LK.Track.Kind.Audio && isAgentParticipant(participant)){
+        if(track.kind===LK.Track.Kind.Audio){
           baoCalc=null;
           setLamp('audio','warn');
         }
@@ -1973,6 +1982,7 @@
 
       await room.connect(d.url, d.token);
       if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
+      roomJoined=true;
       setLamp('room','ok');
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
@@ -1984,7 +1994,8 @@
           bindAudioEventDetector(mp.track);
         }
       }catch(micErr){
-        setMic('bad'); setStatus('麦克风被挡，请允许权限');
+        setMic('bad');
+        throw new Error('麦克风无法启用。请允许麦克风权限，并用手机外部浏览器重新拨打');
       }
       connecting=false; uiInCall();
       const others=room.numParticipants||0;
@@ -1994,17 +2005,20 @@
     }catch(e){
       if(attempt!==callAttemptId){ try{ await pendingRoom?.disconnect(); }catch(_){} return; }
       stopRing();
+      clearAudioRetry();
       try{ await pendingRoom?.disconnect(); }catch(_){}
       setStatus('出错了：'+(e&&e.message?e.message:e));
-      resetCallLampsAfterFailure(); uiIdle(); room=null;
+      resetCallLampsAfterFailure(roomJoined?'本次已离开房间':'无法加入 LiveKit 房间',roomJoined);
+      if(String(e&&e.message||'').startsWith('麦克风无法启用')) setMic('bad');
+      uiIdle(); room=null;
     }
   }
 
   function cleanup(msg){
     const finishedCallId=currentCallId;
     stopRing();
+    clearAudioRetry();
     try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
-    try{ boostedAudioNodes.forEach(n=>{ try{ n.src.disconnect(); n.gain.disconnect(); }catch(_){} }); boostedAudioNodes=[]; }catch(_){}
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
     room=null; muted=false; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');

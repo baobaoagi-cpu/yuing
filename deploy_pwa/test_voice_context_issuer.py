@@ -94,6 +94,15 @@ class VoiceContextIssuerTest(unittest.TestCase):
         self.assertIn("朋友喜欢散步", friend_context)
         self.assertNotIn("妮可喜欢安静", friend_context)
 
+    def test_nicole_name_is_signed_even_before_any_saved_memory(self):
+        self._login()
+        response = self._call(identity="friend", owner_id="friend")
+        self.assertEqual(response.status_code, 200)
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("当前通话用户叫 Nicole", context)
+        self.assertNotIn("用户主动保存的记忆", context)
+
     def test_untrusted_server_mount_and_cross_site_request_fail_closed(self):
         isolated = Flask("isolated-route")
         isolated.register_blueprint(routes.yuling_bp)
