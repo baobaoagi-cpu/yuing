@@ -1722,7 +1722,7 @@
       if(!r.ok) throw 0;
       const h=await r.json();
       setLamp('service','ok');
-      if(!room && !connecting) setLamp('livekit',h.call_config==='missing'?'bad':'');
+      if(!room && !connecting) setLamp('livekit',h.call_config==='verified'?'':'bad');
       $('historyHealth').textContent=`对话记录：${h.history_health==='ok'?'正常':'未接入'}`;
       $('innerHealth').textContent=`内心独白：${h.inner_health==='ok'?'正常':'未接入'}`;
     }catch(_){

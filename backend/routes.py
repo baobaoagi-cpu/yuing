@@ -15,6 +15,7 @@ Voice Companion = AI 夥伴即時語音通話 App (ailivex 地基 + AI 夥伴記
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 import jwt
@@ -106,6 +107,29 @@ def _mint_token(api_key, api_secret, identity, name, room, agent_meta):
         },
     }
     return jwt.encode(claims, api_secret, algorithm="HS256")
+
+
+def _probe_livekit_auth(creds, timeout=4):
+    """Verify this project's key pair with a read-only LiveKit request."""
+    if not all((creds["url"], creds["key"], creds["secret"])):
+        return "missing"
+    now = int(time.time())
+    token = jwt.encode({"iss": creds["key"], "sub": "health-check",
+                        "nbf": now - 30, "exp": now + 60,
+                        "video": {"roomList": True}},
+                       creds["secret"], algorithm="HS256")
+    base = creds["url"].replace("wss://", "https://", 1).replace("ws://", "http://", 1).rstrip("/")
+    req = urllib.request.Request(base + "/twirp/livekit.RoomService/ListRooms",
+                                 data=b"{}", method="POST",
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return "verified" if response.status == 200 else "unreachable"
+    except urllib.error.HTTPError as exc:
+        return "invalid" if exc.code in (401, 403) else "unreachable"
+    except Exception:
+        return "unreachable"
 
 
 @yuling_bp.route("/api/yuling/token", methods=["POST"])
@@ -255,10 +279,9 @@ def api_yuling_health():
         # Hosted Builder runs outside this server. This endpoint can prove only
         # that the preview API responds and that LiveKit credentials are set.
         # Provider and Agent health require actual call events or LiveKit-side checks.
-        configured = all((creds["url"], creds["key"], creds["secret"]))
         from storage import CALL_HISTORY_HEALTH, INNER_MONOLOGUE_HEALTH
         data = {"service": "ok", "mode": "hosted_builder",
-                "call_config": "configured" if configured else "missing",
+                "call_config": _probe_livekit_auth(creds),
                 "agent": AGENT_NAME,
                 "provider_health": "not_observable_from_preview",
                 "history_health": CALL_HISTORY_HEALTH,
