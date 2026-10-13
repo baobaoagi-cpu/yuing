@@ -40,6 +40,7 @@
 
     <div class="composer-wrap">
       <div id="global-status" class="global-status" role="status" aria-live="polite" hidden></div>
+      <div id="emoji-panel" class="emoji-panel" hidden aria-label="选择表情"></div>
       <div id="attachment" class="attachment" hidden>
         <img id="attachment-image" alt="待发送图片预览">
         <span class="attachment-copy"><strong id="attachment-name"></strong><small>发送后会交给端倪查看</small></span>
@@ -55,6 +56,7 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
         <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <button class="emoji-button" id="emoji-button" type="button" title="选择表情" aria-label="选择表情" aria-expanded="false" aria-controls="emoji-panel">☺</button>
         <label class="sr-only" for="message-input">发送消息</label>
         <textarea id="message-input" rows="1" maxlength="4000" placeholder="给端倪发消息…" enterkeyhint="send"></textarea>
         <button class="send-button" id="send-button" type="submit" aria-label="发送消息" disabled>

@@ -15,6 +15,8 @@ const urlPreviewStatus = $("url-preview-status");
 const globalStatus = $("global-status");
 const pageReference = $("page-reference");
 const pageReferenceHost = $("page-reference-host");
+const emojiButton = $("emoji-button");
+const emojiPanel = $("emoji-panel");
 const SESSION_KEY = "yuling_chat_session_v2";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 4_000_000;
@@ -23,6 +25,8 @@ let selectedImage = null;
 let selectedImageUrl = "";
 let sending = false;
 let selectedPageRead = null;
+let emojiPicker = null;
+let emojiPickerLoading = false;
 const messageImageUrls = new Set();
 const savedKnowledgeEventIds = new Set();
 
@@ -306,6 +310,46 @@ function updateComposer() {
   updateUrlPreview();
 }
 
+function closeEmojiPanel() {
+  emojiPanel.hidden = true;
+  emojiButton.setAttribute("aria-expanded", "false");
+}
+
+async function toggleEmojiPanel() {
+  if (!emojiPanel.hidden) { closeEmojiPanel(); return; }
+  emojiPanel.hidden = false;
+  emojiButton.setAttribute("aria-expanded", "true");
+  if (emojiPicker || emojiPickerLoading) return;
+  emojiPickerLoading = true;
+  emojiPanel.textContent = "正在加载表情…";
+  try {
+    const [{ Picker }, { default: zhCN }] = await Promise.all([
+      import("/yuling-assets/emoji-picker/index.js"),
+      import("/yuling-assets/emoji-picker/i18n/zh_CN.js"),
+    ]);
+    const picker = new Picker({
+      locale: "zh",
+      i18n: zhCN,
+      dataSource: "/yuling-assets/emoji-picker/zh-data.json",
+    });
+    picker.addEventListener("emoji-click", (event) => {
+      const emoji = event.detail?.unicode;
+      if (!emoji || input.value.length - (input.selectionEnd - input.selectionStart) + emoji.length > input.maxLength) return;
+      input.setRangeText(emoji, input.selectionStart, input.selectionEnd, "end");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      closeEmojiPanel();
+      input.focus();
+    });
+    emojiPicker = picker;
+    emojiPanel.replaceChildren(picker);
+  } catch {
+    closeEmojiPanel();
+    showStatus("表情暂时无法加载，可以使用手机键盘自带的表情。");
+  } finally {
+    emojiPickerLoading = false;
+  }
+}
+
 function clearImage() {
   if (selectedImageUrl) URL.revokeObjectURL(selectedImageUrl);
   selectedImageUrl = "";
@@ -423,6 +467,7 @@ form.addEventListener("submit", async (event) => {
     addMessage({ role: "assistant", text: result.reply,
       sourceCitation: result.assistant_event?.source_citation || null });
     input.value = "";
+    closeEmojiPanel();
     if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
     clearImage();
     updateComposer();
@@ -462,6 +507,13 @@ form.addEventListener("submit", async (event) => {
 });
 
 input.addEventListener("input", updateComposer);
+emojiButton.addEventListener("click", toggleEmojiPanel);
+document.addEventListener("pointerdown", (event) => {
+  if (!emojiPanel.hidden && !emojiPanel.contains(event.target) && event.target !== emojiButton) closeEmojiPanel();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !emojiPanel.hidden) { closeEmojiPanel(); emojiButton.focus(); }
+});
 input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && !event.repeat) {
     event.preventDefault();

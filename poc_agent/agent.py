@@ -13,6 +13,7 @@ from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
 from livekit.plugins import anthropic, minimax
 from signed_context import ContextRejected, signed_context_text
+from tts_config import minimax_tts_options
 
 
 load_dotenv(".env.local")
@@ -89,12 +90,7 @@ async def phone_call(ctx: agents.JobContext) -> None:
             ),
             max_tokens=256,
         ),
-        tts=minimax.TTS(
-            model=os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo"),
-            voice=os.environ.get("MINIMAX_VOICE_ID", "socialmedia_female_2_v1"),
-            api_key=api_key,
-            base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.cn"),
-        ),
+        tts=minimax.TTS(**minimax_tts_options(api_key)),
         turn_handling=TurnHandlingOptions(turn_detection=inference.TurnDetector()),
     )
     await session.start(room=ctx.room, agent=ChenDunni(context_text))

@@ -36,3 +36,10 @@ button,textarea{font:inherit}button{cursor:pointer}a{color:inherit;text-decorati
 .source-citation small{font-size:10px;color:#aebdb2}
 .source-citation:hover{border-color:#61ae7c}
 @media(max-width:390px){.message-footer{gap:1px 8px}.knowledge-action,.page-read-action,.page-reference-action{font-size:10px}.source-citation{padding:7px 8px}}
+.emoji-panel[hidden]{display:none}
+.emoji-panel{width:min(100%,740px);max-height:min(360px,45dvh);margin:0 auto 8px;padding:8px;border:1px solid var(--line);border-radius:14px;background:#161c18;overflow:hidden}
+.emoji-panel emoji-picker{width:100%;height:min(342px,calc(45dvh - 18px));--background:#161c18;--border-color:#2b3b31;--input-border-color:#405248;--input-font-color:#f4f6f2;--input-placeholder-color:#a4afa5;--button-hover-background:#2b3b31;--button-active-background:#254b37;--outline-color:#45c897;--num-columns:8}
+.emoji-button{width:40px;height:40px;border:0;border-radius:12px;flex:none;background:transparent;color:#bfcec2;font-size:26px;line-height:1}
+.emoji-button:hover,.emoji-button[aria-expanded="true"]{background:#27332a}
+.emoji-button:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+@media(max-width:390px){.emoji-panel emoji-picker{--num-columns:6}}

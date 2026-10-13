@@ -27,14 +27,14 @@
   .name{ font-size:26px; font-weight:500; letter-spacing:.08em; }
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
-  #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; }
   /* 人像贴住视口右下角；视频自带黑底，其他区域保持纯黑。 */
   #dunni-portrait{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
     display:block; width:min(58vw,54vh,460px); height:auto; aspect-ratio:9/16;
     object-fit:contain; background:#000; user-select:none; -webkit-user-drag:none; }
   .stage{ flex:1; }
-  .top, .controls{ position:relative; z-index:2; }
-  .gear, .lamps, .panel{ z-index:3; }
+  .top, .controls{ position:relative; z-index:3; }
+  .gear, .lamps, .panel{ z-index:4; }
 
   .controls{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:18px; min-height:150px; }
   .btn{ border:none; background:none; color:var(--light); cursor:pointer;
@@ -151,7 +151,7 @@
     border-radius:12px; padding:13px 16px; }
   .inneritem .it{ font-size:11px; color:var(--dim); margin-bottom:7px; letter-spacing:.04em; }
   .inneritem .ix{ font-size:14px; color:rgba(255,255,255,.82); line-height:1.7; white-space:pre-wrap; }
-  .callpane{ position:relative; z-index:2; transition:transform .34s ease, opacity .34s ease; will-change:transform,opacity; touch-action:pan-y; }
+  .callpane{ position:relative; z-index:3; transition:transform .34s ease, opacity .34s ease; will-change:transform,opacity; touch-action:pan-y; }
   .meetingview{ position:fixed; inset:0; z-index:2; padding:max(7.4vh,58px) 16px max(4.8vh,22px);
     display:flex; align-items:stretch; justify-content:flex-start; pointer-events:none; opacity:0; touch-action:pan-y;
     transform:translate3d(calc(-100% - 18px),0,0); transition:transform .34s ease, opacity .34s ease; }
@@ -238,12 +238,14 @@
     cursor:pointer; user-select:none; -webkit-user-select:none; }
   .swipehint.hide{ opacity:0; }
   @media (max-width:700px){
-    .controls.callpane{ align-self:flex-start; margin-left:clamp(8px,7vw,36px); }
-    .lamps{ top:14px; display:grid; grid-template-columns:repeat(3,max-content);
-      gap:7px 18px; justify-content:center; max-width:none; }
-    .gear{ top:76px; left:12px; }
-    .chat-return{ top:76px; right:12px; }
-    .top.callpane{ margin-top:86px; }
+    body{ --phone-top:max(14px,env(safe-area-inset-top)); }
+    .controls.callpane{ align-self:center; width:100%; margin-left:0; }
+    .lamps{ top:var(--phone-top); display:grid;
+      grid-template-columns:repeat(5,max-content); gap:7px 9px;
+      justify-content:center; max-width:100%; }
+    .gear{ top:calc(var(--phone-top) + 52px); left:12px; }
+    .chat-return{ top:calc(var(--phone-top) + 52px); right:12px; }
+    .top.callpane{ margin-top:calc(76px + max(0px,env(safe-area-inset-top) - 14px)); }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }
@@ -1136,12 +1138,18 @@
       }
       if(permissions.length){
         const results=await Promise.all(permissions);
-        if(results.some(res=>res!=='granted')) return false;
+        if(results.some(res=>res!=='granted')){
+          $('viz').dataset.motion='denied';
+          return false;
+        }
       }
+      $('viz').dataset.motion='waiting';
       window.addEventListener('deviceorientation',e=>{
         motionFX.tx=clamp((e.gamma||0)/38,-1,1);
         motionFX.ty=clamp((e.beta||0)/48,-1,1);
         motionFX.enabled=true;
+        $('viz').dataset.motion='active';
+        $('viz').dataset.motionTilt=`${Math.round(motionFX.tx*100)},${Math.round(motionFX.ty*100)}`;
         const tilt=Math.hypot(motionFX.tx,motionFX.ty);
         if(tilt>0.62 && performance.now()-motionFX.lastColor>720) pickMotionHue();
       },true);
@@ -1155,7 +1163,7 @@
       },true);
       motionFX.bound=true;
       return true;
-    }catch(_){ return false; }
+    }catch(_){ $('viz').dataset.motion='unavailable'; return false; }
   }
 
   // ═══════════ 螺旋丸 · 声浪光球 (audio-reactive viz) ═══════════
@@ -1171,6 +1179,7 @@
   let micCalc=null, baoCalc=null;   // 实时声浪 0..1 (track 就绪才接)
   let boostedAudioNodes=[];
   let mLvl=0, bLvl=0;               // 平滑后的等级 (禅意: 缓起缓落)
+  let lastVizTelemetryAt=0;
   const lerp=(a,b,k)=>a+(b-a)*k;
 
   // 鸟群 (彗星/V 队形): 领头鸟飞, 后面的鸟沿「领头走过的轨迹」一只接一只跟进。
@@ -1203,6 +1212,11 @@
     }
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
+    if(ts-lastVizTelemetryAt>250){
+      cv.dataset.localAudioLevel=String(Math.round(mLvl*100));
+      cv.dataset.remoteAudioLevel=String(Math.round(bLvl*100));
+      lastVizTelemetryAt=ts;
+    }
     motionFX.x=lerp(motionFX.x,motionFX.tx,0.08);
     motionFX.y=lerp(motionFX.y,motionFX.ty,0.08);
     motionFX.shake*=0.88;
@@ -1281,10 +1295,22 @@
       cx.beginPath(); cx.arc(cxp,cyp,rp.r,0,6.2832); cx.stroke(); }
 
     cx.globalCompositeOperation='source-over';
-    // 视频所在区域是声浪禁入区，含少量留白；不让粒子或涟漪盖上人脸。
+    // 只为人物头部和脸留出柔和禁入区；黑色影片区域仍显示声浪。
     const portrait=$('dunni-portrait').getBoundingClientRect();
-    cx.clearRect((portrait.left-12)*DPR,(portrait.top-12)*DPR,
-      (portrait.width+24)*DPR,(portrait.height+24)*DPR);
+    if(portrait.width && portrait.height){
+      cx.save();
+      cx.translate((portrait.left+portrait.width*0.67)*DPR,
+        (portrait.top+portrait.height*0.74)*DPR);
+      cx.scale(portrait.width*0.32*DPR,portrait.height*0.25*DPR);
+      const faceMask=cx.createRadialGradient(0,0,0,0,0,1);
+      faceMask.addColorStop(0,'rgba(0,0,0,1)');
+      faceMask.addColorStop(0.74,'rgba(0,0,0,1)');
+      faceMask.addColorStop(1,'rgba(0,0,0,0)');
+      cx.globalCompositeOperation='destination-out';
+      cx.fillStyle=faceMask;
+      cx.beginPath(); cx.arc(0,0,1,0,6.2832); cx.fill();
+      cx.restore();
+    }
     requestAnimationFrame(vizFrame);
   }
   requestAnimationFrame(vizFrame);
