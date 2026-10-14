@@ -2057,7 +2057,17 @@
         method:'POST', credentials:'same-origin', keepalive:true,
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
       });
-      let response=await post();
+      let response;
+      // A rolling Railway deploy can briefly return 502/503/504. Re-send the
+      // exact same LiveKit segment ID: the server's unique key makes a retry
+      // safe even when the first response was lost after the write committed.
+      for(let retry=0;retry<3;retry++){
+        try{ response=await post(); }catch(error){
+          if(retry===2) throw error;
+        }
+        if(response && ![502,503,504].includes(response.status)) break;
+        if(retry<2) await new Promise(resolve=>setTimeout(resolve,250*(retry+1)));
+      }
       // A preview redeploy can erase the temporary SQLite file. Start a new
       // session then, while still deduplicating by LiveKit's segment id.
       if(response.status===404 && payload.session_id){

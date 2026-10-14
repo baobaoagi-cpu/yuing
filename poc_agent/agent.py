@@ -6,6 +6,7 @@ knowledge base are not connected.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -105,12 +106,17 @@ class ChenDunni(Agent):
             yield frame
 
 
-def _attach_call_diagnostics(session: AgentSession) -> None:
+def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
     """Log SDK lifecycle stages without logging speech, prompts, URLs, or keys.
 
     These are the AgentSession event names supported by livekit-agents 1.8.6.
     A queued reply or speaking state does not prove the phone played audio.
     """
+    counts = {
+        "stt_final": 0, "assistant_item": 0, "speech_queued": 0,
+        "speech_done": 0, "speech_interrupted": 0, "speech_error": 0,
+        "false_interruption": 0,
+    }
 
     @session.on("agent_state_changed")
     def _agent_state(event) -> None:
@@ -121,25 +127,48 @@ def _attach_call_diagnostics(session: AgentSession) -> None:
     @session.on("user_input_transcribed")
     def _user_transcribed(event) -> None:
         if getattr(event, "is_final", False):
-            logger.info("call_stage stt_final_received")
+            counts["stt_final"] += 1
+            logger.info("call_stage stt_final_received call_ref=%s count=%d",
+                        call_ref, counts["stt_final"])
 
     @session.on("conversation_item_added")
     def _conversation_item(event) -> None:
         role = getattr(getattr(event, "item", None), "role", None)
         if role in {"user", "assistant"}:
-            logger.info("call_stage conversation_item role=%s", role)
+            logger.info("call_stage conversation_item call_ref=%s role=%s", call_ref, role)
+            if role == "assistant":
+                counts["assistant_item"] += 1
 
     @session.on("speech_created")
     def _speech_created(event) -> None:
         source = getattr(event, "source", None)
         if source in {"say", "generate_reply"}:
-            logger.info("call_stage speech_queued source=%s", source)
+            handle = event.speech_handle
+            counts["speech_queued"] += 1
+            logger.info("call_stage speech_queued call_ref=%s source=%s speech_id=%s count=%d",
+                        call_ref, source, handle.id, counts["speech_queued"])
+
+            def _speech_done(done_handle) -> None:
+                # These are public SpeechHandle fields in LiveKit Agents 1.8.6.
+                # Completion proves SDK playout ended, not handset audibility.
+                if done_handle.exception() is not None:
+                    outcome = "error"
+                elif done_handle.interrupted:
+                    outcome = "interrupted"
+                else:
+                    outcome = "done"
+                counts[f"speech_{outcome}"] += 1
+                logger.info("call_stage speech_terminal call_ref=%s speech_id=%s outcome=%s",
+                            call_ref, done_handle.id, outcome)
+
+            handle.add_done_callback(_speech_done)
 
     @session.on("agent_false_interruption")
     def _false_interruption(event) -> None:
         # Observe the event without retaining anything the caller said.
-        logger.info("call_stage false_interruption resumed=%s",
-                    bool(getattr(event, "resumed", False)))
+        counts["false_interruption"] += 1
+        logger.info("call_stage false_interruption call_ref=%s resumed=%s",
+                    call_ref, bool(getattr(event, "resumed", False)))
 
     @session.on("error")
     def _session_error(event) -> None:
@@ -159,7 +188,16 @@ def _attach_call_diagnostics(session: AgentSession) -> None:
         reason = getattr(getattr(event, "reason", None), "value", None)
         if reason not in {"error", "job_shutdown", "participant_disconnected", "user_initiated", "task_completed"}:
             reason = "unknown"
-        logger.info("call_stage session_closed reason=%s", reason)
+        logger.info("call_stage session_closed call_ref=%s reason=%s", call_ref, reason)
+        logger.info(
+            "call_stage turn_summary call_ref=%s stt_final=%d assistant_item=%d speech_queued=%d "
+            "speech_done=%d speech_interrupted=%d speech_error=%d false_interruption=%d",
+            call_ref,
+            *(counts[key] for key in (
+                "stt_final", "assistant_item", "speech_queued", "speech_done",
+                "speech_interrupted", "speech_error", "false_interruption",
+            )),
+        )
 
 
 server = AgentServer()
@@ -233,7 +271,9 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 preemptive_generation={"enabled": True, "preemptive_tts": False},
             ),
         )
-        _attach_call_diagnostics(session)
+        # Stable for one call, opaque in logs, and independent of account names.
+        call_ref = hashlib.sha256(ctx.room.name.encode()).hexdigest()[:12]
+        _attach_call_diagnostics(session, call_ref)
         usage_endpoint = os.environ.get("POC_USAGE_ENDPOINT", "").strip()
         usage_key = os.environ.get("POC_USAGE_HMAC_KEY", "").strip()
         usage_task = None
