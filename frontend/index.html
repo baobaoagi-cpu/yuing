@@ -55,6 +55,9 @@
   .call{ width:84px; height:84px; }
   .call.go{ background:var(--live); border-color:var(--live); }
   .call.end{ background:var(--warn); border-color:var(--warn); }
+  .duplex-switch{ border:1px solid rgba(255,255,255,.19); border-radius:999px;
+    background:rgba(10,18,14,.82); color:#a7d6bd; padding:7px 15px;
+    font:inherit; font-size:12px; cursor:pointer; }
   .btn[disabled]{ opacity:.3; pointer-events:none; }
   .hidden{ display:none !important; }
 
@@ -338,6 +341,7 @@
     </span>
     <span id="callLabel">拨打</span>
   </button>
+  <button class="duplex-switch" id="duplexSwitch" type="button">双工模式</button>
   <button class="verlink" id="verLink" hidden aria-hidden="true" tabindex="-1">版本记录</button>
 </div>
 
@@ -2112,6 +2116,14 @@
     if(e.key==='Escape'){ e.preventDefault(); leaveCancel.click(); }
   });
   muteBtn.addEventListener('click', toggleMute);
+  $('duplexSwitch').addEventListener('click',async()=>{
+    if(connecting || room){ setStatus('先挂断当前通话，再切换双工模式'); return; }
+    try{
+      const response=await fetch('/api/duplex/status',{cache:'no-store'});
+      if(response.ok && (await response.json()).available){ location.assign('/duplex'); return; }
+    }catch(_){ /* Experimental service is optional. */ }
+    setStatus('双向双工通话模式，端倪还在断电中，请稍后');
+  });
   meetingExpandBtn&&meetingExpandBtn.addEventListener('click', toggleMeetingTranscriptExpanded);
   MEETING_ENABLED&&swipeHint&&swipeHint.addEventListener('click',()=>{ if(!activeOverlayOpen()) toggleMeetingView(); });
   MEETING_ENABLED&&swipeHint&&swipeHint.addEventListener('keydown',e=>{
