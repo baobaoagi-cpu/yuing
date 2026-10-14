@@ -1309,6 +1309,8 @@
     const phase=AGENT_STATE[s];
     if(!phase || !room || callPhase==='reconnecting' || audioRetryHandler) return;
     agentState=s; agentStateAt=performance.now();
+    if(phase==='speaking') markCallAnswered();
+    if(callAnswerTimedOut) return;
     setCallPhase(muted && phase==='listening'?'muted':phase);
   }
   function checkStandbyReason(){
@@ -1409,8 +1411,13 @@
     const baoRaw = baoCalc ? Math.min(1, baoCalc()*1.8) : 0;
     if(micRaw>0.08) lastUserVoiceAt=ts;
     if(baoRaw>0.06){
+      const firstRemoteAudio=lastBaoVoiceAt===0;
       lastBaoVoiceAt=ts;
-      if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
+      markCallAnswered();
+      if(firstRemoteAudio){
+        setLamp('audio','ok');
+        if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
+      }
     }
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
@@ -1987,7 +1994,7 @@
   function syncAgentLamp(callRoom){
     const present=Array.from(callRoom.remoteParticipants.values()).some(isAgentParticipant);
     setLamp('agent',present?'ok':'warn');
-    if(room===callRoom && !present && callPhase!=='reconnecting'){
+    if(room===callRoom && !present && callPhase!=='reconnecting' && !callAnswerTimedOut){
       agentState=''; setCallPhase('waiting');
     }
     return present;
@@ -2090,6 +2097,33 @@
   // 等待接听铃声 (拨打 → 陈端倪接听之间的过渡期循环播放)
   const ringback=new Audio('/yuling-media/ringback.wav'); ringback.loop=true; ringback.volume=0.35;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
+  let callAnswerTimer=null, callAnswered=false, callAnswerTimedOut=false;
+  function clearCallAnswerTimer(){
+    if(callAnswerTimer!==null) clearTimeout(callAnswerTimer);
+    callAnswerTimer=null;
+  }
+  function markCallAnswered(){
+    if(!room || callAnswered) return;
+    callAnswered=true;
+    clearCallAnswerTimer();
+    stopRing();
+    if(callAnswerTimedOut){
+      callAnswerTimedOut=false;
+      setCallPhase('speaking');
+    }
+  }
+  function armCallAnswerTimer(callRoom, attempt){
+    clearCallAnswerTimer();
+    if(callAnswered) return;
+    callAnswerTimer=setTimeout(()=>{
+      callAnswerTimer=null;
+      if(room!==callRoom || attempt!==callAttemptId || callAnswered || callPhase==='reconnecting') return;
+      callAnswerTimedOut=true;
+      stopRing();
+      setLamp('tts','warn','20 秒内没有收到端倪语音，请挂断后重拨');
+      setCallPhase('error','端倪语音响应超时，请挂断后重拨');
+    },20000);
+  }
 
   async function startCall(){
     if(connecting||room) return;
@@ -2099,6 +2133,7 @@
     let roomJoined=false;
     connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
     void emotionVideo.start();
+    clearCallAnswerTimer(); callAnswered=false; callAnswerTimedOut=false;
     syncInCallBar();
     setCallPhase('dialing'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
@@ -2160,7 +2195,6 @@
         // standard participant before its agent attributes arrive.
         if(track.kind===LK.Track.Kind.Audio){
           setLamp('audio','warn','已收到远端音轨，等待浏览器播放');
-          stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
           remoteAudioElements.set(track,el);
@@ -2168,9 +2202,11 @@
           // booster can remain suspended in mobile browsers; muting this
           // element then silences an otherwise healthy remote track.
           if(el.play) Promise.resolve(el.play()).then(()=>{
-            if(room===callRoom) setLamp('audio','ok');
+            if(room===callRoom && lastBaoVoiceAt===0)
+              setLamp('audio','warn','音轨已解锁，等待端倪实际发声');
           }).catch(()=>{
             if(room!==callRoom) return;
+            clearCallAnswerTimer();
             setLamp('audio','bad','已收到音轨，但浏览器阻止播放；请点屏幕重试或用外部浏览器打开');
             setCallPhase('error','声音被浏览器阻止，请点屏幕重试');
             clearAudioRetry();
@@ -2178,7 +2214,11 @@
               audioRetryHandler=null;
               if(room!==callRoom) return;
               Promise.resolve(el.play()).then(()=>{
-                if(room===callRoom){ setLamp('audio','ok'); if(agentState) applyAgentState(agentState); else setCallPhase('connected'); }
+                if(room===callRoom){
+                  setLamp('audio','warn','音轨已解锁，等待端倪实际发声');
+                  armCallAnswerTimer(callRoom,attempt);
+                  if(agentState) applyAgentState(agentState); else setCallPhase('waiting');
+                }
               }).catch(()=>{});
             };
             document.addEventListener('pointerdown',audioRetryHandler,{once:true});
@@ -2199,7 +2239,7 @@
         if(!isAgentParticipant(p)) return;
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
-        if(s) applyAgentState(s); else setCallPhase('connected');
+        if(s) applyAgentState(s); else setCallPhase('waiting');
       });
       room.on(LK.RoomEvent.ParticipantDisconnected,()=>syncAgentLamp(callRoom));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
@@ -2209,18 +2249,20 @@
       });
       room.on(LK.RoomEvent.Reconnecting,()=>{
         if(room!==callRoom) return;
+        clearCallAnswerTimer();
         setLamp('room','warn','房间连接中断，正在重连');
         setCallPhase('reconnecting');
       });
       room.on(LK.RoomEvent.Reconnected,()=>{
         if(room!==callRoom) return;
         setLamp('room','ok');
+        armCallAnswerTimer(callRoom,attempt);
         if(!syncAgentLamp(callRoom)){ setCallPhase('waiting'); return; }
         const agent=Array.from(callRoom.remoteParticipants.values()).find(isAgentParticipant);
         const state=agent&&agent.attributes&&agent.attributes['lk.agent.state'];
         if(state && AGENT_STATE[state]){
           callPhase='connected'; applyAgentState(state);
-        }else setCallPhase('connected');
+        }else setCallPhase('waiting');
       });
       room.on(LK.RoomEvent.Disconnected,()=>{
         if(room===callRoom && attempt===callAttemptId) cleanup('已断线');
@@ -2231,6 +2273,7 @@
       roomJoined=true;
       setLamp('room','ok');
       setCallPhase('waiting');
+      armCallAnswerTimer(callRoom,attempt);
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
         if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
@@ -2246,12 +2289,13 @@
       }
       connecting=false; uiInCall();
       const agentPresent=syncAgentLamp(callRoom);
-      setCallPhase(agentPresent?'connected':'waiting');
+      if(!agentState) setCallPhase('waiting');
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ if(!isAgentParticipant(p)) return; setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
       if(attempt!==callAttemptId){ try{ await pendingRoom?.disconnect(); }catch(_){} return; }
       stopRing();
+      clearCallAnswerTimer();
       clearAudioRetry();
       try{ await pendingRoom?.disconnect(); }catch(_){}
       setCallPhase('error',String(e&&e.message||'').startsWith('麦克风无法启用')?
@@ -2267,6 +2311,7 @@
     emotionVideo.stop();
     const finishedCallId=currentCallId;
     stopRing();
+    clearCallAnswerTimer(); callAnswered=false; callAnswerTimedOut=false;
     clearAudioRetry();
     for(const [track,el] of remoteAudioElements){
       try{ track.detach(el); }catch(_){}
