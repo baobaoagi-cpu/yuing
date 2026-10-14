@@ -82,7 +82,7 @@
     border:1px solid rgba(255,255,255,.32); background:#203041; color:#fff;
     font-size:18px; font-weight:600; }
   #dunni-portrait,.user-avatar,.live-turn{ opacity:0; visibility:hidden; transform:translateY(8px);
-    transition:opacity .2s ease, transform .2s ease, visibility 0s linear .2s; }
+    transition:opacity .4s ease, transform .4s ease, visibility 0s linear .4s; }
   #dunni-portrait.speaking-visible,.user-avatar.speaking-visible,.live-turn.speaking-visible{
     opacity:1; visibility:visible; transform:translateY(0); transition-delay:0s; }
   @media (prefers-reduced-motion:reduce){
@@ -129,17 +129,15 @@
     width:44px; height:44px; border:1px solid var(--faint); border-radius:12px;
     background:rgba(255,255,255,.04); color:var(--light); font-size:24px; cursor:pointer; }
   /* Only components observable on the deployed call path are shown. */
-  .lamps{ grid-column:2; grid-row:1; min-width:0; display:grid;
-    grid-template-columns:repeat(5,max-content); grid-auto-rows:minmax(15px,auto);
-    align-content:center; justify-content:center; gap:2px 7px; white-space:nowrap; }
-  .lamp{ display:flex; align-items:center; gap:2px; font-size:10px; color:var(--dim);
-    letter-spacing:0; white-space:nowrap; flex:none; }
+  .lamps{ grid-column:2; grid-row:1; min-width:0; display:flex;
+    align-items:center; justify-content:center; gap:6px; white-space:nowrap; }
+  .lamp{ display:inline-flex; align-items:center; justify-content:center;
+    width:9px; height:16px; flex:none; cursor:help; }
   .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
     flex:none; transition:background .3s, box-shadow .3s; }
   .lamp.ok   .dot{ background:var(--live); box-shadow:0 0 9px rgba(29,158,117,.9); }
   .lamp.bad  .dot{ background:var(--warn); box-shadow:0 0 6px rgba(216,90,48,.7); }
   .lamp.warn .dot{ background:#e0a52e; box-shadow:0 0 6px rgba(224,165,46,.6); }
-  .lamp.ok{ color:rgba(255,255,255,.8); }
   #meetingView,#swipeHint{ display:none !important; }
   #chatOverlay[hidden]{ display:none; }
   #chatSwipeFallback{ display:none; position:fixed; inset:0; z-index:7;
@@ -370,9 +368,7 @@
     .recordbtn{ width:74px; height:74px; font-size:11px; gap:5px; }
   }
   @media (max-width:340px){
-    .lamp{ font-size:9px; gap:1px; }
-    .lamp .dot{ width:5px; height:5px; }
-    .lamps{ gap:5px; }
+    .lamp .dot{ width:6px; height:6px; }
   }
 </style>
 </head>
@@ -401,15 +397,15 @@
 </button>
 
 <div class="lamps" id="lamps" aria-label="系统健康状态">
-  <span class="lamp" id="lamp-service"><i class="dot"></i>S</span>
-  <span class="lamp" id="lamp-mic"><i class="dot"></i>M</span>
-  <span class="lamp" id="lamp-livekit"><i class="dot"></i>L</span>
-  <span class="lamp" id="lamp-room"><i class="dot"></i>R</span>
-  <span class="lamp" id="lamp-agent"><i class="dot"></i>A</span>
-  <span class="lamp" id="lamp-audio"><i class="dot"></i>O</span>
-  <span class="lamp" id="lamp-stt"><i class="dot"></i>STT</span>
-  <span class="lamp" id="lamp-llm"><i class="dot"></i>LLM</span>
-  <span class="lamp" id="lamp-tts"><i class="dot"></i>TTS</span>
+  <span class="lamp" id="lamp-service" data-name="網頁服務" title="網頁服務：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-mic" data-name="麥克風" title="麥克風：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-livekit" data-name="通話憑證" title="通話憑證：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-room" data-name="通話房間" title="通話房間：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-agent" data-name="端倪連線" title="端倪連線：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-audio" data-name="聲音音軌" title="聲音音軌：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-stt" data-name="語音辨識" title="語音辨識：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-llm" data-name="文字回應" title="文字回應：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
+  <span class="lamp" id="lamp-tts" data-name="語音回應" title="語音回應：尚未開始測試"><i class="dot" aria-hidden="true"></i></span>
 </div>
 <button class="nav-control menu-toggle" id="menuToggle" type="button" aria-label="打开菜单" aria-controls="panel" aria-expanded="false">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -2017,20 +2013,23 @@
     el.classList.remove('ok','bad','warn');
     if(state) el.classList.add(state);
     const meanings={
-      service:{ok:'网页 API 已回应',bad:'网页 API 无法回应',warn:'登录状态需要检查'},
+      service:{ok:'網頁服務已回應',bad:'網頁服務無法回應',warn:'登入狀態需要檢查'},
       mic:{ok:'麦克风已启用',bad:'麦克风无法启用',warn:'麦克风已静音'},
-      livekit:{ok:'LiveKit API 凭证已验证',bad:'LiveKit API 凭证无效或缺少设置',warn:'LiveKit API 暂时无法验证'},
-      room:{ok:'本次已加入 LiveKit 房间',bad:'本次无法加入 LiveKit 房间',warn:'正在加入 LiveKit 房间'},
-      agent:{ok:'陈端倪 Agent 已加入房间',bad:'陈端倪 Agent 无法加入房间',warn:'等待陈端倪 Agent 加入'},
-      audio:{ok:'已收到 Agent 音轨',bad:'未能收到 Agent 音轨',warn:'等待 Agent 音轨'},
+      livekit:{ok:'通話憑證已驗證',bad:'通話憑證無效或缺少設定',warn:'通話憑證暫時無法驗證'},
+      room:{ok:'本次已加入通話房間',bad:'本次無法加入通話房間',warn:'正在加入通話房間'},
+      agent:{ok:'陳端倪已加入房間',bad:'陳端倪無法加入房間',warn:'等待陳端倪加入'},
+      audio:{ok:'已收到端倪聲音',bad:'未能收到端倪聲音',warn:'等待端倪聲音'},
       stt:{ok:'本次已收到你的语音转写',warn:'等待本次语音转写'},
-      llm:{warn:'等待本次 Agent 回复；模型供应商尚未独立验证'},
-      tts:{warn:'等待本次 Agent 声音；MiniMax TTS 尚未独立验证'}
+      llm:{warn:'等待本次文字回應；模型供應商尚未獨立驗證'},
+      tts:{warn:'等待本次端倪聲音；語音服務尚未獨立驗證'}
     };
-    const label=el.textContent.trim();
+    const label=el.dataset.name;
     const meaning=detail||(meanings[id]&&meanings[id][state])||'尚未开始测试';
-    el.setAttribute('aria-label',`${label}：${meaning}`);
-    el.title=`${label}：${meaning}`;
+    const readable=meaning.replaceAll('MiniMax TTS','語音服務')
+      .replaceAll('LiveKit API','通話服務').replaceAll('LiveKit','通話服務')
+      .replaceAll('Agent','端倪');
+    el.setAttribute('aria-label',`${label}：${readable}`);
+    el.title=`${label}：${readable}`;
   }
   function setMic(state){ setLamp('mic', state); }
   function isAgentParticipant(p){
