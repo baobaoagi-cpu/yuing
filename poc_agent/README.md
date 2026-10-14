@@ -1,5 +1,20 @@
 # 陳端倪 MiniMax 通話 POC
 
+## 聯網搜尋試用
+
+百煉官方 `WebSearch` MCP 的工具名是 `bailian_web_search`，請求欄位為
+`query` 與 `count`。只有 Agent 的 `DUNNI_WEB_SEARCH_ENABLED=1`、
+`DASHSCOPE_API_KEY`、既有 `POC_USAGE_ENDPOINT` 與兩端共用的
+`POC_USAGE_HMAC_KEY` 都就緒，且通話帶有已驗簽的登入帳號時才開放。
+每通最多 3 次，PWA 掛載資料庫對所有測試帳號合計只准 20 次試用搜尋；
+每次在呼叫百煉前先向 `/api/yuling/search/reserve` 原子預留額度，
+服務或資料庫不可用時不呼叫供應商。失敗的供應商嘗試也計入額度。
+搜尋摘要與網址來自未核實的公開網頁，通話中應告訴使用者來源。
+
+這 20 次是本應用的試用硬停，不能控制同一阿里雲主帳號下其他應用的用量。
+百煉頁面目前標示帳號前 2,000 次免費，超額按量計費；因此上線前仍需
+核對實際帳號、API Key 所屬地域、當期用量及供應商帳單。
+
 這是獨立的 LiveKit Agent，使用原版語靈通話前端與現有 LiveKit 專案：
 
 `手機 → LiveKit → Deepgram Nova-3 (LiveKit Inference) → MiniMax M3 → MiniMax Speech 2.8 Turbo → 手機`
@@ -9,6 +24,14 @@ STT 固定使用 Nova-3 的 `zh-CN` 普通話模式，並提示專名 `陈端倪
 LLM 與 TTS 共用同一把 `MINIMAX_API_KEY`，只放在 Agent 服務端。國際站測試使用 `https://api.minimax.io` 與 `https://api.minimax.io/anthropic`；已購點數的 Subscription Key 由使用者親自存入 Railway。尚未接入完整 Hermes、知識庫或圖資料庫；登入帳號的明示記憶已有簽署上下文接線，狀態見下節。Agent 名稱固定為 `duanni-minimax-poc`，與現有 Builder Agent 隔離。
 
 聲音設計候選提示詞與試聽文案在 `voice_design/chen_dunni_v1.md`。產生的聲音需經實際聆聽，再設定 `MINIMAX_VOICE_ID`；不能以 API 成功取代音色驗收。
+
+## 中國區公開網頁搜尋（待啟用）
+
+通話 Agent 已接入阿里雲百煉 WebSearch MCP 的外部 Streamable HTTP 介面。只有同時在**語音 Agent 服務**設定私密的 `DASHSCOPE_API_KEY` 和 `DUNNI_WEB_SEARCH_ENABLED=1`，新通話才會取得 `web_search` 工具；只設定金鑰不會啟用。原版 PWA 服務上的同名金鑰不會自動傳給語音 Agent。需先在百煉 MCP 廣場開通 WebSearch，並由帳戶持有人核對剩餘額度、付費狀態和可用的費用限制。
+
+程式每通最多送出三次搜尋請求，短查詢最多 120 字；嘗試次數在連線前計入，並發請求也共用同一上限。這只限制**單通電話**，不等於跨通話或跨部署的月費上限；若需要硬性總費用上限，必須另外使用供應商的可驗證額度或持久化的共享計數器。搜尋失敗時不把憑證或查詢寫入日誌。搜尋結果會被限制為 4,000 字元，Agent 應說明來源網站與不確定性；未實際搜尋成功不能聲稱已查到。
+
+本機測試：`python -m unittest poc_agent.test_web_search -v`。這涵蓋預設關閉、單通併發上限、錯誤遮蔽與結果長度；不代表供應商帳戶已啟用或真人通話已驗收。
 
 陳端倪的人格憲法固定在 `persona/chen_dunni_constitution_v1.md`，每次建立通話 Agent 時作為底層 system instructions 載入。改動須新增版本並核對差異；目前的能力限制另外追加，不以人格描述冒充已接入的感知或記憶功能。這份檔案屬於此 MiniMax POC，原 Builder Agent 不會自動使用。
 
