@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/chat.css">
   <title>陳端倪 · Dunni</title>
 </head>
-<body>
+<body data-yuling-view="chat">
   <div class="app-shell">
     <header class="topbar">
       <div class="identity" aria-label="正在与陳端倪对话">
@@ -97,7 +97,7 @@
         <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,.pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.doc,.xls,.ppt,.wps,.et,.dps,.ofd" hidden>
         <button class="emoji-button" id="emoji-button" type="button" title="选择表情" aria-label="选择表情" aria-expanded="false" aria-controls="emoji-panel">☺</button>
         <label class="sr-only" for="message-input">发送消息</label>
-        <textarea id="message-input" rows="1" maxlength="4000" placeholder="给端倪发消息…" enterkeyhint="send"></textarea>
+        <textarea id="message-input" rows="1" maxlength="4000" placeholder="发消息…" enterkeyhint="send"></textarea>
         <button class="send-button" id="send-button" type="submit" aria-label="发送消息" disabled>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3.1-5.9L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m19 5-7.1 8.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
@@ -106,6 +106,7 @@
     </div>
   </div>
   <script type="module" src="/chat.js"></script>
+  <script src="/swipe-navigation.js" defer></script>
   <script src="/tool-menu.js" defer></script>
   <script src="/update.js" defer></script>
 </body>

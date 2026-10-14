@@ -46,6 +46,7 @@ const DOWNLOAD_ONLY_EXTENSIONS = new Set(["doc", "xls", "ppt", "wps", "et", "dps
 const MAX_IMAGE_BYTES = 4_000_000;
 const MAX_DOCUMENT_BYTES = 5_000_000;
 let sessionStorageKey = "";
+let draftStorageKey = "";
 let sessionId = "";
 let selectedFile = null;
 let selectedImageUrl = "";
@@ -489,6 +490,9 @@ async function loadAccount() {
     const result = await jsonResponse(await fetch("/api/v2/account", { credentials: "same-origin" }));
     if (typeof result.account !== "string" || !result.account) throw new Error("无法确认当前帐号");
     sessionStorageKey = SESSION_KEY_PREFIX + result.account;
+    draftStorageKey = "yuling_chat_draft_v1:" + result.account;
+    if (!input.value) input.value = sessionStorage.getItem(draftStorageKey) || "";
+    updateComposer();
     sessionId = localStorage.getItem(sessionStorageKey) || "";
     localStorage.removeItem("yuling_chat_session_v2");
     $("current-account-label").textContent = `Dunni · ${result.account}`;
@@ -630,6 +634,7 @@ form.addEventListener("submit", async (event) => {
     addMessage({ role: "assistant", text: result.reply,
       sourceCitation: result.assistant_event?.source_citation || null });
     input.value = "";
+    sessionStorage.removeItem(draftStorageKey);
     closeEmojiPanel();
     if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
     clearAttachment();
@@ -650,6 +655,7 @@ form.addEventListener("submit", async (event) => {
           error.payload.user_event.page_read || null);
       }
       input.value = "";
+      sessionStorage.removeItem(draftStorageKey);
       if (pageReadId && selectedPageRead?.id === pageReadId) setPageReference(null);
       clearAttachment();
       showStatus(error.message || "消息已保存，端倪暂时无法回复。");
@@ -671,7 +677,10 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-input.addEventListener("input", updateComposer);
+input.addEventListener("input", () => {
+  if (draftStorageKey) sessionStorage.setItem(draftStorageKey, input.value);
+  updateComposer();
+});
 emojiButton.addEventListener("click", toggleEmojiPanel);
 document.addEventListener("pointerdown", (event) => {
   if (!emojiPanel.hidden && !emojiPanel.contains(event.target) && event.target !== emojiButton) closeEmojiPanel();

@@ -20,7 +20,7 @@
     font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
     overscroll-behavior:none; }
   body{ display:flex; flex-direction:column; align-items:center; justify-content:space-between;
-    padding:max(6vh,32px) 24px max(8vh,40px); text-align:center; }
+    padding:max(84px,calc(env(safe-area-inset-top) + 76px)) 24px max(8vh,40px); text-align:center; }
   .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
   .top{ display:flex; flex-direction:column; align-items:center; gap:6px; }
@@ -56,7 +56,7 @@
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:3; }
   .call-toolbar{ position:fixed; top:max(8px,env(safe-area-inset-top)); left:12px; right:12px;
-    z-index:4; height:48px; display:grid; grid-template-columns:44px minmax(0,1fr) 44px;
+    z-index:4; height:68px; display:grid; grid-template-columns:44px minmax(0,1fr) 44px;
     align-items:center; gap:5px; }
   .panel{ z-index:5; }
 
@@ -93,20 +93,10 @@
   .panel-close{ position:absolute; top:max(4vh,18px); right:20px; display:grid; place-items:center;
     width:44px; height:44px; border:1px solid var(--faint); border-radius:12px;
     background:rgba(255,255,255,.04); color:var(--light); font-size:24px; cursor:pointer; }
-  .leave-dialog{ position:fixed; inset:0; z-index:9; display:grid; place-items:center;
-    padding:20px; background:rgba(0,0,0,.78); backdrop-filter:blur(10px); }
-  .leave-dialog-card{ width:min(100%,340px); padding:24px; text-align:left; border-radius:18px;
-    border:1px solid rgba(255,255,255,.14); background:#111714; box-shadow:0 24px 80px rgba(0,0,0,.5); }
-  .leave-dialog-card h2{ margin:0 0 9px; font-size:18px; font-weight:600; }
-  .leave-dialog-card p{ margin:0; color:var(--dim); font-size:13px; line-height:1.65; }
-  .leave-actions{ display:flex; gap:9px; justify-content:flex-end; margin-top:22px; }
-  .leave-actions button{ min-height:40px; border-radius:10px; border:1px solid rgba(255,255,255,.14);
-    padding:0 12px; background:transparent; color:#fff; font-size:13px; cursor:pointer; }
-  .leave-actions .leave-confirm{ border-color:#1d9e75; background:#1d9e75; }
-
   /* Only components observable on the deployed call path are shown. */
-  .lamps{ grid-column:2; grid-row:1; min-width:0; display:flex; align-items:center;
-    justify-content:center; gap:6px; overflow:hidden; white-space:nowrap; }
+  .lamps{ grid-column:2; grid-row:1; min-width:0; display:grid;
+    grid-template-columns:repeat(5,max-content); grid-auto-rows:minmax(15px,auto);
+    align-content:center; justify-content:center; gap:2px 7px; white-space:nowrap; }
   .lamp{ display:flex; align-items:center; gap:2px; font-size:10px; color:var(--dim);
     letter-spacing:0; white-space:nowrap; flex:none; }
   .lamp .dot{ width:7px; height:7px; border-radius:50%; background:var(--faint);
@@ -116,6 +106,21 @@
   .lamp.warn .dot{ background:#e0a52e; box-shadow:0 0 6px rgba(224,165,46,.6); }
   .lamp.ok{ color:rgba(255,255,255,.8); }
   #meetingView,#swipeHint{ display:none !important; }
+  #chatOverlay[hidden]{ display:none; }
+  #chatOverlay{ position:fixed; inset:0; width:100%; height:100%; z-index:8;
+    border:0; background:#080a09; }
+  #inCallBar[hidden]{ display:none; }
+  #inCallBar{ position:fixed; z-index:9; top:calc(max(9px,env(safe-area-inset-top)) + 76px);
+    left:12px; right:12px; min-height:44px; display:flex; align-items:center; justify-content:space-between;
+    gap:8px; padding:5px 8px 5px 12px; border:1px solid rgba(69,200,151,.38);
+    border-radius:12px; background:rgba(15,36,27,.97); color:#e9fff3;
+    box-shadow:0 8px 22px rgba(0,0,0,.35); text-align:left; }
+  #inCallBarStatus{ min-width:0; font-size:12px; font-weight:600; line-height:1.35; }
+  .in-call-actions{ display:flex; gap:6px; flex:none; }
+  .in-call-actions button{ min-height:34px; padding:0 8px; border-radius:8px;
+    border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08);
+    color:#fff; font-size:12px; font-weight:600; }
+  .in-call-actions .hangup{ border-color:rgba(216,90,48,.5); background:rgba(216,90,48,.26); }
   .panel{ position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.94);
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
     padding:32px; }
@@ -306,7 +311,7 @@
   }
 </style>
 </head>
-<body>
+<body data-yuling-view="call">
 <h2 class="sr-only">语灵：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
@@ -340,14 +345,12 @@
 </button>
 </div>
 
-<div class="leave-dialog hidden" id="leaveDialog" role="dialog" aria-modal="true" aria-labelledby="leaveTitle" aria-describedby="leaveText">
-  <div class="leave-dialog-card">
-    <h2 id="leaveTitle">要返回聊天吗？</h2>
-    <p id="leaveText">返回后会结束这次通话，麦克风也会关闭。</p>
-    <div class="leave-actions">
-      <button id="leaveCancel" type="button">继续通话</button>
-      <button class="leave-confirm" id="leaveConfirm" type="button">挂断并返回</button>
-    </div>
+<iframe id="chatOverlay" title="文字聊天" src="about:blank" hidden></iframe>
+<div id="inCallBar" hidden>
+  <span id="inCallBarStatus" role="status" aria-live="polite"></span>
+  <div class="in-call-actions">
+    <button id="inCallReturn" type="button">回通话</button>
+    <button id="inCallHangup" class="hangup" type="button">挂断</button>
   </div>
 </div>
 
@@ -456,6 +459,7 @@
 </div>
 
 <script src="/yuling-assets/livekit-client.umd.js"></script>
+<script src="/swipe-navigation.js"></script>
 <script>
 (function(){
   const LK = window.LivekitClient;
@@ -464,8 +468,8 @@
   const callBtn=$('callBtn'), callCircle=$('callCircle'), callIcon=$('callIcon'), callLabel=$('callLabel');
   const muteBtn=$('muteBtn'), muteCircle=$('muteCircle'), muteLabel=$('muteLabel');
   const menuToggle=$('menuToggle'), panel=$('panel'), panelClose=$('panelClose');
-  const chatReturn=$('chatReturn'), leaveDialog=$('leaveDialog');
-  const leaveCancel=$('leaveCancel'), leaveConfirm=$('leaveConfirm');
+  const chatReturn=$('chatReturn'), chatOverlay=$('chatOverlay');
+  const inCallBar=$('inCallBar'), inCallBarStatus=$('inCallBarStatus');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
   const liveBubbles={assistant:$('agentLiveBubble'),user:$('userLiveBubble')};
   const liveSegments=new Map();
@@ -509,6 +513,7 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  const remoteAudioElements=new Map();
   let audioRetryHandler=null;
   function clearAudioRetry(){
     if(audioRetryHandler) document.removeEventListener('pointerdown',audioRetryHandler);
@@ -1929,11 +1934,13 @@
     callIcon.setAttribute('stroke','#fff');
     callLabel.textContent='拨打';
     muteBtn.classList.remove('show');   // 挂断→静音钮慢慢缩回挂断球
+    syncInCallBar();
   }
   function uiInCall(){
     callCircle.className='circle call end';
     callLabel.textContent='挂断';
     muteBtn.classList.add('show');      // 确保通话中静音钮在外面
+    syncInCallBar();
   }
   function resetCallLampsAfterFailure(detail, roomJoined=false){
     setMic(''); setLamp('room',roomJoined?'':'bad',detail); setLamp('agent',''); setLamp('audio','');
@@ -1983,6 +1990,7 @@
     let pendingRoom=null;
     let roomJoined=false;
     connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
+    syncInCallBar();
     setCallPhase('dialing'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
     setLamp('stt','warn'); setLamp('llm','warn'); setLamp('tts','warn');
@@ -2029,6 +2037,7 @@
         saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
       });
       room.on(LK.RoomEvent.TrackSubscribed,(track,publication,participant)=>{
+        if(room!==callRoom || attempt!==callAttemptId) return;
         // A call token joins a private, server-created agent room. Play every
         // remote audio track: some LiveKit clients report the worker as a
         // standard participant before its agent attributes arrive.
@@ -2037,6 +2046,7 @@
           stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
+          remoteAudioElements.set(track,el);
           // Keep the native media element audible. The optional WebAudio
           // booster can remain suspended in mobile browsers; muting this
           // element then silences an otherwise healthy remote track.
@@ -2061,6 +2071,9 @@
       });
       room.on(LK.RoomEvent.TrackUnsubscribed,(track,publication,participant)=>{
         if(track.kind===LK.Track.Kind.Audio){
+          const el=remoteAudioElements.get(track);
+          if(el){ try{ track.detach(el); }catch(_){} el.remove(); remoteAudioElements.delete(track); }
+          if(room!==callRoom) return;
           baoCalc=null;
           setLamp('audio','warn');
         }
@@ -2133,10 +2146,15 @@
   }
 
   function cleanup(msg){
+    ++callAttemptId;
     const finishedCallId=currentCallId;
     stopRing();
     clearAudioRetry();
-    try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
+    for(const [track,el] of remoteAudioElements){
+      try{ track.detach(el); }catch(_){}
+      el.remove();
+    }
+    remoteAudioElements.clear();
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
     room=null; muted=false; agentState=''; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
@@ -2158,11 +2176,16 @@
     }
   }
   async function endCall(){
-    callAttemptId++;
     const endingRoom=room;
-    if(endingRoom){ try{ await endingRoom.disconnect(); }catch(_){} }
-    await transcriptSaveQueue;
     cleanup('已挂断');
+    if(endingRoom){
+      try{
+        await Promise.race([
+          endingRoom.disconnect(),
+          new Promise(resolve=>setTimeout(resolve,2000))
+        ]);
+      }catch(_){}
+    }
   }
   function toggleMute(){
     if(!room) return;
@@ -2171,25 +2194,38 @@
     muteCircle.style.background=muted?'rgba(216,90,48,.25)':'';
     muteLabel.textContent=muted?'已静音':'静音';
     setMic(muted?'warn':'ok');
+    syncInCallBar();
     if(agentState==='listening') setCallPhase(muted?'muted':'listening');
   }
 
-  callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
-  chatReturn.addEventListener('click',()=>{
-    if(room || connecting){
-      leaveDialog.classList.remove('hidden');
-      leaveCancel.focus();
-    }else location.assign('/chat');
+  function syncInCallBar(){
+    const active=!!(room||connecting);
+    inCallBar.hidden=chatOverlay.hidden||!active;
+    if(active) inCallBarStatus.textContent=connecting?'连接中 · 麦克风尚未开启':
+      muted?'通话中 · 麦克风已静音':'通话中 · 麦克风已开启';
+  }
+  function showChat(){
+    if(chatOverlay.src==='about:blank') chatOverlay.src='/chat';
+    chatOverlay.hidden=false;
+    chatOverlay.setAttribute('aria-hidden','false');
+    syncInCallBar();
+  }
+  function showCall(){
+    chatOverlay.hidden=true;
+    chatOverlay.setAttribute('aria-hidden','true');
+    syncInCallBar();
+    chatReturn.focus();
+  }
+  window.YulingCallNavigation={showChat,showCall};
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin || event.source!==chatOverlay.contentWindow) return;
+    if(event.data && event.data.type==='yuling:view-call') showCall();
   });
-  leaveCancel.addEventListener('click',()=>{ leaveDialog.classList.add('hidden'); chatReturn.focus(); });
-  leaveConfirm.addEventListener('click',async()=>{
-    leaveConfirm.disabled=true;
-    await endCall();
-    location.assign('/chat');
-  });
-  leaveDialog.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){ e.preventDefault(); leaveCancel.click(); }
-  });
+
+  callBtn.addEventListener('click',()=>{ if(!room && !connecting) enableMotionFX(); (room||connecting)?endCall():startCall(); });
+  chatReturn.addEventListener('click',showChat);
+  $('inCallReturn').addEventListener('click',showCall);
+  $('inCallHangup').addEventListener('click',endCall);
   muteBtn.addEventListener('click', toggleMute);
   $('duplexSwitch').addEventListener('click',async()=>{
     if(connecting || room){ setStatus('先挂断当前通话，再切换双工模式'); return; }
