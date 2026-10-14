@@ -55,7 +55,9 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
             turns.append({"role": item["role"], "text": item["text"][:240],
                           "source_kind": item["source_kind"]})
     claims["recent_turns"] = turns[-8:]
-    if owner_id == "MING" and isinstance(account_seed, dict):
+    # The profile store is already scoped to the authenticated owner. Do not
+    # special-case one account here: other owners may add sourced opening facts.
+    if isinstance(account_seed, dict):
         claims["account_seed"] = {
             field: {"value": item["value"], "source_kind": item["source_kind"],
                     "source_date": item["source_date"], "confidence": item["confidence"]}
@@ -64,6 +66,8 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
             and isinstance(item, dict) and item.get("status") == "active"
             and isinstance(item.get("value"), str) and 1 <= len(item["value"]) <= 120
             and item.get("source_kind") in {"account_setup_user_provided", "authenticated_user_correction"}
+            and isinstance(item.get("source_date"), str) and len(item["source_date"]) == 10
+            and item.get("confidence") in {"user_provided_unverified", "user_corrected_unverified"}
         }
     # The receiving agent rejects envelopes longer than 11,000 characters.
     # Eight 500-character CJK memories can exceed that after base64 encoding.

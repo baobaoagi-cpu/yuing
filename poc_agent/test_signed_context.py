@@ -65,6 +65,16 @@ class SignedContextTest(unittest.TestCase):
         self.assertIn("当前登录账号的称呼", context)
         self.assertIn("不要把这些资料说成自己从声音认出来的", context)
 
+    def test_sourced_seed_for_synthetic_owner_and_wrong_room_rejected(self):
+        seed = {"expertise": {"value": "合成领域甲",
+                 "source_kind": "account_setup_user_provided",
+                 "source_date": "2026-10-14",
+                 "confidence": "user_provided_unverified"}}
+        metadata = envelope(owner_id="account-a", memories=[], account_seed=seed)
+        self.assertIn("合成领域甲", signed_context_text(metadata, KEY, ROOM, now=110))
+        with self.assertRaises(ContextRejected):
+            signed_context_text(metadata, KEY, "other-room", now=110)
+
     def test_signed_name_and_recent_turns_are_labeled_unverified(self):
         context = signed_context_text(envelope(owner_id="WAITIN", memories=[],
             display_name="威廷", recent_turns=[{"role":"user", "text":"談到分鏡",
