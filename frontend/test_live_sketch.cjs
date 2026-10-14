@@ -29,6 +29,10 @@ async function main(){
     callId:'call-1',isAgent:p=>p.kind==='agent',now:2000,...options
   });
   assert.equal(decode().kind,'sun');
+  assert.equal(decode().brush,'solid');
+  assert.equal(decode({brush:'glow'}).brush,'glow');
+  assert.equal(decode({brush:'soft'}).brush,'soft');
+  assert.equal(decode({brush:'html'}),null);
   assert.equal(decode({kind:'text',text:'ABC'}).text,'ABC');
   assert.equal(decode({kind:'strokes',strokes:[[[0,0],[1,1]]]}).kind,'strokes');
   assert.equal(decode({call_id:'other'}),null);
@@ -88,6 +92,20 @@ async function main(){
   assert.equal(await inProgress,true);
   assert.ok(path.animation,'path animates as a stroke, not just a faded container');
   moving.stop();
+  const glow=new LiveSketchController({layer,reducedMotion:{matches:true},now:()=>2000,
+    raf:callback=>callbacks.push(callback)});
+  glow.start('call-1');
+  const glowDraw=glow.acceptEvent(decode({brush:'glow'}));
+  assert.match(layer.children[0].children[0].style.filter,/drop-shadow/);
+  callbacks.shift()(); await Promise.resolve(); callbacks.shift()(); await glowDraw;
+  glow.stop();
+  const soft=new LiveSketchController({layer,reducedMotion:{matches:true},now:()=>2000,
+    raf:callback=>callbacks.push(callback)});
+  soft.start('call-1');
+  const softDraw=soft.acceptEvent(decode({brush:'soft'}));
+  assert.equal(layer.children[0].querySelector('path')['stroke-width'], '6');
+  callbacks.shift()(); await Promise.resolve(); callbacks.shift()(); await softDraw;
+  soft.stop();
   console.log('Live sketch event validation, paint ACK, disable and safety: PASS');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

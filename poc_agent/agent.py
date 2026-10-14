@@ -15,12 +15,12 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, function_tool, inference
 from livekit.plugins import anthropic, minimax
-from emotion_policy import minimax_tts_text
+from emotion_policy import SUPPORTED_MODELS, VOICE_INTENTS, minimax_tts_text
 from call_sketch import CallSketch
 from call_usage_meter import UsageLedgerError, send_signed_receipts
 from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
-from visual_emotion import VisualEmotionEmitter
+from visual_emotion import STATES as VISUAL_STATES, VisualEmotionEmitter
 from web_search import CallSearch, SearchBudget, search_is_enabled
 
 
@@ -51,9 +51,13 @@ INNERSTELLAR_STYLE = INNERSTELLAR_STYLE_PATH.read_text(encoding="utf-8").strip()
 
 class ChenDunni(Agent):
     def __init__(self, context_text: str = "", visual_emotion: VisualEmotionEmitter | None = None,
-                 search_tool=None, sketch_tool=None) -> None:
+                 search_tool=None, sketch_tool=None, expression_tool=None,
+                 expression_status_tool=None, capability_tool=None) -> None:
         self.visual_emotion = visual_emotion
-        available_tools = [tool for tool in (search_tool, sketch_tool) if tool is not None]
+        available_tools = [tool for tool in (
+            search_tool, sketch_tool, expression_tool, expression_status_tool,
+            capability_tool,
+        ) if tool is not None]
         super().__init__(
             use_tts_aligned_transcript=False,
             tools=available_tools,
@@ -94,6 +98,12 @@ class ChenDunni(Agent):
                 "你才能说自己画好了。这个工具可以在通话画面画太阳、爱心、短文字或少量线条。"
                 "先自然回应，不要为了展示功能频繁画图；用户关闭画面或工具失败时就尊重结果。"
                 "绘画指令不要读出来，也不要当成聊天记录或长期记忆。"
+                "本通若提供 set_call_expression，可选择当前回应的声音意图和情绪影片。"
+                "它返回 accepted 只表示指令被接受，绝不等于观众已看到；"
+                "只有查询 get_call_expression_status 得到 presented 才能说影片已经播出。"
+                "手机关闭画面、断线或敏感话题时应尊重停用，保持自然口语。"
+                "声音标签只送语音合成副本，你不可念出控制码或声称听众一定听见。"
+                "不确定本通能力是否就绪时，调用 get_call_capabilities 核对。"
                 + context_text
             )
         )
@@ -103,6 +113,7 @@ class ChenDunni(Agent):
         # transcript and conversation history consume the original LLM stream.
         if self.visual_emotion:
             self.visual_emotion.start_reply()
+        voice_intent = self.visual_emotion.take_voice_intent() if self.visual_emotion else None
         model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
         def log_cue(category: str | None) -> None:
             # Never log spoken text, room metadata, user identity or API keys.
@@ -116,6 +127,8 @@ class ChenDunni(Agent):
             self, minimax_tts_text(
                 text, model=model, on_decision=log_cue,
                 on_source_part=self.visual_emotion.on_assistant_part if self.visual_emotion else None,
+                preferred_cue=VOICE_INTENTS.get(voice_intent),
+                suppress_auto=voice_intent is not None,
             ), model_settings
         )
         try:
@@ -307,13 +320,84 @@ async def phone_call(ctx: agents.JobContext) -> None:
             logger.info("call_stage web_search_unavailable")
         @function_tool(
             name="draw_on_call",
-            description="仅在当前通话画面临时手绘。可画 sun、heart、text、strokes；手机实际显示后才算成功。位置是画面相对坐标 0..1，size 为屏幕短边比例 0.05..0.35，color 是 #RRGGBB，duration_ms 默认 8000。",
+            description="仅在当前通话画面临时手绘。可画 sun、heart、text、strokes；strokes 可组合成自由图形，brush 选 solid/glow/soft。手机实际显示后才算成功。位置是画面相对坐标 0..1，size 为屏幕短边比例 0.05..0.35，color 是 #RRGGBB，duration_ms 默认 8000。",
         )
         async def draw_on_call(kind: str, anchor: dict[str, float], size: float,
                                color: str, duration_ms: int = 8000,
-                               text: str = "", strokes: list[list[list[float]]] | None = None) -> str:
+                               text: str = "", strokes: list[list[list[float]]] | None = None,
+                               brush: str = "solid") -> str:
             return await sketch.draw(kind=kind, anchor=anchor, size=size, color=color,
-                                     duration_ms=duration_ms, text=text, strokes=strokes)
+                                     duration_ms=duration_ms, text=text, strokes=strokes,
+                                     brush=brush)
+
+        # One visual intent per reply. The existing MiniMax TTS-only adapter
+        # applies the matching cue to the next reply without altering chat
+        # history. Video delivery is asynchronous so it cannot delay speech.
+        voice_for_state = {
+            "neutral": "natural", "happy": "natural", "curious": "thoughtful",
+            "unhappy": "concerned", "sad": "concerned", "angry": "natural",
+            "delighted": "delighted", "playful_face": "playful",
+        }
+        voice_allowed_for_state = {
+            "neutral": {"natural", "thoughtful", "relieved"},
+            "happy": {"natural", "playful", "delighted", "relieved"},
+            "curious": {"natural", "thoughtful", "surprised"},
+            "unhappy": {"natural", "concerned"},
+            "sad": {"natural", "concerned"},
+            "angry": {"natural", "concerned"},
+            "delighted": {"natural", "delighted"},
+            "playful_face": {"natural", "playful"},
+        }
+
+        @function_tool(
+            name="set_call_expression",
+            description="选择下一句声音表达及通话影片：state 为 neutral/happy/curious/unhappy/sad/angry/delighted/playful_face；voice_intent 选 auto/natural/playful/delighted/surprised/concerned/thoughtful/relieved。返回 accepted 仅代表请求发出，不能说影片已播放。",
+        )
+        async def set_call_expression(state: str, voice_intent: str = "auto") -> str:
+            if state not in VISUAL_STATES or voice_intent not in ({"auto"} | set(VOICE_INTENTS)):
+                return "表达参数无效；请使用已列出的画面状态与声音意图。"
+            if voice_intent == "auto":
+                voice_intent = voice_for_state[state]
+            if voice_intent not in voice_allowed_for_state[state]:
+                return "声音意图与画面情绪不一致，请改用 auto 或选择协调的表达。"
+            if visual_emotion._sensitive_user_turn and state != "neutral":
+                return "当前话题需要保持中性表达，非中性影片和音效已略过。"
+            model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
+            voice_supported = model in SUPPORTED_MODELS
+            if voice_supported:
+                visual_emotion.set_voice_intent(voice_intent)
+            outcome = visual_emotion.request_state(state, explicit=True)
+            if outcome == "accepted":
+                return (f"影片请求 accepted，序号 {visual_emotion.sequence}；手机尚未确认首帧。"
+                        + ("声音意图已交给下一句 TTS；是否听见仍需实际播放验证。" if voice_supported
+                           else "当前 TTS 模型不支持情绪标签，声音将用自然语气。"))
+            return (f"影片结果 {outcome}，不能说已经播放。"
+                    + ("声音意图已交给下一句 TTS，实际听感尚未确认。" if voice_supported
+                       else "当前 TTS 模型不支持情绪标签。"))
+
+        @function_tool(
+            name="get_call_expression_status",
+            description="查询本通影片表达到手机的最新结果。可传 set_call_expression 返回的序号；accepted 只是等待中，只有 presented 才是手机回报已呈现。",
+        )
+        async def get_call_expression_status(sequence: int = 0) -> str:
+            if type(sequence) is not int or sequence < 0:
+                return "无效序号。"
+            if sequence == 0:
+                sequence, result = visual_emotion.latest_result()
+            else:
+                result = visual_emotion.results.get(sequence, "unavailable")
+            return f"本通影片序号 {sequence} 的结果：{result}。只有 presented 可称手机已呈现。"
+
+        @function_tool(
+            name="get_call_capabilities",
+            description="查看本通手机画布、情绪影片与 MiniMax 声音表达是否真实就绪；能力会随用户关闭画面、离线而改变。",
+        )
+        async def get_call_capabilities() -> str:
+            model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
+            voice = "支持受限情绪标签（听感尚未验证）" if model in SUPPORTED_MODELS else "不支持情绪标签"
+            video = "已就绪" if visual_emotion.ready and visual_emotion.browser_ready else "未就绪或用户已关闭"
+            drawing = "已就绪" if not sketch.closed and sketch.ready else "未就绪或用户已关闭"
+            return f"本通能力：声音 {voice}；情绪影片 {video}；空中绘画 {drawing}。"
 
         session = AgentSession(
             stt=inference.STT(**STT_OPTIONS),
@@ -343,6 +427,10 @@ async def phone_call(ctx: agents.JobContext) -> None:
         # Stable for one call, opaque in logs, and independent of account names.
         call_ref = hashlib.sha256(ctx.room.name.encode()).hexdigest()[:12]
         _attach_call_diagnostics(session, call_ref)
+        @session.on("user_input_transcribed")
+        def _expression_sensitivity(event) -> None:
+            if getattr(event, "is_final", False):
+                visual_emotion.observe_user_text(getattr(event, "transcript", ""))
         usage_endpoint = os.environ.get("POC_USAGE_ENDPOINT", "").strip()
         usage_key = os.environ.get("POC_USAGE_HMAC_KEY", "").strip()
         usage_task = None
@@ -381,7 +469,10 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 await _report_usage()
 
         ctx.add_shutdown_callback(_usage_on_shutdown)
-        await session.start(room=ctx.room, agent=ChenDunni(context_text, visual_emotion, search_tool, draw_on_call))
+        await session.start(room=ctx.room, agent=ChenDunni(
+            context_text, visual_emotion, search_tool, draw_on_call,
+            set_call_expression, get_call_expression_status, get_call_capabilities,
+        ))
         visual_emotion.ready = True
         async def _close_visual_emotion(_reason: str) -> None:
             await visual_emotion.close()

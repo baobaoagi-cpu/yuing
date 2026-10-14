@@ -18,6 +18,7 @@ TOPIC = "dunni.sketch.v1"
 ACK_TOPIC = "dunni.sketch.ack.v1"
 CAPABILITY_TOPIC = "dunni.sketch.capability.v1"
 KINDS = frozenset({"sun", "heart", "text", "strokes"})
+BRUSHES = frozenset({"solid", "glow", "soft"})
 _COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 TTL_MS = 5000
 ACK_TIMEOUT_SECONDS = 1.5
@@ -31,9 +32,12 @@ def _fraction(value: Any) -> bool:
 
 
 def validate_drawing(kind: str, anchor: dict, size: float, color: str,
-                     duration_ms: int, text: str = "", strokes: list | None = None) -> dict:
+                     duration_ms: int, text: str = "", strokes: list | None = None,
+                     brush: str = "solid") -> dict:
     if not isinstance(kind, str) or kind not in KINDS or not isinstance(color, str) or not _COLOR.fullmatch(color):
         raise ValueError("unsupported drawing kind or color")
+    if not isinstance(brush, str) or brush not in BRUSHES:
+        raise ValueError("unsupported drawing brush")
     if not isinstance(anchor, dict) or set(anchor) != {"x", "y"} or not all(_fraction(anchor[k]) for k in ("x", "y")):
         raise ValueError("anchor must have screen-relative x and y")
     if not _fraction(size) or not 0.05 <= size <= 0.35:
@@ -58,7 +62,7 @@ def validate_drawing(kind: str, anchor: dict, size: float, color: str,
     elif strokes not in (None, []):
         raise ValueError("strokes are only valid for a freehand drawing")
     drawing = {"kind": kind, "anchor": {"x": anchor["x"], "y": anchor["y"]},
-               "size": size, "color": color, "duration_ms": duration_ms}
+               "size": size, "color": color, "duration_ms": duration_ms, "brush": brush}
     if kind == "text":
         drawing["text"] = text
     if kind == "strokes":
@@ -134,7 +138,8 @@ class CallSketch:
         future.set_result(ack["status"])
 
     async def draw(self, *, kind: str, anchor: dict, size: float, color: str,
-                   duration_ms: int = 8000, text: str = "", strokes: list | None = None) -> str:
+                   duration_ms: int = 8000, text: str = "", strokes: list | None = None,
+                   brush: str = "solid") -> str:
         if self.closed:
             return "绘画不可用：通话已结束。"
         if not self.ready:
@@ -143,12 +148,12 @@ class CallSketch:
         if len(remotes) != 1:
             return "绘画不可用：当前没有唯一的手机参与者。"
         try:
-            drawing = validate_drawing(kind, anchor, size, color, duration_ms, text, strokes)
+            drawing = validate_drawing(kind, anchor, size, color, duration_ms, text, strokes, brush)
         except ValueError as exc:
             return f"绘画参数无效：{exc}。"
         now = time.monotonic()
         self._active_until = [expiry for expiry in self._active_until if expiry > now]
-        if len(self._active_until) >= MAX_ACTIVE:
+        if len(self._active_until) + len(self._pending) >= MAX_ACTIVE:
             return "画面已有三幅图，请稍后再画。"
         self.sequence += 1
         sequence = self.sequence

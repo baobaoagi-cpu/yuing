@@ -4,6 +4,7 @@
 
   const NS = 'http://www.w3.org/2000/svg';
   const KINDS = new Set(['sun', 'heart', 'text', 'strokes']);
+  const BRUSHES = new Set(['solid', 'glow', 'soft']);
   const numberIn = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 
   function decodeAgentSketchEvent({payload, participant, topic, room, callId, isAgent, now = Date.now()}) {
@@ -21,7 +22,8 @@
         now - event.issued_at > event.ttl_ms || !KINDS.has(event.kind) ||
         !event.anchor || !numberIn(event.anchor.x, 0, 1) || !numberIn(event.anchor.y, 0, 1) ||
         !numberIn(event.size, .05, .35) || !/^#[0-9a-fA-F]{6}$/.test(event.color || '') ||
-        !Number.isSafeInteger(event.duration_ms) || !numberIn(event.duration_ms, 500, 12000)) return null;
+        !Number.isSafeInteger(event.duration_ms) || !numberIn(event.duration_ms, 500, 12000) ||
+        (event.brush !== undefined && !BRUSHES.has(event.brush))) return null;
     if (event.kind === 'text' && (typeof event.text !== 'string' ||
         !event.text.trim() || event.text.length > 16 || /[\u0000-\u001f\u007f]/.test(event.text))) return null;
     if (event.kind === 'strokes') {
@@ -34,7 +36,7 @@
             numberIn(p[0], 0, 1) && numberIn(p[1], 0, 1))) return null;
       }
     }
-    return event;
+    return {...event, brush:event.brush || 'solid'};
   }
 
   function element(name, attrs = {}) {
@@ -46,7 +48,9 @@
   function shape(event) {
     const svg = element('svg', {viewBox:'0 0 100 100', 'aria-hidden':'true'});
     svg.style.cssText = 'display:block;width:100%;height:100%;overflow:visible';
-    const base = {fill:'none', stroke:event.color, 'stroke-width':4,
+    if (event.brush === 'glow') svg.style.filter = `drop-shadow(0 0 6px ${event.color})`;
+    if (event.brush === 'soft') svg.style.opacity = '.72';
+    const base = {fill:'none', stroke:event.color, 'stroke-width':event.brush === 'soft' ? 6 : 4,
       'stroke-linecap':'round', 'stroke-linejoin':'round'};
     const paths = [];
     if (event.kind === 'sun') {

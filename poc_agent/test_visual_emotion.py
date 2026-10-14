@@ -18,7 +18,7 @@ class VisualEmotionTests(unittest.IsolatedAsyncioTestCase):
     def test_packet_contains_only_bounded_public_fields(self):
         data = json.loads(make_packet("ailivex-yuling-test", 1, "happy", 1234567))
         self.assertEqual(set(data), {"call_id", "sequence", "state", "issued_at", "ttl_ms"})
-        self.assertEqual(data["ttl_ms"], 5000)
+        self.assertEqual(data["ttl_ms"], 8000)
         self.assertNotIn("prompt", str(data))
         with self.assertRaises(ValueError):
             make_packet("r", 1, "secret", 123)
@@ -34,6 +34,7 @@ class VisualEmotionTests(unittest.IsolatedAsyncioTestCase):
         emitter.on_assistant_part("逗你的啦")
         self.assertEqual(room.local_participant.publish_data.await_count, 0)
         emitter.ready = True
+        emitter.browser_ready = True
         emitter.on_assistant_part("逗你的啦")
         emitter.on_assistant_part("真好呀")  # bounded cooldown
         emitter.on_assistant_part("说到密码，我们先不要谈细节。")  # immediate safety reset
@@ -55,8 +56,10 @@ class VisualEmotionTests(unittest.IsolatedAsyncioTestCase):
         room.local_participant.publish_data = AsyncMock()
         emitter = VisualEmotionEmitter(room, room.name)
         emitter.ready = True
+        emitter.browser_ready = True
         for part in ("太", "棒", "了", "！", "真替你高兴。"):
             emitter.on_assistant_part(part)
+        await asyncio.sleep(0)
         await emitter.close()
         self.assertEqual(room.local_participant.publish_data.await_count, 1)
         packet = json.loads(room.local_participant.publish_data.await_args.args[0])
@@ -71,6 +74,7 @@ class VisualEmotionTests(unittest.IsolatedAsyncioTestCase):
         room.local_participant.publish_data = AsyncMock()
         emitter = VisualEmotionEmitter(room, room.name)
         emitter.ready = True
+        emitter.browser_ready = True
         emitter.on_assistant_part("太棒了！")
         emitter.start_reply()
         self.assertEqual(emitter._recent_text, "")
@@ -79,6 +83,7 @@ class VisualEmotionTests(unittest.IsolatedAsyncioTestCase):
         emitter.last_at = float("-inf")  # simulate the next allowed cue interval
         emitter.start_reply()
         emitter.on_assistant_part("逗你的啦。")
+        await asyncio.sleep(0)
         await emitter.close()
         packets = [json.loads(c.args[0]) for c in room.local_participant.publish_data.await_args_list]
         self.assertEqual([p["state"] for p in packets], ["delighted", "playful_face"])

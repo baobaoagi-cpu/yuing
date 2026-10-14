@@ -36,8 +36,12 @@ class Room:
 class SketchTests(unittest.IsolatedAsyncioTestCase):
     def test_validates_bounded_structure_and_rejects_markup(self):
         data = validate_drawing("strokes", {"x": 0.2, "y": 0.6}, 0.15, "#ffaa33", 8000,
-                                strokes=[[[0, 0], [1, 1]]])
+                                strokes=[[[0, 0], [1, 1]]], brush="glow")
         self.assertEqual(data["strokes"], [[[0, 0], [1, 1]]])
+        self.assertEqual(data["brush"], "glow")
+        with self.assertRaises(ValueError):
+            validate_drawing("sun", {"x": 0.5, "y": 0.5}, 0.1, "#ffffff", 8000,
+                             brush="script:evil")
         for bad in ("<svg>", "ABC<script>", "\nABC"):
             with self.assertRaises(ValueError):
                 validate_drawing("text", {"x": 0.5, "y": 0.5}, 0.1, "#ffffff", 8000, text=bad)
@@ -83,6 +87,17 @@ class SketchTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         room.listeners["participant_disconnected"](SimpleNamespace(identity="phone"))
         self.assertIn("失败", await task)
+        sketch.close()
+
+    async def test_three_inflight_drawings_cap_prevents_fourth(self):
+        room = Room()
+        sketch = CallSketch(room, room.name, ack_timeout=0.01)
+        room.ready()
+        kwargs = dict(kind="sun", anchor={"x": 0.5, "y": 0.5}, size=0.2, color="#ffcc00")
+        jobs = [asyncio.create_task(sketch.draw(**kwargs)) for _ in range(3)]
+        await asyncio.sleep(0)
+        self.assertIn("三幅", await sketch.draw(**kwargs))
+        await asyncio.gather(*jobs)
         sketch.close()
 
 

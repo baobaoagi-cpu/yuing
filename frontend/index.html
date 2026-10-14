@@ -640,6 +640,13 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  function publishEmotionCapability(){
+    if(!room || !currentCallId || room.state!=='connected') return;
+    const enabled=emotionVideo.isAvailable() && chatOverlay.hidden && !document.hidden;
+    const data=new TextEncoder().encode(JSON.stringify({call_id:currentCallId,enabled}));
+    room.localParticipant.publishData(data,{reliable:true,topic:'dunni.emotion.capability.v1'})
+      .catch(()=>{});
+  }
   function publishSketchCapability(enabled){
     if(!room || !currentCallId || room.state!=='connected') return;
     const data=new TextEncoder().encode(JSON.stringify({call_id:currentCallId,enabled:!!enabled}));
@@ -685,7 +692,14 @@
       else document.body.dataset.emotion=state;
       $('dunniLiveSpeaker').textContent=state==='neutral'?'陈端倪':`陈端倪 · ${emotionNames[state]}`;
     },
-    onReceipt(receipt){ emotionReceipts.push(receipt); if(emotionReceipts.length>50) emotionReceipts.shift(); }
+    onReceipt(receipt){ emotionReceipts.push(receipt); if(emotionReceipts.length>50) emotionReceipts.shift(); },
+    onAck(receipt){
+      if(!room || currentCallId!==receipt.call_id || room.state!=='connected') return;
+      const data=new TextEncoder().encode(JSON.stringify(receipt));
+      room.localParticipant.publishData(data,{reliable:true,topic:'dunni.emotion.ack.v1'})
+        .catch(()=>{});
+    },
+    onAvailabilityChange(){ publishEmotionCapability(); }
   });
   document.addEventListener('visibilitychange',()=>emotionVideo.onVisibilityChange(document.hidden));
   emotionVideo.reducedMotion.addEventListener?.('change',()=>
@@ -2241,6 +2255,7 @@
       if(attempt!==callAttemptId) return;
       setCallPhase('joining');
       currentCallId=d.room||'';
+      emotionVideo.setCallId(currentCallId);
 
       room=pendingRoom=new LK.Room({ adaptiveStream:true, dynacast:true });
       const callRoom=room, callId=currentCallId;
@@ -2332,6 +2347,7 @@
         if(!isAgentParticipant(p)) return;
         if(room===callRoom && attempt===callAttemptId)
           publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
+        if(room===callRoom && attempt===callAttemptId) publishEmotionCapability();
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
         if(s) applyAgentState(s); else setCallPhase('waiting');
@@ -2341,11 +2357,14 @@
         if(!isAgentParticipant(participant)) return;
         if(room===callRoom && attempt===callAttemptId)
           publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
+        if(room===callRoom && attempt===callAttemptId) publishEmotionCapability();
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
       });
       room.on(LK.RoomEvent.Reconnecting,()=>{
         if(room!==callRoom) return;
+        emotionVideo.onVisibilityChange(true);
+        publishEmotionCapability();
         sketch.clear();
         publishSketchCapability(false);
         clearCallAnswerTimer();
@@ -2354,6 +2373,8 @@
       });
       room.on(LK.RoomEvent.Reconnected,()=>{
         if(room!==callRoom) return;
+        emotionVideo.onVisibilityChange(document.hidden || !chatOverlay.hidden);
+        publishEmotionCapability();
         publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
         setLamp('room','ok');
         armCallAnswerTimer(callRoom,attempt);
@@ -2373,6 +2394,7 @@
       roomJoined=true;
       sketch.start(callId);
       publishSketchCapability(sketch.enabled && chatOverlay.hidden && !document.hidden);
+      publishEmotionCapability();
       setLamp('room','ok');
       if(agentState) applyAgentState(agentState);
       else setCallPhase('waiting');
@@ -2412,6 +2434,7 @@
   function cleanup(msg){
     ++callAttemptId;
     emotionVideo.stop();
+    publishEmotionCapability();
     publishSketchCapability(false);
     sketch.stop();
     const finishedCallId=currentCallId;
@@ -2490,6 +2513,7 @@
     chatOverlay.hidden=false;
     chatOverlay.setAttribute('aria-hidden','false');
     emotionVideo.onVisibilityChange(true);
+    publishEmotionCapability();
     sketch.clear();
     publishSketchCapability(false);
     syncInCallBar();
@@ -2499,6 +2523,7 @@
     chatOverlay.hidden=true;
     chatOverlay.setAttribute('aria-hidden','true');
     emotionVideo.onVisibilityChange(document.hidden);
+    publishEmotionCapability();
     publishSketchCapability(sketch.active && sketch.enabled && !document.hidden);
     syncInCallBar();
     window.YulingSwipeNavigation?.sync();

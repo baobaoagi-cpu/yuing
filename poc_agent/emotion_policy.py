@@ -12,6 +12,18 @@ from collections.abc import AsyncIterable, AsyncIterator, Callable
 
 
 SUPPORTED_MODELS = frozenset({"speech-2.8-hd", "speech-2.8-turbo"})
+# These are existing, provider-supported interjections, applied only to the
+# TTS copy. An intent does not imply that the listener actually heard it.
+VOICE_INTENTS = {
+    "natural": None,
+    "playful": "chuckle",
+    "delighted": "laughs",
+    "surprised": "gasps",
+    "concerned": "sighs",
+    "thoughtful": "emm",
+    "relieved": "exhale",
+}
+SUPPORTED_CUES = frozenset(cue for cue in VOICE_INTENTS.values() if cue is not None)
 _MAX_LOOKAHEAD = 128
 _MAX_CUES_PER_REPLY = 2
 _SENTENCE_END = frozenset("。！？!?，,；;\n")
@@ -77,12 +89,16 @@ async def minimax_tts_text(
     model: str,
     on_decision: Callable[[str | None], None] | None = None,
     on_source_part: Callable[[str], None] | None = None,
+    preferred_cue: str | None = None,
+    suppress_auto: bool = False,
 ) -> AsyncIterator[str]:
     """Select at most two cues per reply, only for MiniMax Speech 2.8.
 
     ``on_decision`` receives selected cue categories, or one ``None`` when
     the whole reply had no cue. Segment boundaries are not decisions.
     """
+    if preferred_cue not in SUPPORTED_CUES:
+        preferred_cue = None
     if model not in SUPPORTED_MODELS:
         if on_decision:
             on_decision(None)
@@ -95,13 +111,23 @@ async def minimax_tts_text(
     pending = ""
     cues_used = 0
     sensitive_reply = False
+    explicit_decided = False
 
     def adapt(part: str) -> str:
-        nonlocal cues_used, sensitive_reply
+        nonlocal cues_used, sensitive_reply, explicit_decided
         if on_source_part:
             on_source_part(part)
         sensitive_reply = sensitive_reply or bool(_SENSITIVE.search(part))
-        if cues_used < _MAX_CUES_PER_REPLY and not sensitive_reply:
+        if suppress_auto and not explicit_decided:
+            explicit_decided = True
+            if preferred_cue is not None and not sensitive_reply and not _QUOTE_OR_QUESTION.search(part):
+                whitespace = len(part) - len(part.lstrip())
+                altered, category = f"{part[:whitespace]}({preferred_cue}){part[whitespace:]}", preferred_cue
+            else:
+                altered, category = part, None
+        elif suppress_auto:
+            altered, category = part, None
+        elif cues_used < _MAX_CUES_PER_REPLY and not sensitive_reply:
             altered, category = choose_tts_cue(part)
         else:
             altered, category = part, None
