@@ -74,6 +74,7 @@ async def minimax_tts_text(
     *,
     model: str,
     on_decision: Callable[[str | None], None] | None = None,
+    on_source_part: Callable[[str], None] | None = None,
 ) -> AsyncIterator[str]:
     """Select at most two cues per reply, only for MiniMax Speech 2.8.
 
@@ -83,6 +84,8 @@ async def minimax_tts_text(
         if on_decision:
             on_decision(None)
         async for chunk in text:
+            if on_source_part:
+                on_source_part(chunk)
             yield chunk
         return
 
@@ -92,6 +95,8 @@ async def minimax_tts_text(
 
     def adapt(part: str) -> str:
         nonlocal cues_used, decisions
+        if on_source_part:
+            on_source_part(part)
         if cues_used < _MAX_CUES_PER_REPLY:
             altered, category = choose_tts_cue(part)
         else:

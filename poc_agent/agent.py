@@ -18,6 +18,7 @@ from emotion_policy import minimax_tts_text
 from call_usage_meter import UsageLedgerError, send_signed_receipts
 from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
+from visual_emotion import VisualEmotionEmitter
 
 
 load_dotenv(".env.local")
@@ -45,7 +46,8 @@ INNERSTELLAR_STYLE = INNERSTELLAR_STYLE_PATH.read_text(encoding="utf-8").strip()
 
 
 class ChenDunni(Agent):
-    def __init__(self, context_text: str = "") -> None:
+    def __init__(self, context_text: str = "", visual_emotion: VisualEmotionEmitter | None = None) -> None:
+        self.visual_emotion = visual_emotion
         super().__init__(
             use_tts_aligned_transcript=False,
             instructions=(
@@ -83,6 +85,8 @@ class ChenDunni(Agent):
     async def tts_node(self, text, model_settings):
         # Provider interjections belong only in audio input. LiveKit's assistant
         # transcript and conversation history consume the original LLM stream.
+        if self.visual_emotion:
+            self.visual_emotion.start_reply()
         model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
         def log_cue(category: str | None) -> None:
             # Never log spoken text, room metadata, user identity or API keys.
@@ -93,7 +97,10 @@ class ChenDunni(Agent):
             )
 
         async for frame in Agent.default.tts_node(
-            self, minimax_tts_text(text, model=model, on_decision=log_cue), model_settings
+            self, minimax_tts_text(
+                text, model=model, on_decision=log_cue,
+                on_source_part=self.visual_emotion.on_assistant_part if self.visual_emotion else None,
+            ), model_settings
         ):
             yield frame
 
@@ -202,6 +209,7 @@ async def phone_call(ctx: agents.JobContext) -> None:
         )
 
     logger.info("call_stage job_accepted")
+    visual_emotion = VisualEmotionEmitter(ctx.room, ctx.room.name)
     try:
         session = AgentSession(
             stt=inference.STT(**STT_OPTIONS),
@@ -263,7 +271,12 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 await _report_usage()
 
         ctx.add_shutdown_callback(_usage_on_shutdown)
-        await session.start(room=ctx.room, agent=ChenDunni(context_text))
+        await session.start(room=ctx.room, agent=ChenDunni(context_text, visual_emotion))
+        visual_emotion.ready = True
+        async def _close_visual_emotion(_reason: str) -> None:
+            await visual_emotion.close()
+
+        ctx.add_shutdown_callback(_close_visual_emotion)
         logger.info("call_stage session_started")
         await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")
         logger.info("call_stage greeting_requested")

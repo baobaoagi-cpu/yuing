@@ -222,6 +222,7 @@ def tool_asset():
 @app.get("/chat.js")
 @app.get("/swipe-navigation.js")
 @app.get("/update.js")
+@app.get("/emotion-video.js")
 def conversation_asset():
     guard = _require_login()
     if guard:
@@ -250,9 +251,15 @@ def original_yuling_media(filename):
     guard = _require_login()
     if guard:
         return guard
-    if filename not in {"chen-dunni-loop.m4v", "chen-dunni-poster.jpg", "ringback.wav"}:
+    if filename not in {
+        "chen-dunni-loop.m4v", "chen-dunni-poster.jpg", "ringback.wav",
+        "dunni-emotion-happy-v1.mp4", "dunni-emotion-curious-v1.mp4",
+        "dunni-emotion-unhappy-v1.mp4", "dunni-emotion-sad-v1.mp4",
+        "dunni-emotion-angry-v1.mp4", "dunni-emotion-delighted-v1.mp4",
+        "dunni-emotion-playful_face-v1.mp4",
+    }:
         abort(404)
-    mimetype = ("video/mp4" if filename.endswith(".m4v") else
+    mimetype = ("video/mp4" if filename.endswith((".m4v", ".mp4")) else
                 "audio/wav" if filename.endswith(".wav") else "image/jpeg")
     return send_from_directory(PROJECT_ROOT / "frontend" / "media", filename,
                                mimetype=mimetype, conditional=True)
