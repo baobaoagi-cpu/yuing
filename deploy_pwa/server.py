@@ -626,14 +626,21 @@ def memory_storage_readiness():
     guard = _v2_guard()
     if guard:
         return guard
-    store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    chat_raw = os.environ.get("POC_CHAT_DB_PATH", "")
+    root = _companion_root()
+    if not chat_raw or not Path(chat_raw).expanduser().is_absolute() or root is None:
         return jsonify(local_integrity=False, cross_deploy_verified=False,
                        status="unavailable"), 503
-    paths = {"chat.sqlite3": store.path, "memory.sqlite3": profile.memory_path,
-             "knowledge.sqlite3": profile.knowledge_path,
-             "graph.sqlite3": profile.graph_path}
+    paths = {"chat.sqlite3": Path(chat_raw).expanduser(),
+             "memory.sqlite3": root / "memory.sqlite3",
+             "knowledge.sqlite3": root / "knowledge.sqlite3",
+             "graph.sqlite3": root / "graph.sqlite3"}
+    mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
+    mounted = bool(mount) and all(
+        path.resolve().is_relative_to(Path(mount).resolve()) for path in paths.values())
+    if os.environ.get("RAILWAY_SERVICE_ID") and not mounted:
+        return jsonify(local_integrity=False, cross_deploy_verified=False,
+                       status="outside_volume"), 503
     try:
         for name, path in paths.items():
             counts = inspect_memory_db(path, MEMORY_DB_TABLES[name])
@@ -642,9 +649,6 @@ def memory_storage_readiness():
     except (OSError, ValueError, sqlite3.Error):
         return jsonify(local_integrity=False, cross_deploy_verified=False,
                        status="integrity_failed"), 503
-    mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
-    mounted = bool(mount) and all(
-        path.resolve().is_relative_to(Path(mount).resolve()) for path in paths.values())
     return jsonify(local_integrity=True, database_count=4,
                    volume_path_configured=mounted,
                    cross_deploy_verified=False, status="local_integrity_ok")

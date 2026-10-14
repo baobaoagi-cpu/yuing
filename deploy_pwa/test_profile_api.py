@@ -60,6 +60,10 @@ class ProfileApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v2/storage/readiness",
                                          base_url=self.base).status_code, 401)
         self.login()
+        self.assertEqual(self.client.get("/api/v2/storage/readiness",
+                                         base_url=self.base).status_code, 503)
+        self.assertEqual(self.client.get("/api/v2/profile",
+                                         base_url=self.base).status_code, 200)
         ready = self.client.get("/api/v2/storage/readiness", base_url=self.base)
         self.assertEqual(ready.status_code, 200)
         self.assertTrue(ready.json["local_integrity"])
