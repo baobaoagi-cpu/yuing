@@ -33,6 +33,8 @@
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; }
+  #liveSketch{ position:fixed; inset:0; width:100%; height:100%; z-index:3;
+    pointer-events:none; overflow:hidden; }
   .emotion-stage{ position:fixed; right:0; bottom:0; z-index:1; width:min(100vw,56.25vh,500px);
     aspect-ratio:9/16; max-height:100vh; overflow:hidden; pointer-events:none; background:#000;
     transform:translate3d(var(--swipe-scene-x,0px),0,0); }
@@ -157,16 +159,16 @@
   #inCallBar{ transform:translate3d(var(--swipe-bar-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); }
   .call-toolbar{ touch-action:pan-y pinch-zoom; }
-  .call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{
+  .call-toolbar,#viz,#liveSketch,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{
     transform:translate3d(var(--swipe-scene-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
   body.swipe-moving #chatOverlay,body.swipe-moving #inCallBar,
   body.swipe-moving #chatSwipeFallback,
-  body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #emotionStage,body.swipe-moving #dunni-portrait,
+  body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #liveSketch,body.swipe-moving #emotionStage,body.swipe-moving #dunni-portrait,
   body.swipe-moving #liveDialogue,body.swipe-moving #userAvatar,
   body.swipe-moving #callTop,body.swipe-moving #callStage,body.swipe-moving #callControls{ transition:none; }
   @media(prefers-reduced-motion:reduce){
-    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{transition:none;}
+    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#liveSketch,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{transition:none;}
     .emotion-blackout{transition:none;}
   }
   #inCallBar[hidden]{ display:none; }
@@ -383,6 +385,7 @@
   <video id="emotionClip" muted playsinline webkit-playsinline preload="none" hidden></video>
   <div id="emotionBlackout" class="emotion-blackout"></div>
 </div>
+<div id="liveSketch" aria-hidden="true"></div>
 <img id="dunni-portrait" src="/assets/dunni-icon-v1-192.png" alt="陳端倪" aria-hidden="true" />
 <div class="live-dialogue" id="liveDialogue" aria-label="即時對話文字">
   <div class="live-turn agent" aria-hidden="true"><span class="live-speaker" id="dunniLiveSpeaker">陳端倪</span>
@@ -507,6 +510,7 @@
   <button class="panel-close" id="panelClose" type="button" aria-label="关闭菜单">×</button>
   <div class="emotion-menu">
     <button class="linkbtn" id="emotionToggle" type="button" aria-pressed="true">情绪画面：开启</button>
+    <button class="linkbtn" id="sketchToggle" type="button" aria-pressed="true">空中手绘：开启</button>
     <select id="emotionManual" aria-label="手动选择通话画面">
       <option value="">手动选片（仅当前通话）</option>
       <option value="neutral">回到默认画面</option>
@@ -541,6 +545,7 @@
 <script src="/yuling-assets/livekit-client.umd.js"></script>
 <script src="/swipe-navigation.js"></script>
 <script src="/emotion-video.js"></script>
+<script src="/live-sketch.js"></script>
 <script>
 (function(){
   const LK = window.LivekitClient;
@@ -575,6 +580,7 @@
       el.classList.toggle('speaking-visible',visible);
       el.setAttribute('aria-hidden',String(!visible));
     }
+    sketch.redraw(); // Newly visible speaker bubbles must not cover an existing sketch.
     if(!visible){
       liveSegmentAtHide[role]=liveDisplayedSegment[role];
       liveTexts[role].textContent='';
@@ -634,6 +640,38 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  function publishSketchCapability(enabled){
+    if(!room || !currentCallId || room.state!=='connected') return;
+    const data=new TextEncoder().encode(JSON.stringify({call_id:currentCallId,enabled:!!enabled}));
+    room.localParticipant.publishData(data,{reliable:true,topic:'dunni.sketch.capability.v1'})
+      .catch(()=>{});
+  }
+  const sketch=new window.YulingLiveSketch.LiveSketchController({
+    layer:$('liveSketch'),reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)'),
+    canDisplay:()=>$('chatOverlay').hidden && !document.hidden,
+    getAvoidRects(){
+      const ids=['chatReturn','menuToggle','lamps','dunni-portrait','userAvatar',
+        'callControls','inCallBar'];
+      const rects=ids.map(id=>$(id)).filter(el=>el && getComputedStyle(el).visibility!=='hidden' &&
+        getComputedStyle(el).display!=='none' && !el.hidden).map(el=>el.getBoundingClientRect());
+      for(const turn of document.querySelectorAll('.live-turn.speaking-visible'))
+        rects.push(turn.getBoundingClientRect());
+      // The lower-right portrait is part of the video and has no own DOM rectangle.
+      rects.push({left:innerWidth*.68,top:innerHeight*.63,right:innerWidth,bottom:innerHeight});
+      return rects;
+    },
+    onAck(receipt){
+      if(!room || currentCallId!==receipt.call_id || room.state!=='connected') return;
+      const data=new TextEncoder().encode(JSON.stringify(receipt));
+      room.localParticipant.publishData(data,{reliable:true,topic:'dunni.sketch.ack.v1'})
+        .catch(()=>{});
+    }
+  });
+  window.addEventListener('resize',()=>sketch.redraw());
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden) sketch.clear();
+    publishSketchCapability(sketch.active && sketch.enabled && !document.hidden && chatOverlay.hidden);
+  });
   const emotionNames={happy:'开心',curious:'好奇',unhappy:'有些失落',sad:'难过',
     angry:'认真',delighted:'雀跃',playful_face:'调皮'};
   const emotionReceipts=[];
@@ -2084,6 +2122,7 @@
   function uiIdle(){
     connecting=false;
     emotionVideo.stop();
+    sketch.stop();
     callCircle.className='circle call go';
     callIcon.setAttribute('stroke','#fff');
     callLabel.textContent='拨打';
@@ -2178,6 +2217,7 @@
     if(connecting||room) return;
     const attempt=++callAttemptId;
     resetLiveDialogue();
+    sketch.stop();
     let pendingRoom=null;
     let roomJoined=false;
     connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
@@ -2210,6 +2250,10 @@
           payload,participant,topic,room:callRoom,callId,isAgent:isAgentParticipant
         });
         if(event) emotionVideo.acceptEvent(event);
+        const drawing=window.YulingLiveSketch.decodeAgentSketchEvent({
+          payload,participant,topic,room:callRoom,callId,isAgent:isAgentParticipant
+        });
+        if(drawing) void sketch.acceptEvent(drawing);
       });
       // AgentSession publishes STT and spoken replies as lk.transcription text
       // streams. The legacy TranscriptionReceived event does not receive them.
@@ -2286,6 +2330,8 @@
       });
       room.on(LK.RoomEvent.ParticipantConnected,(p)=>{
         if(!isAgentParticipant(p)) return;
+        if(room===callRoom && attempt===callAttemptId)
+          publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
         if(s) applyAgentState(s); else setCallPhase('waiting');
@@ -2293,17 +2339,22 @@
       room.on(LK.RoomEvent.ParticipantDisconnected,()=>syncAgentLamp(callRoom));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
         if(!isAgentParticipant(participant)) return;
+        if(room===callRoom && attempt===callAttemptId)
+          publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
         const s=changed&&changed['lk.agent.state'];
         if(s) applyAgentState(s);
       });
       room.on(LK.RoomEvent.Reconnecting,()=>{
         if(room!==callRoom) return;
+        sketch.clear();
+        publishSketchCapability(false);
         clearCallAnswerTimer();
         setLamp('room','warn','房间连接中断，正在重连');
         setCallPhase('reconnecting');
       });
       room.on(LK.RoomEvent.Reconnected,()=>{
         if(room!==callRoom) return;
+        publishSketchCapability(sketch.active && sketch.enabled && chatOverlay.hidden && !document.hidden);
         setLamp('room','ok');
         armCallAnswerTimer(callRoom,attempt);
         if(!syncAgentLamp(callRoom)){ setCallPhase('waiting'); return; }
@@ -2320,6 +2371,8 @@
       await room.connect(d.url, d.token);
       if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
       roomJoined=true;
+      sketch.start(callId);
+      publishSketchCapability(sketch.enabled && chatOverlay.hidden && !document.hidden);
       setLamp('room','ok');
       if(agentState) applyAgentState(agentState);
       else setCallPhase('waiting');
@@ -2359,6 +2412,8 @@
   function cleanup(msg){
     ++callAttemptId;
     emotionVideo.stop();
+    publishSketchCapability(false);
+    sketch.stop();
     const finishedCallId=currentCallId;
     stopRing();
     clearCallAnswerTimer(); callAnswered=false; callAnswerTimedOut=false;
@@ -2435,6 +2490,8 @@
     chatOverlay.hidden=false;
     chatOverlay.setAttribute('aria-hidden','false');
     emotionVideo.onVisibilityChange(true);
+    sketch.clear();
+    publishSketchCapability(false);
     syncInCallBar();
     window.YulingSwipeNavigation?.sync();
   }
@@ -2442,6 +2499,7 @@
     chatOverlay.hidden=true;
     chatOverlay.setAttribute('aria-hidden','true');
     emotionVideo.onVisibilityChange(document.hidden);
+    publishSketchCapability(sketch.active && sketch.enabled && !document.hidden);
     syncInCallBar();
     window.YulingSwipeNavigation?.sync();
     chatReturn.focus();
@@ -2480,6 +2538,12 @@
     $('emotionToggle').textContent=emotionVideo.enabled?'情绪画面：开启':'情绪画面：关闭';
     $('emotionToggle').setAttribute('aria-pressed',String(emotionVideo.enabled));
     $('emotionManual').value='';
+  });
+  $('sketchToggle').addEventListener('click',()=>{
+    sketch.setEnabled(!sketch.enabled);
+    publishSketchCapability(sketch.enabled && chatOverlay.hidden && !document.hidden);
+    $('sketchToggle').textContent=sketch.enabled?'空中手绘：开启':'空中手绘：关闭';
+    $('sketchToggle').setAttribute('aria-pressed',String(sketch.enabled));
   });
   $('emotionManual').addEventListener('change',event=>{
     const state=event.target.value;

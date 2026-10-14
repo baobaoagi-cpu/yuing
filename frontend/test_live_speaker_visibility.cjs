@@ -22,7 +22,7 @@ const avatars={assistant:element(),user:element()};
 const texts={assistant:element(),user:element()};
 const bubbles={assistant:element(),user:element()};
 const source=html.slice(begin,end);
-const runtime=new Function('liveTurns','liveAvatars','liveTexts','liveBubbles',`
+const runtime=new Function('liveTurns','liveAvatars','liveTexts','liveBubbles','sketch',`
   const liveVisible={assistant:false,user:false};
   const liveDisplayedSegment={assistant:'',user:''};
   const liveSegmentAtHide={assistant:'',user:''};
@@ -34,7 +34,7 @@ const runtime=new Function('liveTurns','liveAvatars','liveTexts','liveBubbles',`
     state:{set room(v){room=v;},
     set muted(v){muted=v;}, set callPhase(v){callPhase=v;},
     set lastUserVoiceAt(v){lastUserVoiceAt=v;}, set lastBaoVoiceAt(v){lastBaoVoiceAt=v;}}};
-`)(turns,avatars,texts,bubbles);
+`)(turns,avatars,texts,bubbles,{redraw(){}});
 const shown=role=>turns[role].classes.has('speaking-visible') &&
   avatars[role].classes.has('speaking-visible');
 

@@ -229,6 +229,7 @@ def tool_asset():
 @app.get("/pull-refresh.css")
 @app.get("/pull-refresh.js")
 @app.get("/emotion-video.js")
+@app.get("/live-sketch.js")
 def conversation_asset():
     guard = _require_login()
     if guard:
