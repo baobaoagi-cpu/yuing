@@ -450,6 +450,7 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  const remoteAudioElements=new Map();
   let audioRetryHandler=null;
   function clearAudioRetry(){
     if(audioRetryHandler) document.removeEventListener('pointerdown',audioRetryHandler);
@@ -1955,6 +1956,7 @@
         saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
       });
       room.on(LK.RoomEvent.TrackSubscribed,(track,publication,participant)=>{
+        if(room!==callRoom || attempt!==callAttemptId) return;
         // A call token joins a private, server-created agent room. Play every
         // remote audio track: some LiveKit clients report the worker as a
         // standard participant before its agent attributes arrive.
@@ -1963,6 +1965,7 @@
           stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
+          remoteAudioElements.set(track,el);
           // Keep the native media element audible. The optional WebAudio
           // booster can remain suspended in mobile browsers; muting this
           // element then silences an otherwise healthy remote track.
@@ -1987,6 +1990,9 @@
       });
       room.on(LK.RoomEvent.TrackUnsubscribed,(track,publication,participant)=>{
         if(track.kind===LK.Track.Kind.Audio){
+          const el=remoteAudioElements.get(track);
+          if(el){ try{ track.detach(el); }catch(_){} el.remove(); remoteAudioElements.delete(track); }
+          if(room!==callRoom) return;
           baoCalc=null;
           setLamp('audio','warn');
         }
@@ -2059,10 +2065,15 @@
   }
 
   function cleanup(msg){
+    ++callAttemptId;
     const finishedCallId=currentCallId;
     stopRing();
     clearAudioRetry();
-    try{ document.querySelectorAll('audio').forEach(a=>a.remove()); }catch(_){}
+    for(const [track,el] of remoteAudioElements){
+      try{ track.detach(el); }catch(_){}
+      el.remove();
+    }
+    remoteAudioElements.clear();
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
     room=null; muted=false; agentState=''; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
@@ -2083,11 +2094,16 @@
     }
   }
   async function endCall(){
-    callAttemptId++;
     const endingRoom=room;
-    if(endingRoom){ try{ await endingRoom.disconnect(); }catch(_){} }
-    await transcriptSaveQueue;
     cleanup('已挂断');
+    if(endingRoom){
+      try{
+        await Promise.race([
+          endingRoom.disconnect(),
+          new Promise(resolve=>setTimeout(resolve,2000))
+        ]);
+      }catch(_){}
+    }
   }
   function toggleMute(){
     if(!room) return;
@@ -2099,7 +2115,7 @@
     if(agentState==='listening') setCallPhase(muted?'muted':'listening');
   }
 
-  callBtn.addEventListener('click',()=>{ if(!room) enableMotionFX(); room?endCall():startCall(); });
+  callBtn.addEventListener('click',()=>{ if(!room && !connecting) enableMotionFX(); (room||connecting)?endCall():startCall(); });
   chatReturn.addEventListener('click',()=>{
     if(room || connecting){
       leaveDialog.classList.remove('hidden');
