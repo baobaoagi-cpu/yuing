@@ -170,7 +170,7 @@ def api_yuling_token():
             store = ChatStore(os.environ.get("POC_CHAT_DB_PATH", ""), owner,
                               legacy_owner_id=os.environ.get(
                                   "POC_LEGACY_OWNER", os.environ.get("POC_PREVIEW_USER", owner)))
-            memories = store.memories(limit=30)
+            memories = store.usable_memories(limit=30)
             recent_text = store.latest_user_text(max_age_seconds=300)
             knowledge = (store.search_knowledge(recent_text, limit=2)
                          if recent_text and store.knowledge_consent_enabled() else [])

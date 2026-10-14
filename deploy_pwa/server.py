@@ -1110,7 +1110,7 @@ def conversation_chat():
         knowledge_context = (store.search_knowledge(text_value, limit=3)
                              if store.knowledge_consent_enabled()
                              and isinstance(text_value, str) and text_value.strip() else ())
-        answer = reply_to(text_value, history, store.memories(), image=image,
+        answer = reply_to(text_value, history, store.usable_memories(), image=image,
                           link_url=link_url, page_context=page_context,
                           document_context=document, owner_id=store.owner_id,
                           display_name=(profile.identity() or {}).get("display_name")
@@ -1151,7 +1151,9 @@ def save_explicit_memory():
     if store is None:
         return jsonify(error="持久化存储尚未配置"), 503
     mid = store.add_memory(data["text"].strip())
-    return jsonify(id=mid, source_kind="user_explicit"), 201
+    saved = store.get_memory(mid)
+    return jsonify(id=mid, source_kind="user_explicit",
+                   source_event_id=saved["source_event_id"], version=saved["version"]), 201
 
 
 @app.delete("/api/v2/memories/<memory_id>")
@@ -1166,6 +1168,27 @@ def forget_explicit_memory(memory_id):
     if not mid or not store.delete_memory(mid):
         return jsonify(error="记忆不存在"), 404
     return jsonify(ok=True)
+
+
+@app.patch("/api/v2/memories/<memory_id>")
+def correct_explicit_memory(memory_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    mid = _uuid(memory_id)
+    data = request.get_json(silent=True) if request.mimetype == "application/json" else None
+    if not mid or not isinstance(data, dict) or set(data) != {"text"}:
+        return jsonify(error="记忆更正格式不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="持久化存储尚未配置"), 503
+    try:
+        item = store.correct_memory(mid, data["text"])
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if item is None:
+        return jsonify(error="记忆不存在"), 404
+    return jsonify(item=item)
 
 
 @app.get("/api/v2/knowledge")
@@ -1239,6 +1262,34 @@ def delete_knowledge_item(item_id):
     if not kid or not store.delete_knowledge_item(kid):
         return jsonify(error="知识条目不存在"), 404
     return jsonify(ok=True)
+
+
+@app.patch("/api/v2/knowledge/<item_id>")
+def correct_knowledge_item(item_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    kid = _uuid(item_id)
+    if not kid or request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="知识更正格式不正确"), 400
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"title", "content", "source_event_id"}:
+        return jsonify(error="知识更正格式不正确"), 400
+    source_id = _uuid(data["source_event_id"])
+    if source_id is None:
+        return jsonify(error="来源消息不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="知识存储尚未配置"), 503
+    try:
+        item = store.correct_knowledge_item(kid, data["title"], data["content"], source_id)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except StoreUnavailable:
+        return jsonify(error="来源消息不存在"), 404
+    if item is None:
+        return jsonify(error="知识条目不存在"), 404
+    return jsonify(item=item)
 
 
 @app.get("/api/v2/relations")

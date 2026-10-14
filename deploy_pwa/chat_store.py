@@ -112,6 +112,12 @@ class ChatStore:
                     owner_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL
                     CHECK(enabled IN (0,1)), updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS item_revisions (
+                    owner_id TEXT NOT NULL, kind TEXT NOT NULL, item_id TEXT NOT NULL,
+                    version INTEGER NOT NULL, action TEXT NOT NULL,
+                    source_event_id TEXT, recorded_at REAL NOT NULL,
+                    PRIMARY KEY (owner_id, kind, item_id, version)
+                );
                 CREATE TABLE IF NOT EXISTS page_reads (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
                     source_event_id TEXT NOT NULL, url TEXT NOT NULL,
@@ -143,6 +149,10 @@ class ChatStore:
             knowledge_columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge_items)")}
             if "source_event_id" not in knowledge_columns:
                 db.execute("ALTER TABLE knowledge_items ADD COLUMN source_event_id TEXT")
+            for table in ("memories", "knowledge_items", "relation_candidates"):
+                columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+                if "version" not in columns:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
             db.execute("CREATE INDEX IF NOT EXISTS knowledge_owner_time "
                        "ON knowledge_items(owner_id, created_at)")
             db.execute("CREATE INDEX IF NOT EXISTS relation_owner_time "
@@ -578,22 +588,104 @@ class ChatStore:
     def add_memory(self, text, source_event_id=None):
         mid = str(uuid4())
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if source_event_id is None:
+                source_event_id = self._memory_source_event(db, text)
+            else:
+                self._require_owned_user_event(db, source_event_id)
             db.execute("INSERT INTO memories(id,text,source_kind,source_event_id,created_at,owner_id) "
                        "VALUES(?,?,?,?,?,?)",
                        (mid, text, "user_explicit", source_event_id, time.time(), self.owner_id))
+            self._record_revision(db, "memory", mid, 1, "created", source_event_id)
         return mid
+
+    def _memory_source_event(self, db, text):
+        # Saving a memory is itself a direct user action. Preserve its exact
+        # submitted text as an owned source event.
+        sid, event_id = str(uuid4()), str(uuid4())
+        now = time.time()
+        db.execute("INSERT INTO sessions(id,created_at,updated_at,owner_id) "
+                   "VALUES(?,?,?,?)", (sid, now, now, self.owner_id))
+        db.execute("INSERT INTO events(id,session_id,role,text,source_kind,created_at) "
+                   "VALUES(?,?,?,?,?,?)", (event_id, sid, "user", text,
+                                        "user_explicit", now))
+        return event_id
+
+    def correct_memory(self, mid, text):
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 500:
+            raise ValueError("记忆文字需在 1 至 500 字内")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT version FROM memories WHERE id=? AND owner_id=?",
+                             (mid, self.owner_id)).fetchone()
+            if row is None:
+                return None
+            source_id = self._memory_source_event(db, text.strip())
+            version = row["version"] + 1
+            db.execute("UPDATE memories SET text=?,source_event_id=?,version=? "
+                       "WHERE id=? AND owner_id=?",
+                       (text.strip(), source_id, version, mid, self.owner_id))
+            self._record_revision(db, "memory", mid, version, "corrected", source_id)
+        return {"id": mid, "text": text.strip(), "source_event_id": source_id,
+                "version": version}
+
+    def _require_owned_user_event(self, db, event_id):
+        row = db.execute("SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                         "WHERE e.id=? AND e.role='user' AND s.owner_id=?",
+                         (event_id, self.owner_id)).fetchone()
+        if row is None:
+            raise StoreUnavailable("来源事件不存在")
+
+    def _record_revision(self, db, kind, item_id, version, action, source_event_id):
+        db.execute("INSERT INTO item_revisions VALUES(?,?,?,?,?,?,?)",
+                   (self.owner_id, kind, item_id, version, action, source_event_id, time.time()))
+
+    def item_revisions(self, kind, item_id):
+        with self._connect() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT version,action,source_event_id,recorded_at FROM item_revisions "
+                "WHERE owner_id=? AND kind=? AND item_id=? ORDER BY version",
+                (self.owner_id, kind, item_id))]
 
     def memories(self, limit=30):
         with self._connect() as db:
-            rows = db.execute("SELECT id,text,source_kind,source_event_id,created_at FROM memories "
+            rows = db.execute("SELECT id,text,source_kind,source_event_id,created_at,version FROM memories "
                               "WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
                               (self.owner_id, limit)).fetchall()
         return [dict(x) for x in rows]
 
+    def get_memory(self, mid):
+        with self._connect() as db:
+            row = db.execute("SELECT id,text,source_kind,source_event_id,created_at,version "
+                             "FROM memories WHERE id=? AND owner_id=?",
+                             (mid, self.owner_id)).fetchone()
+        return dict(row) if row else None
+
+    def usable_memories(self, limit=30):
+        """Only sourced, owned, direct user memories enter model contexts."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT m.id,m.text,m.source_kind,m.source_event_id,m.created_at,m.version "
+                "FROM memories m JOIN events e ON e.id=m.source_event_id "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE m.owner_id=? AND s.owner_id=m.owner_id AND e.role='user' "
+                "AND e.source_kind='user_explicit' AND m.source_kind='user_explicit' "
+                "ORDER BY m.created_at DESC,m.rowid DESC LIMIT ?",
+                (self.owner_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def delete_memory(self, mid):
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT version,source_event_id FROM memories WHERE id=? AND owner_id=?",
+                             (mid, self.owner_id)).fetchone()
+            if row is None:
+                return False
             cur = db.execute("DELETE FROM memories WHERE id=? AND owner_id=?",
                              (mid, self.owner_id))
+            self._record_revision(db, "memory", mid, row["version"] + 1,
+                                  "retracted", row["source_event_id"])
             return cur.rowcount > 0
 
     def add_knowledge_item(self, title, content, source_event_id,
@@ -626,15 +718,44 @@ class ChatStore:
                 (kid, title.strip(), content.strip(), source_url, source_kind,
                  source_event_id, now, self.owner_id),
             )
+            self._record_revision(db, "knowledge", kid, 1, "created", source_event_id)
         return {"id": kid, "title": title.strip(), "content": content.strip(),
                 "source_event_id": source_event_id, "source_kind": source_kind,
-                "source_url": source_url, "created_at": now}
+                "source_url": source_url, "created_at": now, "version": 1}
+
+    def correct_knowledge_item(self, item_id, title, content, source_event_id):
+        if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 120 or
+                not isinstance(content, str) or not 1 <= len(content.strip()) <= 4000):
+            raise ValueError("知识更正内容不正确")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT version,source_event_id FROM knowledge_items "
+                             "WHERE id=? AND owner_id=?",
+                             (item_id, self.owner_id)).fetchone()
+            if row is None:
+                return None
+            self._require_owned_user_event(db, source_event_id)
+            if source_event_id == row["source_event_id"]:
+                raise StoreUnavailable("更正需要新的来源消息")
+            version = row["version"] + 1
+            db.execute("UPDATE knowledge_items SET title=?,content=?,source_event_id=?,"
+                       "source_kind='user_explicit',source_url=NULL,version=? "
+                       "WHERE id=? AND owner_id=?", (title.strip(), content.strip(),
+                                                       source_event_id, version,
+                                                       item_id, self.owner_id))
+            # A changed node invalidates every relation and causal candidate
+            # that used the previous wording.
+            self._retract_item_relations(db, item_id)
+            self._record_revision(db, "knowledge", item_id, version,
+                                  "corrected", source_event_id)
+        return {"id": item_id, "title": title.strip(), "content": content.strip(),
+                "source_event_id": source_event_id, "version": version}
 
     def knowledge_items(self, limit=50):
         limit = max(1, min(int(limit), 100))
         with self._connect() as db:
             rows = db.execute(
-                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at,version "
                 "FROM knowledge_items WHERE owner_id=? "
                 "ORDER BY created_at DESC, rowid DESC LIMIT ?",
                 (self.owner_id, limit),
@@ -657,7 +778,7 @@ class ChatStore:
             return []
         with self._connect() as db:
             rows = db.execute(
-                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at,version "
                 "FROM knowledge_items WHERE owner_id=? AND source_event_id IS NOT NULL "
                 "ORDER BY created_at DESC, rowid DESC LIMIT 2000",
                 (self.owner_id,),
@@ -733,16 +854,28 @@ class ChatStore:
     def delete_knowledge_item(self, item_id):
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            db.execute("DELETE FROM causal_claims WHERE owner_id=? AND relation_id IN "
-                       "(SELECT id FROM relation_candidates WHERE owner_id=? "
-                       "AND (subject_id=? OR object_id=?))",
-                       (self.owner_id, self.owner_id, item_id, item_id))
-            db.execute("DELETE FROM relation_candidates WHERE owner_id=? "
-                       "AND (subject_id=? OR object_id=?)",
-                       (self.owner_id, item_id, item_id))
+            row = db.execute("SELECT version,source_event_id FROM knowledge_items "
+                             "WHERE id=? AND owner_id=?", (item_id, self.owner_id)).fetchone()
+            if row is None:
+                return False
+            self._retract_item_relations(db, item_id)
             cur = db.execute("DELETE FROM knowledge_items WHERE id=? AND owner_id=?",
                              (item_id, self.owner_id))
+            self._record_revision(db, "knowledge", item_id, row["version"] + 1,
+                                  "retracted", row["source_event_id"])
             return cur.rowcount > 0
+
+    def _retract_item_relations(self, db, item_id):
+        rows = db.execute("SELECT id,version,source_event_id FROM relation_candidates "
+                          "WHERE owner_id=? AND (subject_id=? OR object_id=?)",
+                          (self.owner_id, item_id, item_id)).fetchall()
+        for row in rows:
+            db.execute("DELETE FROM causal_claims WHERE owner_id=? AND relation_id=?",
+                       (self.owner_id, row["id"]))
+            db.execute("DELETE FROM relation_candidates WHERE id=? AND owner_id=?",
+                       (row["id"], self.owner_id))
+            self._record_revision(db, "relation", row["id"], row["version"] + 1,
+                                  "retracted", row["source_event_id"])
 
     def add_relation_candidate(self, subject_id, predicate, object_id, source_event_id):
         """Record a possible relation, never a verified fact or causal finding."""
@@ -775,9 +908,10 @@ class ChatStore:
                 (rid, subject_id, predicate.strip(), object_id, source_event_id,
                  "candidate", now, self.owner_id),
             )
+            self._record_revision(db, "relation", rid, 1, "created", source_event_id)
         return {"id": rid, "subject_id": subject_id, "predicate": predicate.strip(),
                 "object_id": object_id, "source_event_id": source_event_id,
-                "status": "candidate", "created_at": now}
+                "status": "candidate", "created_at": now, "version": 1}
 
     def add_causal_claim(self, relation_id, source_event_id, evidence_quote,
                          counterevidence=None):
@@ -838,7 +972,7 @@ class ChatStore:
         with self._connect() as db:
             rows = db.execute(
                 "SELECT r.id,r.subject_id,r.predicate,r.object_id,r.source_event_id,"
-                "r.status,r.created_at FROM relation_candidates r "
+                "r.status,r.created_at,r.version FROM relation_candidates r "
                 "JOIN knowledge_items subject ON subject.id=r.subject_id "
                 "AND subject.owner_id=r.owner_id "
                 "JOIN knowledge_items object ON object.id=r.object_id "
@@ -854,8 +988,14 @@ class ChatStore:
     def delete_relation_candidate(self, relation_id):
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT version,source_event_id FROM relation_candidates "
+                             "WHERE id=? AND owner_id=?", (relation_id, self.owner_id)).fetchone()
+            if row is None:
+                return False
             db.execute("DELETE FROM causal_claims WHERE relation_id=? AND owner_id=?",
                        (relation_id, self.owner_id))
             cur = db.execute("DELETE FROM relation_candidates WHERE id=? AND owner_id=?",
                              (relation_id, self.owner_id))
+            self._record_revision(db, "relation", relation_id, row["version"] + 1,
+                                  "retracted", row["source_event_id"])
             return cur.rowcount > 0

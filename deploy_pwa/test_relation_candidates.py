@@ -43,6 +43,8 @@ class RelationCandidateTest(unittest.TestCase):
             self.assertEqual(owner.relation_candidates(), [relation])
             self.assertTrue(owner.delete_relation_candidate(relation["id"]))
             self.assertEqual(owner.relation_candidates(), [])
+            self.assertEqual([row["action"] for row in owner.item_revisions(
+                "relation", relation["id"])], ["created", "retracted"])
 
     def test_deleting_item_removes_its_relation_candidates_only(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -52,11 +54,13 @@ class RelationCandidateTest(unittest.TestCase):
             event = owner.add_event(sid, "user", "甲乙丙", source_kind="user_explicit")
             items = [owner.add_knowledge_item(text, text, event["id"])
                      for text in ("甲", "乙", "丙")]
-            owner.add_relation_candidate(items[0]["id"], "关联", items[1]["id"], event["id"])
+            removed = owner.add_relation_candidate(items[0]["id"], "关联", items[1]["id"], event["id"])
             untouched = owner.add_relation_candidate(items[1]["id"], "关联",
                                                      items[2]["id"], event["id"])
             self.assertTrue(owner.delete_knowledge_item(items[0]["id"]))
             self.assertEqual(owner.relation_candidates(), [untouched])
+            self.assertEqual([row["action"] for row in owner.item_revisions(
+                "relation", removed["id"])], ["created", "retracted"])
 
 
 if __name__ == "__main__":

@@ -60,6 +60,7 @@ class ChatStoreIsolationTest(unittest.TestCase):
             self.assertTrue(nicole.has_session("old-session"))
             self.assertEqual(nicole.get_image("old-image"), ("image/png", b"abc"))
             self.assertEqual(nicole.memories()[0]["text"], "old private memory")
+            self.assertEqual(nicole.usable_memories(), [])
             with sqlite3.connect(path) as db:
                 self.assertIsNotNone(db.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='causal_claims'"
