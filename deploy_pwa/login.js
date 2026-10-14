@@ -42,7 +42,7 @@ form.addEventListener('submit', async (event) => {
     passwordInput.value = '';
     showPassword(false);
     const next = new URLSearchParams(window.location.search).get('next');
-    window.location.replace(next === '/call' || next === '/chat' ? next : '/chat');
+    window.location.replace(['/call', '/chat', '/duplex'].includes(next) ? next : '/chat');
   } catch (cause) {
     error.textContent = cause.message || '目前无法登录，请稍后再试。';
     error.hidden = false;

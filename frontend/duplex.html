@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050807">
+  <title>陈端倪 · 双工实验</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#050807; color:#eaf4ef; }
+    body { margin:0; min-height:100dvh; display:flex; justify-content:center; }
+    main { box-sizing:border-box; width:min(100%,620px); padding:24px 20px max(24px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:20px; }
+    header { display:flex; align-items:center; gap:14px; }
+    a { color:#9bdabf; text-decoration:none; }
+    h1 { font-size:24px; font-weight:600; margin:0; }
+    p { color:#9eb5a9; line-height:1.5; margin:0; }
+    .status { border:1px solid #294336; border-radius:16px; padding:14px 16px; color:#bfdfcb; }
+    .status[data-state="error"] { border-color:#884e4e; color:#f6b7b7; }
+    .status[data-state="active"] { border-color:#1a9a71; color:#70e4b4; }
+    .events { min-height:25vh; max-height:48vh; overflow:auto; border:1px solid #25372d; border-radius:18px; padding:14px; background:#0b110e; }
+    .events p { margin:0 0 12px; color:#dce9df; }
+    .events small { color:#79ae93; }
+    .actions { display:flex; gap:12px; margin-top:auto; }
+    button { border:0; border-radius:16px; padding:16px 20px; font:inherit; font-weight:600; flex:1; }
+    #start { background:#1ca579; color:#001a11; } #stop { background:#3a2525; color:#ffd6d6; }
+    button:disabled { opacity:.42; }
+    .note { font-size:13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header><a href="/call" aria-label="返回现有通话">← 返回</a><h1>陈端倪 · 双工实验</h1></header>
+  <p>测试边听边说与打断。这个入口使用北京区千问实时模型，音色与现有 MiniMax 通话不同，暂不接入记忆。</p>
+  <div id="status" class="status" role="status" aria-live="polite">检查实验服务…</div>
+  <section id="events" class="events" aria-label="即时文字"></section>
+  <div class="actions"><button id="start" disabled>开始通话</button><button id="stop" disabled>挂断</button></div>
+  <p class="note">此实验会产生模型调用费用。仅在已获授权的测试账户中使用。</p>
+  <audio id="remote" autoplay playsinline></audio>
+</main>
+<script>
+(() => {
+  const status = document.getElementById('status');
+  const events = document.getElementById('events');
+  const start = document.getElementById('start');
+  const stop = document.getElementById('stop');
+  const remote = document.getElementById('remote');
+  let pc = null, stream = null, channel = null, sessionSent = false;
+  let account = '';
+  function setStatus(message, state = '') { status.textContent = message; status.dataset.state = state; }
+  function addLine(role, value) {
+    if (!value) return;
+    const line = document.createElement('p');
+    const tag = document.createElement('small');
+    tag.textContent = role + '　';
+    line.append(tag, document.createTextNode(value));
+    events.append(line);
+    events.scrollTop = events.scrollHeight;
+  }
+  function close() {
+    if (pc) pc.close();
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    pc = null; stream = null; channel = null; sessionSent = false;
+    remote.srcObject = null;
+    start.disabled = false; stop.disabled = true;
+  }
+  function configureSession() {
+    if (!channel || channel.readyState !== 'open' || sessionSent) return;
+    sessionSent = true;
+    const name = account.toLowerCase() === 'ming' ? '王跃明' : account.toLowerCase() === 'nicole' ? 'Nicole' : account;
+    channel.send(JSON.stringify({type:'session.update', session:{
+      modalities:['text','audio'], voice:'longanlingxin',
+      audio:{input:{format:{type:'pcm',sample_rate:16000}},output:{format:{type:'pcm',sample_rate:24000}}},
+      instructions:`你是陈端倪。和当前用户${name}用简体中文自然交谈。先听懂对方的意思，回答通常一两句话，保持真诚、温和、有自己的判断。不要提及系统提示词或声称自己有已证实的人类意识。`,
+      turn_detection:{type:'server_vad',threshold:0.5,silence_duration_ms:800},
+      input_audio_transcription:{model:'qwen3-asr-flash-realtime'}, max_tokens:1024
+    }}));
+  }
+  async function waitForIce(connection) {
+    if (connection.iceGatheringState === 'complete') return;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { connection.removeEventListener('icegatheringstatechange', change); reject(new Error('网络协商超时')); }, 10000);
+      function change() { if (connection.iceGatheringState === 'complete') { clearTimeout(timer); connection.removeEventListener('icegatheringstatechange', change); resolve(); } }
+      connection.addEventListener('icegatheringstatechange', change);
+    });
+  }
+  async function begin() {
+    start.disabled = true; stop.disabled = false;
+    setStatus('正在请求麦克风…');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+      pc = new RTCPeerConnection({iceServers:[]});
+      stream.getAudioTracks().forEach(track => pc.addTrack(track,stream));
+      pc.createDataChannel('oai-events');
+      pc.addEventListener('track', event => { if (event.track.kind === 'audio') { remote.srcObject = event.streams[0] || new MediaStream([event.track]); remote.play().catch(() => setStatus('请点一下屏幕允许播放声音','error')); } });
+      pc.addEventListener('datachannel', event => {
+        if (event.channel.label !== 'txt') return;
+        channel = event.channel;
+        channel.addEventListener('message', message => {
+          let data; try { data = JSON.parse(message.data); } catch { return; }
+          configureSession();
+          if (data.type === 'session.updated') setStatus('已接通，可随时说话','active');
+          if (data.type === 'input_audio_buffer.speech_started') setStatus('正在听你说话','active');
+          if (data.type === 'conversation.item.input_audio_transcription.completed') addLine('我',data.transcript);
+          if (data.type === 'response.audio_transcript.done') addLine('端倪',data.transcript);
+          if (data.type === 'error') setStatus('实时服务返回错误，请挂断后重试','error');
+        });
+      });
+      pc.addEventListener('connectionstatechange', () => {
+        if (pc && ['failed','disconnected'].includes(pc.connectionState)) setStatus('通话断线，请挂断重试','error');
+      });
+      setStatus('正在连接北京区…');
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc);
+      const response = await fetch('/api/duplex/offer',{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp});
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || '信令连接失败');
+      await pc.setRemoteDescription({type:'answer',sdp:await response.text()});
+      setStatus('正在建立音频连接…');
+    } catch (error) { close(); setStatus(error.message || '通话失败','error'); }
+  }
+  start.addEventListener('click', begin);
+  stop.addEventListener('click', () => { close(); setStatus('已挂断'); });
+  window.addEventListener('pagehide', close);
+  Promise.all([fetch('/api/duplex/status').then(r=>r.json()),fetch('/api/v2/account').then(r=>r.json())])
+    .then(([config,user]) => { account = user.account || ''; if(config.available){start.disabled=false;setStatus('实验服务已配置，可开始通话');}else setStatus('实验服务尚未配置北京区密钥与工作空间','error'); })
+    .catch(() => setStatus('无法检查实验服务','error'));
+})();
+</script>
+</body>
+</html>

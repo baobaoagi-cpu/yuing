@@ -90,6 +90,8 @@ app.config.update(
 _failures = defaultdict(deque)
 _failure_lock = threading.Lock()
 _page_read_lock = threading.Lock()
+_duplex_offer_times = defaultdict(deque)
+_duplex_offer_lock = threading.Lock()
 
 
 @app.before_request
@@ -136,7 +138,7 @@ def _require_login(api=False):
         return None
     if api:
         return jsonify(error="请先登录"), 401
-    login_url = "/login?next=" + request.path if request.path in {"/call", "/chat"} else "/login"
+    login_url = "/login?next=" + request.path if request.path in {"/call", "/chat", "/duplex"} else "/login"
     return redirect(login_url, code=303)
 
 
@@ -167,7 +169,7 @@ def login_page():
         abort(503)
     if _signed_in():
         requested = request.args.get("next")
-        return redirect(requested if requested in {"/call", "/chat"} else "/chat", code=303)
+        return redirect(requested if requested in {"/call", "/chat", "/duplex"} else "/chat", code=303)
     return send_from_directory(ROOT, "login.html")
 
 
@@ -177,6 +179,77 @@ def original_call_page():
     if guard:
         return guard
     return send_from_directory(PROJECT_ROOT / "frontend", "index.html")
+
+
+@app.get("/duplex")
+def duplex_experiment_page():
+    guard = _require_login()
+    if guard:
+        return guard
+    return send_from_directory(PROJECT_ROOT / "frontend", "duplex.html")
+
+
+def _duplex_config():
+    """The browser never receives this API key or chooses the provider URL."""
+    key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    workspace = os.environ.get("DASHSCOPE_WORKSPACE_ID", "").strip()
+    enabled = os.environ.get("POC_DUPLEX_ENABLED", "") == "1"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", workspace):
+        return None
+    if not enabled or not key:
+        return None
+    return key, ("https://" + workspace + ".cn-beijing.maas.aliyuncs.com"
+                 "/api/v1/webrtc/realtime?model=qwen3.8-omni-flash-realtime")
+
+
+@app.get("/api/duplex/status")
+def duplex_experiment_status():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    return jsonify(available=_duplex_config() is not None,
+                   region="cn-beijing", model="qwen3.8-omni-flash-realtime")
+
+
+@app.post("/api/duplex/offer")
+def duplex_experiment_offer():
+    guard = _require_login(api=True)
+    if guard:
+        return guard
+    if not _same_origin():
+        return jsonify(error="来源不符"), 403
+    config = _duplex_config()
+    if config is None:
+        return jsonify(error="双工实验尚未配置"), 503
+    if request.mimetype != "application/sdp":
+        return jsonify(error="需要 SDP offer"), 415
+    if request.content_length is None or request.content_length > 120_000:
+        return jsonify(error="SDP offer 太大"), 413
+    offer = request.get_data(cache=False)
+    if not 1 <= len(offer) <= 120_000 or not offer.startswith(b"v=0\r\n") or b"m=audio " not in offer:
+        return jsonify(error="SDP offer 不正确"), 400
+    # A successful offer starts a billable realtime session. Bound retries per account.
+    now = time.monotonic()
+    with _duplex_offer_lock:
+        attempts = _duplex_offer_times[session["account"]]
+        while attempts and now - attempts[0] > 60:
+            attempts.popleft()
+        if len(attempts) >= 4:
+            return jsonify(error="连接过于频繁，请一分钟后再试"), 429
+        attempts.append(now)
+    key, url = config
+    upstream = Request(url, data=offer, method="POST", headers={
+        "Authorization": "Bearer " + key, "Content-Type": "application/sdp"})
+    try:
+        with urlopen(upstream, timeout=25) as response:
+            answer = response.read(120_001)
+    except HTTPError as exc:
+        return jsonify(error="双工服务拒绝连接", upstream_status=exc.code), 502
+    except (URLError, TimeoutError, OSError):
+        return jsonify(error="双工服务暂时无法连接"), 502
+    if not 1 <= len(answer) <= 120_000 or not answer.startswith(b"v=0"):
+        return jsonify(error="双工服务响应无效"), 502
+    return app.response_class(answer, mimetype="application/sdp")
 
 
 @app.get("/sense")
