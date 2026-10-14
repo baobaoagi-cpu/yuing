@@ -3,51 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3efe7">
+  <meta name="theme-color" content="#161916">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Dunni">
   <link rel="icon" href="/assets/dunni-icon-v1-192.png" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/dunni-icon-v1-180.png">
-  <link rel="stylesheet" href="/style.css">
-  <title>登录 · YULING 语灵</title>
+  <link rel="stylesheet" href="/login-minimal.css">
+  <title>登录 · Dunni</title>
 </head>
-<body class="login-page">
-  <main class="login-shell">
-    <header class="login-header">
-      <div class="brand" aria-label="YULING 语灵"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M5 18h4l3-8 5 16 4-12 3 4h7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word">YULING <small>语灵 · 陈端倪</small></span></div>
-      <span class="login-edition">PRIVATE PREVIEW / 01</span>
-    </header>
-    <section class="login-layout" aria-labelledby="login-title">
-      <div class="login-story">
-        <p class="eyebrow">一个懂得倾听的开始</p>
-        <h1>听见你，<br><em>也听见生活。</em></h1>
-        <p>欢迎来到语灵。登录后，在 iPhone 上体验端倪的声音感知与目前已接通的基础能力。</p>
-        <div class="login-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-      </div>
-      <div class="login-card">
-        <p class="login-card-kicker">YULING ACCESS</p>
-        <h2 id="login-title">欢迎回来</h2>
-        <p class="login-card-intro">输入帐号与密码，继续测试语灵。</p>
-        <form id="login-form" novalidate>
-          <label for="username">帐号</label>
-          <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="请输入帐号">
-          <label for="password">密码</label>
-          <div class="password-field">
-            <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="请输入密码">
-            <button id="password-toggle" class="password-toggle" type="button" aria-label="显示密码" aria-controls="password" aria-pressed="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/><path class="eye-slash" d="M3 21 21 3"/></svg>
-            </button>
-          </div>
-          <label class="remember-row" for="remember"><input id="remember" name="remember" type="checkbox"><span>保持登录 30 天</span></label>
-          <p class="login-error" id="login-error" role="alert" aria-live="polite" hidden></p>
-          <button class="login-submit" type="submit" id="login-submit">登录语灵 <span aria-hidden="true">↗</span></button>
-        </form>
-        <p class="login-note">仅供授权的内部测试者使用。</p>
-      </div>
-    </section>
-    <footer class="login-footer"><span>YULING · PRIVATE PREVIEW</span><span>陪伴，从听见开始。</span></footer>
+<body>
+  <main class="login-screen">
+    <video class="login-video" autoplay muted loop playsinline webkit-playsinline preload="metadata" poster="/assets/dunni-login-poster.jpg" aria-hidden="true">
+      <source src="/assets/dunni-login-loop.mp4" type="video/mp4">
+    </video>
+    <div class="login-shade" aria-hidden="true"></div>
+    <h1 class="login-name">Dunni</h1>
+    <form id="login-form" class="login-form" aria-label="登录端倪" novalidate>
+      <label class="visually-hidden" for="username">帐号</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="帐号">
+      <label class="visually-hidden" for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="密码">
+      <p class="login-error" id="login-error" role="alert" aria-live="polite" hidden></p>
+      <button type="submit" id="login-submit">登录</button>
+    </form>
   </main>
   <script type="module" src="/login.js"></script>
 </body>
