@@ -25,10 +25,6 @@ class Speech:
     def add_done_callback(self, callback):
         self.callback = callback
 
-    def exception(self):
-        return None
-
-
 class DiagnosticsTest(TestCase):
     def test_counts_do_not_include_transcript(self):
         session = Session()
@@ -48,3 +44,21 @@ class DiagnosticsTest(TestCase):
         self.assertIn("speech_done=1", output)
         self.assertIn("call_ref=testcall", output)
         self.assertNotIn("private words", output)
+
+    def test_interrupted_speech_and_provider_error_are_separate(self):
+        session = Session()
+        with self.assertLogs("duanni.call", logging.INFO) as logs:
+            _attach_call_diagnostics(session, "anothercall")
+            speech = Speech()
+            speech.interrupted = True
+            session.handlers["speech_created"](
+                SimpleNamespace(source="generate_reply", speech_handle=speech))
+            speech.callback(speech)
+            session.handlers["error"](
+                SimpleNamespace(error=RuntimeError("secret"), source="tts"))
+            session.handlers["close"](
+                SimpleNamespace(reason=SimpleNamespace(value="error")))
+        output = "\n".join(logs.output)
+        self.assertIn("speech_interrupted=1", output)
+        self.assertIn("provider_error=1", output)
+        self.assertNotIn("secret", output)

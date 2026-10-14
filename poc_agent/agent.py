@@ -114,8 +114,8 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
     """
     counts = {
         "stt_final": 0, "assistant_item": 0, "speech_queued": 0,
-        "speech_done": 0, "speech_interrupted": 0, "speech_error": 0,
-        "false_interruption": 0,
+        "speech_done": 0, "speech_interrupted": 0,
+        "false_interruption": 0, "provider_error": 0,
     }
 
     @session.on("agent_state_changed")
@@ -149,11 +149,10 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
                         call_ref, source, handle.id, counts["speech_queued"])
 
             def _speech_done(done_handle) -> None:
-                # These are public SpeechHandle fields in LiveKit Agents 1.8.6.
-                # Completion proves SDK playout ended, not handset audibility.
-                if done_handle.exception() is not None:
-                    outcome = "error"
-                elif done_handle.interrupted:
+                # The deployed LiveKit 1.8.6 wheel exposes id, interrupted,
+                # and add_done_callback. Terminal is not handset audibility,
+                # nor proof that provider generation succeeded.
+                if done_handle.interrupted:
                     outcome = "interrupted"
                 else:
                     outcome = "done"
@@ -172,6 +171,7 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
 
     @session.on("error")
     def _session_error(event) -> None:
+        counts["provider_error"] += 1
         error = getattr(event, "error", None)
         source = getattr(event, "source", None)
         status_code = getattr(error, "status_code", None)
@@ -191,11 +191,11 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
         logger.info("call_stage session_closed call_ref=%s reason=%s", call_ref, reason)
         logger.info(
             "call_stage turn_summary call_ref=%s stt_final=%d assistant_item=%d speech_queued=%d "
-            "speech_done=%d speech_interrupted=%d speech_error=%d false_interruption=%d",
+            "speech_done=%d speech_interrupted=%d false_interruption=%d provider_error=%d",
             call_ref,
             *(counts[key] for key in (
                 "stt_final", "assistant_item", "speech_queued", "speech_done",
-                "speech_interrupted", "speech_error", "false_interruption",
+                "speech_interrupted", "false_interruption", "provider_error",
             )),
         )
 
