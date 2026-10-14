@@ -8,6 +8,7 @@ COPY poc_agent/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY poc_agent/agent.py ./agent.py
 COPY poc_agent/signed_context.py ./signed_context.py
+COPY poc_agent/call_usage_meter.py ./call_usage_meter.py
 COPY poc_agent/tts_config.py ./tts_config.py
 COPY poc_agent/emotion_policy.py ./emotion_policy.py
 COPY poc_agent/persona/chen_dunni_constitution_v1.md ./persona/chen_dunni_constitution_v1.md

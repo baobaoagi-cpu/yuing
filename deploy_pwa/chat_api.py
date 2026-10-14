@@ -87,7 +87,7 @@ def _model_text(raw):
 
 
 def _simplify_plain_reply(answer: str) -> str:
-    """Convert Nicole's own chat prose, leaving URLs and code intact."""
+    """Convert a Simplified Chinese account's prose, leaving URLs and code intact."""
     pieces = []
     end = 0
     for match in _PROTECTED_OUTPUT.finditer(answer):
@@ -200,14 +200,12 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
     # browser JSON or remembered chat text. A corrected profile name wins.
     if isinstance(owner_id, str) and owner_id:
         name = _safe_display_name(display_name)
-        if name is None and owner_id.casefold() == "nicole":
-            name = "Nicole"
         if name:
             system += ("\n\n【已验证的账号称呼】当前登录用户叫 " + name + "。"
                        "可自然地称呼对方，但不要每句话都喊名字；其他特质仍需从本人表达中了解。")
         if owner_id.casefold() == "nicole":
-            system += ("\n\n【当前账号语言偏好】Nicole 在中国使用本服务，"
-                       "请优先用简体中文回复，即使她输入繁体字。不要擅自改写引用的文件原文、网址或代码。")
+            system += ("\n\n【当前账号语言偏好】请优先用简体中文回复，"
+                       "即使当前用户输入繁体字。不要擅自改写引用的文件原文、网址或代码。")
     if remembered:
         system += "\n\n【用户主动保存的记忆；可能过时】\n" + remembered
     if owner_id == "MING" and isinstance(account_seed, dict):

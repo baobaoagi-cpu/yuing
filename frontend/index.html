@@ -558,7 +558,8 @@
     .then(data=>{ if(data&&typeof data.account==='string'&&data.account){
       CHAT_SESSION_KEY='yuling_chat_session_v2:'+data.account;
       localStorage.removeItem('yuling_chat_session_v2');
-      const accountName=data.account==='WAITIN'?'威廷':data.account;
+      const accountName=typeof data.display_name==='string'&&data.display_name
+        ? data.display_name : data.account;
       $('userLiveName').textContent=accountName;
       $('userAvatar').textContent=accountName.slice(0,1).toUpperCase();
       $('userAvatar').setAttribute('aria-label',accountName+'的頭像');

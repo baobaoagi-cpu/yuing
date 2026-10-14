@@ -68,6 +68,17 @@ class ProactiveScheduleTests(unittest.TestCase):
         self.assertNotIn("最近读的那本书", item.push_text)
         self.assertNotIn("在哪", item.in_app_text)
 
+    def test_other_account_delivery_never_addresses_nicole(self):
+        self.consent("WAITIN")
+        topic = lambda owner: Topic(owner, "event-waitin-1", "最近的设计")
+        self.assertEqual(self.scheduler.run_due("WAITIN", topic, self.sent.append, now=DAY),
+                         "scheduled")
+        self.assertEqual(self.scheduler.run_due("WAITIN", topic, self.sent.append,
+                                                now=DAY.replace(hour=16)), "sent")
+        self.assertEqual(self.sent[0].owner_id, "WAITIN")
+        self.assertIn("最近的设计", self.sent[0].in_app_text)
+        self.assertNotIn("Nicole", self.sent[0].in_app_text + self.sent[0].push_text)
+
     def test_no_verified_topic_skips_day_without_delivery(self):
         self.consent()
         self.scheduler.schedule_day("nicole", now=DAY)

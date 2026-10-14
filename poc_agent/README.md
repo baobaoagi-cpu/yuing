@@ -39,3 +39,5 @@ cd poc_agent && ../.venv-poc/bin/python agent.py dev
 建立第二個服務，指向本倉庫分支，Dockerfile 路徑設為 `poc_agent/Dockerfile`。環境變數填入上列憑證。新 Agent 確認已連上 LiveKit、完成通話測試後，再將原預覽服務的 `YULING_AGENT_NAME` 改為 `duanni-minimax-poc`。要回退只需把它改回原 Builder Agent 名稱；前端網址不變。
 
 中國地區流暢性仍須用上海手機實測，包括頁面開啟、入房、STT、首字回應、語音首包、整句完成時間與通話斷線率。LiveKit 和目前的 STT 仍是跨境依賴，MiniMax 中國 API 成功不代表整通電話在上海流暢。
+
+通話用量收據另需 `POC_USAGE_HMAC_KEY` 與 `POC_USAGE_ENDPOINT`。Agent 只使用房間綁定且已驗簽的登入帳號，不把語音辨識到的姓名當作帳號。收據送往 PWA 持久化資料庫；Agent 容器本身沒有持久化 Volume，送達失敗不得當作已入帳。

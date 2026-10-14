@@ -7,8 +7,11 @@ it with the account ID from the session, never browser JSON.
 """
 from __future__ import annotations
 
+import json
+import os
 import sqlite3
 import time
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -38,6 +41,26 @@ _MING_SEED = {
 }
 _SEED_SOURCE = "account_setup_user_provided"
 _SEED_DATE = "2026-10-14"  # Date precision only; no account-opening clock time was supplied.
+_ACCOUNT_INITIAL_NAMES = {"nicole": "Nicole", "MING": "王跃明", "WAITIN": "威廷"}
+
+
+def _account_display_name(owner_id: str) -> str | None:
+    """Server-side account enrollment config; never read names from a browser call."""
+    raw = os.environ.get("POC_ACCOUNT_DISPLAY_NAMES_JSON", "")
+    configured = {}
+    if raw:
+        try:
+            configured = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("账号称呼配置不是 JSON") from exc
+        if not isinstance(configured, dict):
+            raise ValueError("账号称呼配置不是映射")
+    name = configured.get(owner_id, _ACCOUNT_INITIAL_NAMES.get(owner_id))
+    if name is not None and (not isinstance(name, str) or
+                             not 1 <= len(name.strip()) <= 40 or
+                             any(unicodedata.category(ch)[0] == "C" for ch in name)):
+        raise ValueError("账号称呼配置无效")
+    return name.strip() if name else None
 
 
 class NicoProfileStore:
@@ -104,11 +127,12 @@ class NicoProfileStore:
                 CREATE INDEX IF NOT EXISTS account_seed_owner_field_time
                     ON account_seed_revisions(owner_id,field,recorded_at DESC);
             """)
-            if owner_id == "nicole":
+            initial_name = _account_display_name(owner_id)
+            if initial_name:
                 db.execute("INSERT OR IGNORE INTO profile_identity "
                            "(owner_id,display_name,source_kind,source_event_id,updated_at) "
                            "VALUES(?,?,?,?,?)",
-                           (owner_id, "Nicole", "account_seed", None, time.time()))
+                           (owner_id, initial_name, "account_seed", None, time.time()))
             if owner_id == "MING":
                 for field, value in _MING_SEED.items():
                     exists = db.execute(
@@ -174,15 +198,23 @@ class NicoProfileStore:
         return row
 
     def identity(self):
-        if self.owner_id == "MING":
-            name = self.seed_facts().get("display_name")
-            if name and name["status"] == "active":
-                return {"display_name": name["value"], "source_kind": name["source_kind"],
-                        "source_event_id": None, "updated_at": name["recorded_at"]}
         with self._connect() as db:
             row = db.execute("SELECT display_name,source_kind,source_event_id,updated_at "
                              "FROM profile_identity WHERE owner_id=?",
                              (self.owner_id,)).fetchone()
+        if row and row["source_kind"] == "user_correction":
+            return dict(row)
+        name = self.seed_facts().get("display_name") if self.owner_id == "MING" else None
+        if name and name["status"] == "active" and name["source_kind"] == "authenticated_user_correction":
+            return {"display_name": name["value"], "source_kind": name["source_kind"],
+                    "source_event_id": None, "updated_at": name["recorded_at"]}
+        configured = _account_display_name(self.owner_id)
+        if configured:
+            return {"display_name": configured, "source_kind": "account_config",
+                    "source_event_id": None, "updated_at": row["updated_at"] if row else 0}
+        if name and name["status"] == "active":
+            return {"display_name": name["value"], "source_kind": name["source_kind"],
+                    "source_event_id": None, "updated_at": name["recorded_at"]}
         return dict(row) if row else None
 
     def seed_facts(self):

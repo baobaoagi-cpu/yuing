@@ -101,6 +101,20 @@ class ChatStore:
                     ON page_reads(owner_id, utc_day);
                 CREATE INDEX IF NOT EXISTS page_reads_owner_event
                     ON page_reads(owner_id, source_event_id, requested_at);
+                CREATE TABLE IF NOT EXISTS voice_usage_events (
+                    event_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                    call_id TEXT NOT NULL, component TEXT NOT NULL,
+                    provider TEXT NOT NULL, model TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    audio_input_seconds REAL NOT NULL DEFAULT 0,
+                    audio_output_chars INTEGER NOT NULL DEFAULT 0,
+                    estimated_usd_micros INTEGER,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at REAL NOT NULL, received_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS voice_usage_owner_time
+                    ON voice_usage_events(owner_id, created_at DESC);
             """)
         # Existing single-account databases are assigned to the configured
         # legacy owner once. New records always carry their owner explicitly.
@@ -131,6 +145,77 @@ class ChatStore:
             if "document_id" not in event_columns:
                 db.execute("ALTER TABLE events ADD COLUMN document_id TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS events_page_read ON events(page_read_id)")
+
+    def record_voice_usage(self, event):
+        """Idempotently store one signed, cumulative SDK usage snapshot.
+
+        A later snapshot for the same event replaces the previous counters. It
+        is never added to them, and an event ID can never cross owners/calls.
+        """
+        now = time.time()
+        identity = (self.owner_id, event["call_id"], event["component"],
+                    event["provider"], event["model"])
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT owner_id,call_id,component,provider,model,created_at "
+                "FROM voice_usage_events WHERE event_id=?", (event["event_id"],)
+            ).fetchone()
+            if previous:
+                if tuple(previous[key] for key in (
+                        "owner_id", "call_id", "component", "provider", "model")) != identity:
+                    raise StoreUnavailable("用量事件编号冲突")
+                if event["created_at"] <= previous["created_at"]:
+                    return False
+                db.execute(
+                    "UPDATE voice_usage_events SET input_tokens=?,output_tokens=?,"
+                    "audio_input_seconds=?,audio_output_chars=?,estimated_usd_micros=?,"
+                    "metadata=?,created_at=?,received_at=? WHERE event_id=?",
+                    (event["input_tokens"], event["output_tokens"],
+                     event["audio_input_seconds"], event["audio_output_chars"],
+                     event["estimated_usd_micros"], json.dumps(event["metadata"],
+                     ensure_ascii=False, sort_keys=True), event["created_at"], now,
+                     event["event_id"]),
+                )
+                return True
+            db.execute(
+                "INSERT INTO voice_usage_events "
+                "(event_id,owner_id,call_id,component,provider,model,input_tokens,"
+                "output_tokens,audio_input_seconds,audio_output_chars,"
+                "estimated_usd_micros,metadata,created_at,received_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (event["event_id"], self.owner_id, event["call_id"],
+                 event["component"], event["provider"], event["model"],
+                 event["input_tokens"], event["output_tokens"],
+                 event["audio_input_seconds"], event["audio_output_chars"],
+                 event["estimated_usd_micros"], json.dumps(event["metadata"],
+                 ensure_ascii=False, sort_keys=True), event["created_at"], now),
+            )
+            return True
+
+    def voice_usage_summary(self, limit=30):
+        """Only this signed-in owner's model usage, not a provider invoice."""
+        with self._connect() as db:
+            totals = db.execute(
+                "SELECT component,provider,model,COUNT(*) AS calls,"
+                "SUM(input_tokens) AS input_tokens,SUM(output_tokens) AS output_tokens,"
+                "SUM(audio_input_seconds) AS audio_input_seconds,"
+                "SUM(audio_output_chars) AS audio_output_chars,"
+                "SUM(estimated_usd_micros) AS estimated_usd_micros "
+                "FROM voice_usage_events WHERE owner_id=? "
+                "GROUP BY component,provider,model ORDER BY component,provider,model",
+                (self.owner_id,),
+            ).fetchall()
+            recent = db.execute(
+                "SELECT event_id,call_id,component,provider,model,input_tokens,"
+                "output_tokens,audio_input_seconds,audio_output_chars,"
+                "estimated_usd_micros,created_at FROM voice_usage_events "
+                "WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
+                (self.owner_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return {"totals": [dict(row) for row in totals],
+                "recent": [dict(row) for row in recent],
+                "source": "livekit_sdk_reported", "currency_estimate_verified": False}
 
     @contextmanager
     def _connect(self):

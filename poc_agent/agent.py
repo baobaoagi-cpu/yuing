@@ -5,6 +5,7 @@ read only server-signed, user-explicit memories for its room; Hermes and the
 knowledge base are not connected.
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -14,7 +15,8 @@ from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
 from livekit.plugins import anthropic, minimax
 from emotion_policy import minimax_tts_text
-from signed_context import ContextRejected, signed_context_text
+from call_usage_meter import UsageLedgerError, send_signed_receipts
+from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
 
 
@@ -166,7 +168,13 @@ async def phone_call(ctx: agents.JobContext) -> None:
         raise RuntimeError("MINIMAX_API_KEY is required")
 
     context_text = ""
+    verified_owner_id = None
     try:
+        claims = verified_context_claims(
+            ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
+            ctx.room.name,
+        )
+        verified_owner_id = claims["owner_id"] if claims else None
         context_text = signed_context_text(
             ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
             ctx.room.name,
@@ -218,6 +226,43 @@ async def phone_call(ctx: agents.JobContext) -> None:
             ),
         )
         _attach_call_diagnostics(session)
+        usage_endpoint = os.environ.get("POC_USAGE_ENDPOINT", "").strip()
+        usage_key = os.environ.get("POC_USAGE_HMAC_KEY", "").strip()
+        usage_task = None
+
+        async def _report_usage() -> None:
+            # Only a room-bound, authenticated owner can be billed. Never take
+            # this identity from a transcript or the browser's LiveKit name.
+            if not verified_owner_id or not usage_endpoint or len(usage_key.encode()) < 32:
+                logger.info("call_stage usage_receipt=unconfigured")
+                return
+            try:
+                count = await asyncio.to_thread(
+                    send_signed_receipts, endpoint=usage_endpoint,
+                    verified_owner_id=verified_owner_id, room=ctx.room.name,
+                    model_usage=session.usage.model_usage, secret=usage_key,
+                    timeout=2,
+                )
+            except UsageLedgerError:
+                logger.warning("call_stage usage_receipt=unavailable")
+            else:
+                logger.info("call_stage usage_receipt=accepted models=%d", count)
+
+        @session.on("close")
+        def _usage_on_close(_event) -> None:
+            nonlocal usage_task
+            if usage_task is None:
+                usage_task = asyncio.create_task(_report_usage())
+
+        async def _usage_on_shutdown(_reason: str) -> None:
+            # The LiveKit SDK runs shutdown callbacks together. A call that
+            # closes after this callback started can still have a pending send.
+            if usage_task is not None:
+                await usage_task
+            else:
+                await _report_usage()
+
+        ctx.add_shutdown_callback(_usage_on_shutdown)
         await session.start(room=ctx.room, agent=ChenDunni(context_text))
         logger.info("call_stage session_started")
         await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")

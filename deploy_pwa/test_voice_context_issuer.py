@@ -124,6 +124,7 @@ class VoiceContextIssuerTest(unittest.TestCase):
         metadata, _ = self._agent_metadata(response)
         context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
         self.assertIn("当前账号是威廷", context)
+        self.assertNotIn("Nicole", context)
         self.assertNotIn("偽造名稱", context)
 
     def test_nicole_name_is_signed_even_before_any_saved_memory(self):
@@ -142,6 +143,8 @@ class VoiceContextIssuerTest(unittest.TestCase):
         metadata, _ = self._agent_metadata(response)
         context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
         self.assertIn("王跃明", context)
+        self.assertIn("当前通话用户叫 王跃明", context)
+        self.assertNotIn("Nicole", context)
         self.assertIn("熟悉 AI 与后端", context)
         self.assertIn("威廷的好朋友", context)
         self.assertIn("不表示拥有任何服务器、部署或资料权限", context)
