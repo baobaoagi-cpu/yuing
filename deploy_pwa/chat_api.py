@@ -193,8 +193,11 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
     else:
         content = text
     messages.append({"role": "user", "content": content})
-    remembered = "\n".join("- " + _model_text(x["text"][:200])
-                            for x in list(memories)[:8])
+    remembered = "\n".join(
+        "- [" + ("有本人输入来源" if x.get("source_linked") else "来源未绑定，待本人确认") +
+        "] " + _model_text(x["text"][:200])
+        for x in list(memories)[:3] if isinstance(x, dict) and isinstance(x.get("text"), str)
+    )
     system = SYSTEM
     # Both values must come from authenticated server-side state, never from
     # browser JSON or remembered chat text. A corrected profile name wins.
@@ -207,7 +210,8 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
             system += ("\n\n【当前账号语言偏好】请优先用简体中文回复，"
                        "即使当前用户输入繁体字。不要擅自改写引用的文件原文、网址或代码。")
     if remembered:
-        system += "\n\n【用户主动保存的记忆；可能过时】\n" + remembered
+        system += ("\n\n【本账号按话题检索的记忆线索；可能过时】"
+                   "不要把未绑定来源的内容说成已核实事实；必要时向本人确认。\n" + remembered)
     if owner_id == "MING" and isinstance(account_seed, dict):
         seed = {field: {"value": item["value"], "source": item["source_kind"],
                         "confidence": item["confidence"], "source_date": item["source_date"]}

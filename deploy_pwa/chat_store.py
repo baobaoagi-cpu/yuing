@@ -642,6 +642,15 @@ class ChatStore:
     def add_memory(self, text, source_event_id=None):
         mid = str(uuid4())
         with self._connect() as db:
+            if source_event_id is not None:
+                source = db.execute(
+                    "SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                    "WHERE e.id=? AND s.owner_id=? AND e.role='user' "
+                    "AND e.source_kind='user_explicit'",
+                    (source_event_id, self.owner_id),
+                ).fetchone()
+                if source is None:
+                    raise StoreUnavailable("来源事件不存在")
             db.execute("INSERT INTO memories(id,text,source_kind,source_event_id,created_at,owner_id) "
                        "VALUES(?,?,?,?,?,?)",
                        (mid, text, "user_explicit", source_event_id, time.time(), self.owner_id))
@@ -653,6 +662,58 @@ class ChatStore:
                               "WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
                               (self.owner_id, limit)).fetchall()
         return [dict(x) for x in rows]
+
+    def memory_index(self, query=None, limit=20, terms=None):
+        """Small owner-scoped index; query or terms match literal text only.
+
+        Call memory_details with selected IDs before using a memory as context.
+        An empty query lists the newest items. No other owner's rows are read.
+        """
+        limit = max(1, min(int(limit), 50))
+        query = (query or "").strip()[:120]
+        params = [self.owner_id]
+        where = "owner_id=?"
+        search_terms = [query] if query else []
+        if terms is not None:
+            search_terms = [term.strip()[:40] for term in list(terms)[:12]
+                            if isinstance(term, str) and term.strip()]
+            if not search_terms:
+                return []
+        if search_terms:
+            where += " AND (" + " OR ".join("text LIKE ? ESCAPE '\\'"
+                                              for _ in search_terms) + ")"
+            params.extend("%" + term.replace("\\", "\\\\").replace("%", "\\%")
+                          .replace("_", "\\_") + "%" for term in search_terms)
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,substr(text,1,100) AS preview,source_kind,"
+                "source_event_id,created_at FROM memories WHERE " + where +
+                " ORDER BY created_at DESC,rowid DESC LIMIT ?", params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def memory_details(self, ids):
+        """Fetch full text only for selected IDs from this owner's memory."""
+        ids = list(dict.fromkeys(ids))[:50]
+        if not ids:
+            return []
+        if any(not isinstance(mid, str) or not mid for mid in ids):
+            raise ValueError("记忆编号不正确")
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT m.id,m.text,m.source_kind,m.source_event_id,m.created_at,"
+                "EXISTS(SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=m.source_event_id AND e.role='user' "
+                "AND e.source_kind='user_explicit' "
+                "AND s.owner_id=m.owner_id) AS source_linked "
+                "FROM memories m "
+                f"WHERE m.owner_id=? AND m.id IN ({placeholders})",
+                [self.owner_id, *ids],
+            ).fetchall()
+        by_id = {row["id"]: dict(row) for row in rows}
+        return [by_id[mid] for mid in ids if mid in by_id]
 
     def delete_memory(self, mid):
         with self._connect() as db:
@@ -704,6 +765,42 @@ class ChatStore:
                 (self.owner_id, limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def knowledge_index(self, query=None, limit=20):
+        """Search titles/content literally, returning only a small owner index."""
+        limit = max(1, min(int(limit), 50))
+        query = (query or "").strip()[:120]
+        params = [self.owner_id]
+        where = "owner_id=?"
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where += " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')"
+            params.extend((f"%{escaped}%", f"%{escaped}%"))
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,substr(content,1,100) AS preview,source_kind,"
+                "source_event_id,source_url,created_at FROM knowledge_items WHERE " +
+                where + " ORDER BY created_at DESC,rowid DESC LIMIT ?", params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def knowledge_details(self, ids):
+        """Fetch selected full knowledge items; never infer source verification."""
+        ids = list(dict.fromkeys(ids))[:50]
+        if not ids:
+            return []
+        if any(not isinstance(kid, str) or not kid for kid in ids):
+            raise ValueError("知识编号不正确")
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                f"FROM knowledge_items WHERE owner_id=? AND id IN ({placeholders})",
+                [self.owner_id, *ids],
+            ).fetchall()
+        by_id = {row["id"]: dict(row) for row in rows}
+        return [by_id[kid] for kid in ids if kid in by_id]
 
     def delete_knowledge_item(self, item_id):
         with self._connect() as db:

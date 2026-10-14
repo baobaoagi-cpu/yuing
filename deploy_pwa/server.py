@@ -32,6 +32,7 @@ BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
 from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
+from deploy_pwa.progressive_memory import memories_for_turn
 from deploy_pwa.chat_api import reply_to, ProviderError
 from deploy_pwa.nico_profile_store import NicoProfileStore
 from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
@@ -1175,7 +1176,7 @@ def conversation_chat():
             except Exception:
                 app.logger.exception("skill candidate capture failed")
     try:
-        answer = reply_to(text_value, history, store.memories(), image=image,
+        answer = reply_to(text_value, history, memories_for_turn(store, text_value), image=image,
                           link_url=link_url, page_context=page_context,
                           document_context=document, owner_id=store.owner_id,
                           display_name=(profile.identity() or {}).get("display_name")
