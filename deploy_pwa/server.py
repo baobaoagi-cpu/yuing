@@ -73,7 +73,7 @@ if BRIDGE and (_bridge_url.scheme != "http" or _bridge_url.hostname not in {"127
 MAX_JSON = 16_384
 MAX_AUDIO = 2_000_000
 MAX_FILE = 5_000_000
-REMEMBER_SECONDS = 30 * 24 * 60 * 60
+REMEMBER_SECONDS = 400 * 24 * 60 * 60
 SHORT_SECONDS = 12 * 60 * 60
 app = Flask(__name__, static_folder=None)
 app.register_blueprint(yuling_bp)
@@ -83,7 +83,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=not bool(BRIDGE),
     SESSION_COOKIE_SAMESITE="Lax",
-    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=400),
     SESSION_REFRESH_EACH_REQUEST=False,
     MAX_CONTENT_LENGTH=MAX_FILE + 10_000,
 )

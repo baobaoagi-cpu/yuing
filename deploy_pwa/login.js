@@ -3,6 +3,7 @@ const submit = document.querySelector('#login-submit');
 const error = document.querySelector('#login-error');
 const usernameInput = document.querySelector('#username');
 const passwordInput = document.querySelector('#password');
+const rememberInput = document.querySelector('#remember');
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -22,7 +23,7 @@ form.addEventListener('submit', async (event) => {
       headers: {'Content-Type': 'application/json'},
       credentials: 'same-origin',
       cache: 'no-store',
-      body: JSON.stringify({username, password, remember: true})
+      body: JSON.stringify({username, password, remember: rememberInput.checked})
     });
     if (!response.ok) {
       throw new Error(response.status === 401 ? '帐号或密码不正确。' : '目前无法登录，请稍后再试。');

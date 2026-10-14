@@ -2,8 +2,10 @@
 import hmac
 import json
 import os
+import re
 import tempfile
 import unittest
+from email.utils import parsedate_to_datetime
 from hashlib import sha256
 from unittest.mock import patch
 
@@ -60,13 +62,32 @@ class PreviewAccountsTest(unittest.TestCase):
                            f"{server.USERNAME}\0{server.PASSWORD}".encode(), sha256).hexdigest()[:24]
         self.assertEqual(server._credential_tag("nicole"), old_tag)
 
+    def test_remember_login_is_opt_in_and_cookie_is_capped_at_400_days(self):
+        short = self.login("nicole", "synthetic-nicole-password")
+        self.assertEqual(short.status_code, 200)
+        self.assertNotIn("Expires=", short.headers.get("Set-Cookie", ""))
+        with self.client.session_transaction(base_url=self.base) as cookie:
+            self.assertFalse(cookie.permanent)
+        self.assertEqual(self.client.post("/api/logout", base_url=self.base,
+                                          headers=self.headers).status_code, 200)
+
+        remembered = self.login("nicole", "synthetic-nicole-password", True)
+        self.assertEqual(remembered.status_code, 200)
+        expires = re.search(r"Expires=([^;]+)", remembered.headers.get("Set-Cookie", ""))
+        self.assertIsNotNone(expires)
+        self.assertGreater(parsedate_to_datetime(expires.group(1)).timestamp(),
+                           __import__("time").time() + 399 * 86400)
+        with self.client.session_transaction(base_url=self.base) as cookie:
+            self.assertTrue(cookie.permanent)
+            self.assertGreater(cookie["until"], __import__("time").time() + 399 * 86400)
+
     def test_accounts_have_separate_history_and_memory(self):
         self.assertEqual(self.login("nicole", "synthetic-nicole-password", True).status_code, 200)
         self.assertEqual(self.client.get("/api/v2/account", base_url=self.base).json["account"], "nicole")
         with self.client.session_transaction(base_url=self.base) as cookie:
             self.assertEqual(cookie["account"], "nicole")
             self.assertTrue(cookie.permanent)
-            self.assertGreater(cookie["until"], __import__("time").time() + 29 * 86400)
+            self.assertGreater(cookie["until"], __import__("time").time() + 399 * 86400)
         saved = self.client.post("/api/v2/memories", base_url=self.base, headers=self.headers,
                                  json={"text": "private nicole preference"})
         self.assertEqual(saved.status_code, 201)
