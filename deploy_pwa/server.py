@@ -159,7 +159,8 @@ def _headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     if (request.path.startswith("/api/") or response.mimetype == "text/html" or
-            request.path in {"/chat.css", "/chat.js", "/swipe-navigation.js", "/update.js"}):
+            request.path in {"/chat.css", "/chat.js", "/swipe-navigation.js", "/update.js",
+                             "/pull-refresh.css", "/pull-refresh.js"}):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -225,6 +226,8 @@ def tool_asset():
 @app.get("/chat.js")
 @app.get("/swipe-navigation.js")
 @app.get("/update.js")
+@app.get("/pull-refresh.css")
+@app.get("/pull-refresh.js")
 @app.get("/emotion-video.js")
 def conversation_asset():
     guard = _require_login()

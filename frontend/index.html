@@ -12,6 +12,7 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" type="image/png" href="/assets/dunni-icon-v1-192.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/dunni-icon-v1-180.png" />
+<link rel="stylesheet" href="/pull-refresh.css" />
 <style>
   :root{ --ink:#000; --light:#fff; --dim:rgba(255,255,255,.55); --faint:rgba(255,255,255,.12);
          --live:#1d9e75; --warn:#d85a30; }
@@ -2407,6 +2408,19 @@
     if(agentState==='listening') setCallPhase(muted?'muted':'listening');
   }
 
+  window.YulingPrepareRefresh=async()=>{
+    if(room||connecting){ setStatus('請先掛斷通話再更新'); return false; }
+    let timeout;
+    try{
+      await Promise.race([transcriptSaveQueue,new Promise((_,reject)=>{
+        timeout=setTimeout(()=>reject(new Error('transcript_pending')),5000);
+      })]);
+      return true;
+    }catch(_){ setStatus('逐字稿仍在保存，請稍後再更新'); return false; }
+    finally{ clearTimeout(timeout); }
+  };
+  window.YulingRefreshNotice=setStatus;
+
   function syncInCallBar(){
     const active=!!(room||connecting);
     inCallBar.hidden=chatOverlay.hidden||!active;
@@ -2724,6 +2738,7 @@
   else uiIdle();
 
   setMeetingProgress(0,true);
+  if(new URLSearchParams(location.search).get('view')==='chat') showChat();
   refreshSwipeHint();
   setMeetingUi();
   resizeMeetingWave();
@@ -2751,5 +2766,7 @@
   updateClock(); setInterval(updateClock, 15000);
 })();
 </script>
+<script src="/update.js"></script>
+<script src="/pull-refresh.js"></script>
 </body>
 </html>

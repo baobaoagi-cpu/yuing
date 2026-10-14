@@ -1,0 +1,28 @@
+.pull-refresh-indicator {
+  position: fixed;
+  z-index: 12;
+  top: calc(env(safe-area-inset-top) + 76px);
+  left: 50%;
+  transform: translate(-50%, -140%);
+  opacity: 0;
+  pointer-events: none;
+  padding: 8px 14px;
+  border: 1px solid rgba(111, 210, 156, .5);
+  border-radius: 999px;
+  background: rgba(18, 39, 29, .94);
+  color: #e8fff0;
+  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "PingFang TC", system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, .28);
+  transition: transform .18s ease, opacity .18s ease;
+}
+body[data-yuling-view="chat"] .pull-refresh-indicator {
+  top: calc(env(safe-area-inset-top) + 82px);
+}
+.pull-refresh-indicator.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pull-refresh-indicator { transition: none; }
+}
