@@ -21,7 +21,7 @@ def substantial_call(events):
         len(e["text"].strip()) for e in events) >= 160
 
 
-def generate_reflection(events):
+def generate_reflection(events, usage_observer=None):
     """Return (text|None, model); one MiniMax request makes the worth-keeping decision."""
     key = os.environ.get("MINIMAX_API_KEY", "").strip()
     if not key:
@@ -56,6 +56,9 @@ def generate_reflection(events):
             payload = json.load(response)
     except (HTTPError, URLError, TimeoutError, ValueError) as exc:
         raise ProviderError("通话后心声生成暂时失败") from exc
+    if usage_observer is not None:
+        from deploy_pwa.model_usage import response_usage
+        usage_observer(response_usage(payload, model))
     raw = "".join(x.get("text", "") for x in payload.get("content", [])
                   if x.get("type") == "text").strip()
     if raw.startswith("```"):

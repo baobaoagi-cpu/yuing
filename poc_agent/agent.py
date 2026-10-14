@@ -6,6 +6,7 @@ knowledge base are not connected.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ from emotion_policy import minimax_tts_text
 from call_usage_meter import UsageLedgerError, send_signed_receipts
 from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
+from visual_emotion import VisualEmotionEmitter
 from web_search import CallSearch, SearchBudget, search_is_enabled
 
 
@@ -27,6 +29,7 @@ logger = logging.getLogger("duanni.call")
 
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
+TTS_FIRST_FRAME_TIMEOUT = 15.0
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
 # Mandarin. Only the agent's name is global; a user's name must come from the
 # authenticated, room-bound account context rather than biasing every STT turn.
@@ -46,7 +49,8 @@ INNERSTELLAR_STYLE = INNERSTELLAR_STYLE_PATH.read_text(encoding="utf-8").strip()
 
 
 class ChenDunni(Agent):
-    def __init__(self, context_text: str = "", search_tool=None) -> None:
+    def __init__(self, context_text: str = "", visual_emotion: VisualEmotionEmitter | None = None, search_tool=None) -> None:
+        self.visual_emotion = visual_emotion
         super().__init__(
             use_tts_aligned_transcript=False,
             tools=[search_tool] if search_tool is not None else [],
@@ -90,6 +94,8 @@ class ChenDunni(Agent):
     async def tts_node(self, text, model_settings):
         # Provider interjections belong only in audio input. LiveKit's assistant
         # transcript and conversation history consume the original LLM stream.
+        if self.visual_emotion:
+            self.visual_emotion.start_reply()
         model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo")
         def log_cue(category: str | None) -> None:
             # Never log spoken text, room metadata, user identity or API keys.
@@ -99,18 +105,45 @@ class ChenDunni(Agent):
                 category or "none",
             )
 
-        async for frame in Agent.default.tts_node(
-            self, minimax_tts_text(text, model=model, on_decision=log_cue), model_settings
-        ):
-            yield frame
+        frames = Agent.default.tts_node(
+            self, minimax_tts_text(
+                text, model=model, on_decision=log_cue,
+                on_source_part=self.visual_emotion.on_assistant_part if self.visual_emotion else None,
+            ), model_settings
+        )
+        try:
+            # The provider websocket may remain open without delivering a
+            # decodable frame. Bound only the first frame; later speech can be
+            # any length. A timeout surfaces through the SDK error event.
+            try:
+                first = await asyncio.wait_for(anext(frames), TTS_FIRST_FRAME_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("call_stage tts_first_frame_timeout seconds=%d",
+                             int(TTS_FIRST_FRAME_TIMEOUT))
+                raise
+            except StopAsyncIteration:
+                logger.error("call_stage tts_zero_frames")
+                raise RuntimeError("TTS completed without an audio frame") from None
+            logger.info("call_stage tts_first_frame_ready sample_rate=%d samples=%d",
+                        first.sample_rate, first.samples_per_channel)
+            yield first
+            async for frame in frames:
+                yield frame
+        finally:
+            await frames.aclose()
 
 
-def _attach_call_diagnostics(session: AgentSession) -> None:
+def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
     """Log SDK lifecycle stages without logging speech, prompts, URLs, or keys.
 
     These are the AgentSession event names supported by livekit-agents 1.8.6.
     A queued reply or speaking state does not prove the phone played audio.
     """
+    counts = {
+        "stt_final": 0, "assistant_item": 0, "speech_queued": 0,
+        "speech_done": 0, "speech_interrupted": 0, "speech_error": 0,
+        "false_interruption": 0, "provider_error": 0,
+    }
 
     @session.on("agent_state_changed")
     def _agent_state(event) -> None:
@@ -121,28 +154,52 @@ def _attach_call_diagnostics(session: AgentSession) -> None:
     @session.on("user_input_transcribed")
     def _user_transcribed(event) -> None:
         if getattr(event, "is_final", False):
-            logger.info("call_stage stt_final_received")
+            counts["stt_final"] += 1
+            logger.info("call_stage stt_final_received call_ref=%s count=%d",
+                        call_ref, counts["stt_final"])
 
     @session.on("conversation_item_added")
     def _conversation_item(event) -> None:
         role = getattr(getattr(event, "item", None), "role", None)
         if role in {"user", "assistant"}:
-            logger.info("call_stage conversation_item role=%s", role)
+            logger.info("call_stage conversation_item call_ref=%s role=%s", call_ref, role)
+            if role == "assistant":
+                counts["assistant_item"] += 1
 
     @session.on("speech_created")
     def _speech_created(event) -> None:
         source = getattr(event, "source", None)
         if source in {"say", "generate_reply"}:
-            logger.info("call_stage speech_queued source=%s", source)
+            handle = event.speech_handle
+            counts["speech_queued"] += 1
+            logger.info("call_stage speech_queued call_ref=%s source=%s speech_id=%s count=%d",
+                        call_ref, source, handle.id, counts["speech_queued"])
+
+            def _speech_done(done_handle) -> None:
+                # The pinned LiveKit 1.8.6 SpeechHandle reports generation
+                # failures through exception() once its callback fires.
+                if done_handle.exception() is not None:
+                    outcome = "error"
+                elif done_handle.interrupted:
+                    outcome = "interrupted"
+                else:
+                    outcome = "done"
+                counts[f"speech_{outcome}"] += 1
+                logger.info("call_stage speech_terminal call_ref=%s speech_id=%s outcome=%s",
+                            call_ref, done_handle.id, outcome)
+
+            handle.add_done_callback(_speech_done)
 
     @session.on("agent_false_interruption")
     def _false_interruption(event) -> None:
         # Observe the event without retaining anything the caller said.
-        logger.info("call_stage false_interruption resumed=%s",
-                    bool(getattr(event, "resumed", False)))
+        counts["false_interruption"] += 1
+        logger.info("call_stage false_interruption call_ref=%s resumed=%s",
+                    call_ref, bool(getattr(event, "resumed", False)))
 
     @session.on("error")
     def _session_error(event) -> None:
+        counts["provider_error"] += 1
         error = getattr(event, "error", None)
         source = getattr(event, "source", None)
         status_code = getattr(error, "status_code", None)
@@ -159,7 +216,17 @@ def _attach_call_diagnostics(session: AgentSession) -> None:
         reason = getattr(getattr(event, "reason", None), "value", None)
         if reason not in {"error", "job_shutdown", "participant_disconnected", "user_initiated", "task_completed"}:
             reason = "unknown"
-        logger.info("call_stage session_closed reason=%s", reason)
+        logger.info("call_stage session_closed call_ref=%s reason=%s", call_ref, reason)
+        logger.info(
+            "call_stage turn_summary call_ref=%s stt_final=%d assistant_item=%d speech_queued=%d "
+            "speech_done=%d speech_interrupted=%d speech_error=%d "
+            "false_interruption=%d provider_error=%d",
+            call_ref,
+            *(counts[key] for key in (
+                "stt_final", "assistant_item", "speech_queued", "speech_done",
+                "speech_interrupted", "speech_error", "false_interruption", "provider_error",
+            )),
+        )
 
 
 server = AgentServer()
@@ -209,6 +276,7 @@ async def phone_call(ctx: agents.JobContext) -> None:
         )
 
     logger.info("call_stage job_accepted")
+    visual_emotion = VisualEmotionEmitter(ctx.room, ctx.room.name)
     try:
         search_tool = None
         if search_is_enabled() and verified_owner_id:
@@ -251,7 +319,9 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 preemptive_generation={"enabled": True, "preemptive_tts": False},
             ),
         )
-        _attach_call_diagnostics(session)
+        # Stable for one call, opaque in logs, and independent of account names.
+        call_ref = hashlib.sha256(ctx.room.name.encode()).hexdigest()[:12]
+        _attach_call_diagnostics(session, call_ref)
         usage_endpoint = os.environ.get("POC_USAGE_ENDPOINT", "").strip()
         usage_key = os.environ.get("POC_USAGE_HMAC_KEY", "").strip()
         usage_task = None
@@ -289,7 +359,12 @@ async def phone_call(ctx: agents.JobContext) -> None:
                 await _report_usage()
 
         ctx.add_shutdown_callback(_usage_on_shutdown)
-        await session.start(room=ctx.room, agent=ChenDunni(context_text, search_tool))
+        await session.start(room=ctx.room, agent=ChenDunni(context_text, visual_emotion, search_tool))
+        visual_emotion.ready = True
+        async def _close_visual_emotion(_reason: str) -> None:
+            await visual_emotion.close()
+
+        ctx.add_shutdown_callback(_close_visual_emotion)
         logger.info("call_stage session_started")
         await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")
         logger.info("call_stage greeting_requested")

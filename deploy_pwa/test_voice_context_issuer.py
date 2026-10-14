@@ -2,7 +2,9 @@
 
 import json
 import os
+import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -135,6 +137,38 @@ class VoiceContextIssuerTest(unittest.TestCase):
         context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
         self.assertIn("当前通话用户叫 Nicole", context)
         self.assertNotIn("用户主动保存的记忆", context)
+
+    def test_sourced_opening_fact_follows_only_its_authenticated_owner(self):
+        self._login("friend", "synthetic-friend-password")
+        first = self._call()
+        self.assertEqual(first.status_code, 200)
+        first_meta, _ = self._agent_metadata(first)
+        self.assertEqual(json.loads(first_meta)["voice_context"].count("."), 1)
+        from poc_agent.signed_context import verified_context_claims
+        self.assertEqual(verified_context_claims(first_meta, SIGNING_KEY,
+                         first.json["room"])["account_seed"], {})
+        with sqlite3.connect(str(Path(self.directory.name) / "companion" / "memory.sqlite3")) as db:
+            db.execute("INSERT INTO account_seed_revisions VALUES(?,?,?,?,?,?,?,?,?)",
+                       ("synthetic-friend-opening", "friend", "expertise", "合成领域甲",
+                        "account_setup_user_provided", "2026-10-14", time.time(),
+                        "user_provided_unverified", "active"))
+        response = self._call(owner_id="nicole", account_seed={"expertise": "伪造跨号内容"})
+        self.assertEqual(response.status_code, 200)
+        metadata, _ = self._agent_metadata(response)
+        claims = verified_context_claims(metadata, SIGNING_KEY, response.json["room"])
+        self.assertEqual(claims["owner_id"], "friend")
+        self.assertEqual(claims["account_seed"]["expertise"]["value"], "合成领域甲")
+        self.assertNotIn("伪造跨号内容", signed_context_text(
+            metadata, SIGNING_KEY, response.json["room"]))
+        self.client.post("/api/logout", base_url=self.base, headers=self.headers)
+        self._login()
+        other = self._call(owner_id="friend")
+        other_meta, _ = self._agent_metadata(other)
+        other_claims = verified_context_claims(other_meta, SIGNING_KEY, other.json["room"])
+        self.assertEqual(other_claims["owner_id"], "nicole")
+        self.assertEqual(other_claims["account_seed"], {})
+        self.assertNotIn("合成领域甲", signed_context_text(
+            other_meta, SIGNING_KEY, other.json["room"]))
 
     def test_ming_seed_is_signed_from_account_store_and_correction_reaches_next_call(self):
         self._login("MING", "synthetic-ming-password")

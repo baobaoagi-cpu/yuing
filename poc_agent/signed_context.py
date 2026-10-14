@@ -95,7 +95,7 @@ def verified_context_claims(metadata: str, secret: str, room: str,
         clean_turns.append({"role": item["role"], "text": item["text"],
                             "source_kind": item["source_kind"]})
     seed = claims.get("account_seed", {})
-    if not isinstance(seed, dict) or len(seed) > 7 or (seed and claims["owner_id"] != "MING"):
+    if not isinstance(seed, dict) or len(seed) > 7:
         raise ContextRejected("invalid account seed")
     clean_seed = {}
     for field, item in seed.items():

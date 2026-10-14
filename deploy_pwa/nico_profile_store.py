@@ -41,6 +41,7 @@ _MING_SEED = {
 }
 _SEED_SOURCE = "account_setup_user_provided"
 _SEED_DATE = "2026-10-14"  # Date precision only; no account-opening clock time was supplied.
+_ACCOUNT_SEED_FIELDS = frozenset(_MING_SEED)
 _ACCOUNT_INITIAL_NAMES = {"nicole": "Nicole", "MING": "王跃明", "WAITIN": "威廷"}
 
 
@@ -204,7 +205,7 @@ class NicoProfileStore:
                              (self.owner_id,)).fetchone()
         if row and row["source_kind"] == "user_correction":
             return dict(row)
-        name = self.seed_facts().get("display_name") if self.owner_id == "MING" else None
+        name = self.seed_facts().get("display_name")
         if name and name["status"] == "active" and name["source_kind"] == "authenticated_user_correction":
             return {"display_name": name["value"], "source_kind": name["source_kind"],
                     "source_event_id": None, "updated_at": name["recorded_at"]}
@@ -231,7 +232,7 @@ class NicoProfileStore:
 
     def correct_seed_fact(self, field: str, value: str | None):
         """Record an authenticated user's correction or retraction without erasing provenance."""
-        if field not in _MING_SEED or field not in self.seed_facts():
+        if field not in _ACCOUNT_SEED_FIELDS or field not in self.seed_facts():
             raise ValueError("种子字段不存在")
         if value is not None and (not isinstance(value, str) or not 1 <= len(value.strip()) <= 120
                                   or any(ord(ch) < 32 for ch in value)):

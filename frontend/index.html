@@ -32,6 +32,26 @@
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; }
+  .emotion-stage{ position:fixed; right:0; bottom:0; z-index:1; width:min(100vw,56.25vh,500px);
+    aspect-ratio:9/16; max-height:100vh; overflow:hidden; pointer-events:none; background:#000;
+    transform:translate3d(var(--swipe-scene-x,0px),0,0); }
+  .emotion-stage[hidden]{ display:none; }
+  .emotion-stage video{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+    background:#000; pointer-events:none; }
+  .emotion-stage video[hidden]{ display:none; }
+  .emotion-stage.fallback{ background:#000 url('/yuling-media/chen-dunni-poster.jpg') center/contain no-repeat; }
+  .emotion-stage.fallback video{ display:none; }
+  .emotion-blackout{ position:absolute; inset:0; z-index:2; background:#000; opacity:0;
+    transition:opacity .22s ease; }
+  .emotion-blackout.opaque{ opacity:1; }
+  /* The existing neutral fill is unchanged. Opacity, unlike a CSS gradient, interpolates smoothly. */
+  body[data-emotion="happy"]{ --emotion-gradient:linear-gradient(145deg,#382719,#211d1a); --emotion-border:#9b7650; }
+  body[data-emotion="curious"]{ --emotion-gradient:linear-gradient(145deg,#17352e,#192326); --emotion-border:#468d84; }
+  body[data-emotion="unhappy"]{ --emotion-gradient:linear-gradient(145deg,#292b3d,#1c202a); --emotion-border:#717997; }
+  body[data-emotion="sad"]{ --emotion-gradient:linear-gradient(145deg,#1a2b43,#191e2b); --emotion-border:#557da7; }
+  body[data-emotion="angry"]{ --emotion-gradient:linear-gradient(145deg,#3b202b,#241b20); --emotion-border:#a45a71; }
+  body[data-emotion="delighted"]{ --emotion-gradient:linear-gradient(145deg,#40291f,#251e1d); --emotion-border:#b97863; }
+  body[data-emotion="playful_face"]{ --emotion-gradient:linear-gradient(145deg,#35233f,#211d2b); --emotion-border:#9169aa; }
   #dunni-portrait{ position:fixed; left:12px; top:calc(max(8px,env(safe-area-inset-top)) + 60px);
     z-index:3; pointer-events:none; display:block; width:56px; height:56px; border-radius:50%;
     object-fit:cover; border:1px solid rgba(255,255,255,.32); background:#111;
@@ -46,7 +66,14 @@
   .live-bubble{ max-height:min(32vh,230px); overflow-y:auto; overflow-wrap:anywhere;
     padding:10px 14px; border-radius:16px; font-size:16px; line-height:1.55;
     color:#fff; background:rgba(20,20,20,.25); border:0;
-    white-space:pre-wrap; scrollbar-width:thin; }
+    white-space:pre-wrap; scrollbar-width:thin; position:relative; isolation:isolate; }
+  .live-turn.agent .live-bubble{ transition:border-color .35s ease; }
+  .live-turn.agent .live-bubble::before{ content:""; position:absolute; inset:0;
+    border-radius:inherit; background:var(--emotion-gradient,transparent); opacity:0;
+    pointer-events:none; z-index:0; transition:opacity .35s ease; }
+  body[data-emotion] .live-turn.agent .live-bubble{ border:1px solid var(--emotion-border); }
+  body[data-emotion] .live-turn.agent .live-bubble::before{ opacity:1; }
+  .live-bubble .live-text{ position:relative; z-index:1; }
   .live-turn.user .live-bubble{ background:rgba(24,42,56,.25); }
   .live-bubble.interim{ color:#fff; }
   .user-avatar{ position:fixed; right:12px; bottom:calc(max(8vh,40px) + 178px); z-index:3;
@@ -123,16 +150,17 @@
   #inCallBar{ transform:translate3d(var(--swipe-bar-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); }
   .call-toolbar{ touch-action:pan-y pinch-zoom; }
-  .call-toolbar,#viz,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{
+  .call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{
     transform:translate3d(var(--swipe-scene-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
   body.swipe-moving #chatOverlay,body.swipe-moving #inCallBar,
   body.swipe-moving #chatSwipeFallback,
-  body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #dunni-portrait,
+  body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #emotionStage,body.swipe-moving #dunni-portrait,
   body.swipe-moving #liveDialogue,body.swipe-moving #userAvatar,
   body.swipe-moving #callTop,body.swipe-moving #callStage,body.swipe-moving #callControls{ transition:none; }
   @media(prefers-reduced-motion:reduce){
-    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{transition:none;}
+    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{transition:none;}
+    .emotion-blackout{transition:none;}
   }
   #inCallBar[hidden]{ display:none; }
   #inCallBar{ position:fixed; z-index:9; top:calc(max(9px,env(safe-area-inset-top)) + 76px);
@@ -158,6 +186,10 @@
   .panel .linkbtn{ background:none; border:1px solid var(--faint); color:var(--dim);
     border-radius:12px; padding:11px 26px; font-size:15px; cursor:pointer; }
   .panel .linkbtn:hover{ color:var(--light); border-color:var(--dim); }
+  .emotion-menu{ width:min(86vw,320px); display:grid; gap:8px; }
+  .emotion-menu .linkbtn{ width:100%; }
+  .emotion-menu select{ width:100%; height:42px; padding:0 12px; border-radius:10px;
+    border:1px solid var(--faint); background:#111; color:#fff; font:inherit; font-size:14px; }
   /* 对话记录面板 */
   .logpanel{ justify-content:flex-start; padding:0; background:#090a05; }
   .logbar{ display:flex; align-items:center; gap:14px; width:100%;
@@ -340,12 +372,18 @@
 <h2 class="sr-only">语灵：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
+<div id="emotionStage" class="emotion-stage" hidden aria-hidden="true">
+  <video id="neutralVideo" src="/yuling-media/chen-dunni-loop.m4v" poster="/yuling-media/chen-dunni-poster.jpg"
+    muted loop playsinline webkit-playsinline preload="metadata"></video>
+  <video id="emotionClip" muted playsinline webkit-playsinline preload="none" hidden></video>
+  <div id="emotionBlackout" class="emotion-blackout"></div>
+</div>
 <img id="dunni-portrait" src="/assets/dunni-icon-v1-192.png" alt="陳端倪" />
 <div class="live-dialogue" id="liveDialogue" aria-label="即時對話文字">
-  <div class="live-turn agent"><span class="live-speaker">陳端倪</span>
-    <div class="live-bubble" id="agentLiveBubble">通話接通後，這裡會顯示端倪正在說的話。</div></div>
+  <div class="live-turn agent"><span class="live-speaker" id="dunniLiveSpeaker">陳端倪</span>
+    <div class="live-bubble" id="agentLiveBubble"><span class="live-text" id="agentLiveText">通話接通後，這裡會顯示端倪正在說的話。</span></div></div>
   <div class="live-turn user"><span class="live-speaker" id="userLiveName">你</span>
-    <div class="live-bubble" id="userLiveBubble">你說的話會即時出現在這裡。</div></div>
+    <div class="live-bubble" id="userLiveBubble"><span class="live-text" id="userLiveText">你說的話會即時出現在這裡。</span></div></div>
 </div>
 <div class="user-avatar" id="userAvatar" aria-label="使用者頭像">你</div>
 
@@ -462,6 +500,17 @@
 
 <div class="panel hidden" id="panel">
   <button class="panel-close" id="panelClose" type="button" aria-label="关闭菜单">×</button>
+  <div class="emotion-menu">
+    <button class="linkbtn" id="emotionToggle" type="button" aria-pressed="true">情绪画面：开启</button>
+    <select id="emotionManual" aria-label="手动选择通话画面">
+      <option value="">手动选片（仅当前通话）</option>
+      <option value="neutral">回到默认画面</option>
+      <option value="happy">开心</option><option value="curious">好奇</option>
+      <option value="unhappy">失落</option><option value="sad">难过</option>
+      <option value="angry">认真</option><option value="delighted">雀跃</option>
+      <option value="playful_face">调皮</option>
+    </select>
+  </div>
   <button class="linkbtn" id="logOpenBtn">📜 对话记录</button>
   <button class="linkbtn" id="innerOpenBtn">🤍 通话后心声</button>
   <div class="hint" id="historyHealth">对话记录：检查中</div>
@@ -486,6 +535,7 @@
 
 <script src="/yuling-assets/livekit-client.umd.js"></script>
 <script src="/swipe-navigation.js"></script>
+<script src="/emotion-video.js"></script>
 <script>
 (function(){
   const LK = window.LivekitClient;
@@ -498,13 +548,14 @@
   const inCallBar=$('inCallBar'), inCallBarStatus=$('inCallBarStatus');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
   const liveBubbles={assistant:$('agentLiveBubble'),user:$('userLiveBubble')};
+  const liveTexts={assistant:$('agentLiveText'),user:$('userLiveText')};
   const liveSegments=new Map();
   const liveLatest={assistant:0,user:0};
   let liveSequence=0;
   function resetLiveDialogue(){
     liveSegments.clear(); liveLatest.assistant=0; liveLatest.user=0; liveSequence=0;
-    liveBubbles.assistant.textContent='通話接通後，這裡會顯示端倪正在說的話。';
-    liveBubbles.user.textContent='你說的話會即時出現在這裡。';
+    liveTexts.assistant.textContent='通話接通後，這裡會顯示端倪正在說的話。';
+    liveTexts.user.textContent='你說的話會即時出現在這裡。';
     liveBubbles.assistant.classList.remove('interim');
     liveBubbles.user.classList.remove('interim');
   }
@@ -522,7 +573,7 @@
     if(segment.order<liveLatest[role]) return;
     liveLatest[role]=segment.order;
     const bubble=liveBubbles[role];
-    bubble.textContent=text;
+    liveTexts[role].textContent=text;
     bubble.classList.toggle('interim',!isFinal);
     bubble.scrollTop=bubble.scrollHeight;
   }
@@ -539,6 +590,24 @@
   const meetingWave=$('meetingWave'), meetingWaveCtx=meetingWave.getContext('2d');
 
   let room=null, connecting=false, muted=false, currentCallId='';
+  const emotionNames={happy:'开心',curious:'好奇',unhappy:'有些失落',sad:'难过',
+    angry:'认真',delighted:'雀跃',playful_face:'调皮'};
+  const emotionReceipts=[];
+  window.YulingEmotionReceipts=emotionReceipts;
+  const emotionVideo=new window.YulingEmotionVideo.EmotionVideoController({
+    stage:$('emotionStage'), neutral:$('neutralVideo'), clip:$('emotionClip'),
+    blackout:$('emotionBlackout'),
+    reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)'),
+    onStateChange(state){
+      if(state==='neutral') document.body.removeAttribute('data-emotion');
+      else document.body.dataset.emotion=state;
+      $('dunniLiveSpeaker').textContent=state==='neutral'?'陈端倪':`陈端倪 · ${emotionNames[state]}`;
+    },
+    onReceipt(receipt){ emotionReceipts.push(receipt); if(emotionReceipts.length>50) emotionReceipts.shift(); }
+  });
+  document.addEventListener('visibilitychange',()=>emotionVideo.onVisibilityChange(document.hidden));
+  emotionVideo.reducedMotion.addEventListener?.('change',()=>
+    emotionVideo.onVisibilityChange(document.hidden));
   const remoteAudioElements=new Map();
   let audioRetryHandler=null;
   function clearAudioRetry(){
@@ -1240,6 +1309,8 @@
     const phase=AGENT_STATE[s];
     if(!phase || !room || callPhase==='reconnecting' || audioRetryHandler) return;
     agentState=s; agentStateAt=performance.now();
+    if(phase==='speaking') markCallAnswered();
+    if(callAnswerTimedOut) return;
     setCallPhase(muted && phase==='listening'?'muted':phase);
   }
   function checkStandbyReason(){
@@ -1340,8 +1411,13 @@
     const baoRaw = baoCalc ? Math.min(1, baoCalc()*1.8) : 0;
     if(micRaw>0.08) lastUserVoiceAt=ts;
     if(baoRaw>0.06){
+      const firstRemoteAudio=lastBaoVoiceAt===0;
       lastBaoVoiceAt=ts;
-      if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
+      markCallAnswered();
+      if(firstRemoteAudio){
+        setLamp('audio','ok');
+        if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
+      }
     }
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
@@ -1918,7 +1994,7 @@
   function syncAgentLamp(callRoom){
     const present=Array.from(callRoom.remoteParticipants.values()).some(isAgentParticipant);
     setLamp('agent',present?'ok':'warn');
-    if(room===callRoom && !present && callPhase!=='reconnecting'){
+    if(room===callRoom && !present && callPhase!=='reconnecting' && !callAnswerTimedOut){
       agentState=''; setCallPhase('waiting');
     }
     return present;
@@ -1958,6 +2034,7 @@
 
   function uiIdle(){
     connecting=false;
+    emotionVideo.stop();
     callCircle.className='circle call go';
     callIcon.setAttribute('stroke','#fff');
     callLabel.textContent='拨打';
@@ -1987,7 +2064,17 @@
         method:'POST', credentials:'same-origin', keepalive:true,
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
       });
-      let response=await post();
+      let response;
+      // A rolling Railway deploy can briefly return 502/503/504. Re-send the
+      // exact same LiveKit segment ID: the server's unique key makes a retry
+      // safe even when the first response was lost after the write committed.
+      for(let retry=0;retry<3;retry++){
+        try{ response=await post(); }catch(error){
+          if(retry===2) throw error;
+        }
+        if(response && ![502,503,504].includes(response.status)) break;
+        if(retry<2) await new Promise(resolve=>setTimeout(resolve,250*(retry+1)));
+      }
       // A preview redeploy can erase the temporary SQLite file. Start a new
       // session then, while still deduplicating by LiveKit's segment id.
       if(response.status===404 && payload.session_id){
@@ -2010,6 +2097,33 @@
   // 等待接听铃声 (拨打 → 陈端倪接听之间的过渡期循环播放)
   const ringback=new Audio('/yuling-media/ringback.wav'); ringback.loop=true; ringback.volume=0.35;
   function stopRing(){ try{ ringback.pause(); ringback.currentTime=0; }catch(_){} }
+  let callAnswerTimer=null, callAnswered=false, callAnswerTimedOut=false;
+  function clearCallAnswerTimer(){
+    if(callAnswerTimer!==null) clearTimeout(callAnswerTimer);
+    callAnswerTimer=null;
+  }
+  function markCallAnswered(){
+    if(!room || callAnswered) return;
+    callAnswered=true;
+    clearCallAnswerTimer();
+    stopRing();
+    if(callAnswerTimedOut){
+      callAnswerTimedOut=false;
+      setCallPhase('speaking');
+    }
+  }
+  function armCallAnswerTimer(callRoom, attempt){
+    clearCallAnswerTimer();
+    if(callAnswered) return;
+    callAnswerTimer=setTimeout(()=>{
+      callAnswerTimer=null;
+      if(room!==callRoom || attempt!==callAttemptId || callAnswered || callPhase==='reconnecting') return;
+      callAnswerTimedOut=true;
+      stopRing();
+      setLamp('tts','warn','20 秒内没有收到端倪语音，请挂断后重拨');
+      setCallPhase('error','端倪语音响应超时，请挂断后重拨');
+    },20000);
+  }
 
   async function startCall(){
     if(connecting||room) return;
@@ -2018,6 +2132,8 @@
     let pendingRoom=null;
     let roomJoined=false;
     connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
+    void emotionVideo.start();
+    clearCallAnswerTimer(); callAnswered=false; callAnswerTimedOut=false;
     syncInCallBar();
     setCallPhase('dialing'); callLabel.textContent='连接中';
     setLamp('room','warn'); setLamp('agent','warn'); setLamp('audio','');
@@ -2039,6 +2155,13 @@
 
       room=pendingRoom=new LK.Room({ adaptiveStream:true, dynacast:true });
       const callRoom=room, callId=currentCallId;
+      callRoom.on(LK.RoomEvent.DataReceived,(payload,participant,kind,topic)=>{
+        if(room!==callRoom || attempt!==callAttemptId) return;
+        const event=window.YulingEmotionVideo.decodeAgentEmotionEvent({
+          payload,participant,topic,room:callRoom,callId,isAgent:isAgentParticipant
+        });
+        if(event) emotionVideo.acceptEvent(event);
+      });
       // AgentSession publishes STT and spoken replies as lk.transcription text
       // streams. The legacy TranscriptionReceived event does not receive them.
       callRoom.registerTextStreamHandler('lk.transcription',async(reader,participantInfo)=>{
@@ -2072,7 +2195,6 @@
         // standard participant before its agent attributes arrive.
         if(track.kind===LK.Track.Kind.Audio){
           setLamp('audio','warn','已收到远端音轨，等待浏览器播放');
-          stopRing();                       // 陈端倪接听了 → 停等待铃声
           const el=track.attach(); el.autoplay=true; el.playsInline=true;
           el.style.display='none'; document.body.appendChild(el);
           remoteAudioElements.set(track,el);
@@ -2080,9 +2202,11 @@
           // booster can remain suspended in mobile browsers; muting this
           // element then silences an otherwise healthy remote track.
           if(el.play) Promise.resolve(el.play()).then(()=>{
-            if(room===callRoom) setLamp('audio','ok');
+            if(room===callRoom && lastBaoVoiceAt===0)
+              setLamp('audio','warn','音轨已解锁，等待端倪实际发声');
           }).catch(()=>{
             if(room!==callRoom) return;
+            clearCallAnswerTimer();
             setLamp('audio','bad','已收到音轨，但浏览器阻止播放；请点屏幕重试或用外部浏览器打开');
             setCallPhase('error','声音被浏览器阻止，请点屏幕重试');
             clearAudioRetry();
@@ -2090,7 +2214,11 @@
               audioRetryHandler=null;
               if(room!==callRoom) return;
               Promise.resolve(el.play()).then(()=>{
-                if(room===callRoom){ setLamp('audio','ok'); if(agentState) applyAgentState(agentState); else setCallPhase('connected'); }
+                if(room===callRoom){
+                  setLamp('audio','warn','音轨已解锁，等待端倪实际发声');
+                  armCallAnswerTimer(callRoom,attempt);
+                  if(agentState) applyAgentState(agentState); else setCallPhase('waiting');
+                }
               }).catch(()=>{});
             };
             document.addEventListener('pointerdown',audioRetryHandler,{once:true});
@@ -2111,7 +2239,7 @@
         if(!isAgentParticipant(p)) return;
         setLamp('agent','ok');
         const s=p&&p.attributes&&p.attributes['lk.agent.state'];
-        if(s) applyAgentState(s); else setCallPhase('connected');
+        if(s) applyAgentState(s); else setCallPhase('waiting');
       });
       room.on(LK.RoomEvent.ParticipantDisconnected,()=>syncAgentLamp(callRoom));
       room.on(LK.RoomEvent.ParticipantAttributesChanged,(changed,participant)=>{
@@ -2121,18 +2249,20 @@
       });
       room.on(LK.RoomEvent.Reconnecting,()=>{
         if(room!==callRoom) return;
+        clearCallAnswerTimer();
         setLamp('room','warn','房间连接中断，正在重连');
         setCallPhase('reconnecting');
       });
       room.on(LK.RoomEvent.Reconnected,()=>{
         if(room!==callRoom) return;
         setLamp('room','ok');
+        armCallAnswerTimer(callRoom,attempt);
         if(!syncAgentLamp(callRoom)){ setCallPhase('waiting'); return; }
         const agent=Array.from(callRoom.remoteParticipants.values()).find(isAgentParticipant);
         const state=agent&&agent.attributes&&agent.attributes['lk.agent.state'];
         if(state && AGENT_STATE[state]){
           callPhase='connected'; applyAgentState(state);
-        }else setCallPhase('connected');
+        }else setCallPhase('waiting');
       });
       room.on(LK.RoomEvent.Disconnected,()=>{
         if(room===callRoom && attempt===callAttemptId) cleanup('已断线');
@@ -2142,7 +2272,9 @@
       if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
       roomJoined=true;
       setLamp('room','ok');
-      setCallPhase('waiting');
+      if(agentState) applyAgentState(agentState);
+      else setCallPhase('waiting');
+      armCallAnswerTimer(callRoom,attempt);
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
         if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
@@ -2158,12 +2290,13 @@
       }
       connecting=false; uiInCall();
       const agentPresent=syncAgentLamp(callRoom);
-      setCallPhase(agentPresent?'connected':'waiting');
+      if(!agentState) setCallPhase('waiting');
       // 陈端倪已在房且已有状态 → 立刻反映 (避免错过第一个状态)
       try{ room.remoteParticipants.forEach(p=>{ if(!isAgentParticipant(p)) return; setLamp('agent','ok'); const s=p.attributes&&p.attributes['lk.agent.state']; if(s) applyAgentState(s); }); }catch(_){}
     }catch(e){
       if(attempt!==callAttemptId){ try{ await pendingRoom?.disconnect(); }catch(_){} return; }
       stopRing();
+      clearCallAnswerTimer();
       clearAudioRetry();
       try{ await pendingRoom?.disconnect(); }catch(_){}
       setCallPhase('error',String(e&&e.message||'').startsWith('麦克风无法启用')?
@@ -2176,8 +2309,10 @@
 
   function cleanup(msg){
     ++callAttemptId;
+    emotionVideo.stop();
     const finishedCallId=currentCallId;
     stopRing();
+    clearCallAnswerTimer(); callAnswered=false; callAnswerTimedOut=false;
     clearAudioRetry();
     for(const [track,el] of remoteAudioElements){
       try{ track.detach(el); }catch(_){}
@@ -2237,12 +2372,14 @@
     if(chatOverlay.src==='about:blank') chatOverlay.src='/chat';
     chatOverlay.hidden=false;
     chatOverlay.setAttribute('aria-hidden','false');
+    emotionVideo.onVisibilityChange(true);
     syncInCallBar();
     window.YulingSwipeNavigation?.sync();
   }
   function showCall(){
     chatOverlay.hidden=true;
     chatOverlay.setAttribute('aria-hidden','true');
+    emotionVideo.onVisibilityChange(document.hidden);
     syncInCallBar();
     window.YulingSwipeNavigation?.sync();
     chatReturn.focus();
@@ -2276,6 +2413,19 @@
   });
   function closeMenu(returnFocus=true){ panel.classList.add('hidden'); menuToggle.setAttribute('aria-expanded','false'); if(returnFocus) menuToggle.focus(); }
   menuToggle.addEventListener('click',()=>{ panel.classList.remove('hidden'); menuToggle.setAttribute('aria-expanded','true'); panelClose.focus(); });
+  $('emotionToggle').addEventListener('click',()=>{
+    emotionVideo.setEnabled(!emotionVideo.enabled);
+    $('emotionToggle').textContent=emotionVideo.enabled?'情绪画面：开启':'情绪画面：关闭';
+    $('emotionToggle').setAttribute('aria-pressed',String(emotionVideo.enabled));
+    $('emotionManual').value='';
+  });
+  $('emotionManual').addEventListener('change',event=>{
+    const state=event.target.value;
+    if(!state || !(room||connecting)){ event.target.value=''; return; }
+    if(!emotionVideo.enabled){ emotionVideo.setEnabled(true); $('emotionToggle').textContent='情绪画面：开启';
+      $('emotionToggle').setAttribute('aria-pressed','true'); }
+    emotionVideo.manualSelect(state);
+  });
   panelClose.addEventListener('click',closeMenu);
   panel.addEventListener('click',e=>{ if(e.target===panel) closeMenu(); });
 
