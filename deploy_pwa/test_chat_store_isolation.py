@@ -60,6 +60,11 @@ class ChatStoreIsolationTest(unittest.TestCase):
             self.assertTrue(nicole.has_session("old-session"))
             self.assertEqual(nicole.get_image("old-image"), ("image/png", b"abc"))
             self.assertEqual(nicole.memories()[0]["text"], "old private memory")
+            with sqlite3.connect(path) as db:
+                self.assertIsNotNone(db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='causal_claims'"
+                ).fetchone())
+            self.assertEqual(nicole.causal_claims(), [])
 
     def test_snapshot_is_consistent_private_and_never_overwrites(self):
         with tempfile.TemporaryDirectory() as directory:

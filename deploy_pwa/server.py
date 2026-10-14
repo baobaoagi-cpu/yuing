@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import sqlite3
 import sys
 import threading
 import time
@@ -31,6 +32,7 @@ BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
 from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
+from deploy_pwa.backup_memory_bundle import FILES as MEMORY_DB_TABLES, _inspect as inspect_memory_db
 from deploy_pwa.chat_api import reply_to, ProviderError
 from deploy_pwa.nico_profile_store import NicoProfileStore
 from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
@@ -599,6 +601,36 @@ def conversation_status():
                    graph_reasoning=False, hermes=False)
 
 
+@app.get("/api/v2/storage/readiness")
+def memory_storage_readiness():
+    """Read-only local integrity probe; never equate it with restart durability."""
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(local_integrity=False, cross_deploy_verified=False,
+                       status="unavailable"), 503
+    paths = {"chat.sqlite3": store.path, "memory.sqlite3": profile.memory_path,
+             "knowledge.sqlite3": profile.knowledge_path,
+             "graph.sqlite3": profile.graph_path}
+    try:
+        for name, path in paths.items():
+            counts = inspect_memory_db(path, MEMORY_DB_TABLES[name])
+            if name == "chat.sqlite3" and "causal_claims" not in counts:
+                raise ValueError("candidate schema incomplete")
+    except (OSError, ValueError, sqlite3.Error):
+        return jsonify(local_integrity=False, cross_deploy_verified=False,
+                       status="integrity_failed"), 503
+    mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
+    mounted = bool(mount) and all(
+        path.resolve().is_relative_to(Path(mount).resolve()) for path in paths.values())
+    return jsonify(local_integrity=True, database_count=4,
+                   volume_path_configured=mounted,
+                   cross_deploy_verified=False, status="local_integrity_ok")
+
+
 @app.post("/api/v2/upload-image")
 def upload_chat_image():
     guard = _v2_guard(write=True)
@@ -1052,6 +1084,9 @@ def conversation_chat():
             except Exception:
                 app.logger.exception("skill candidate capture failed")
     try:
+        knowledge_context = (store.search_knowledge(text_value, limit=3)
+                             if profile is not None and profile.consent_status()
+                             and isinstance(text_value, str) and text_value.strip() else ())
         answer = reply_to(text_value, history, store.memories(), image=image,
                           link_url=link_url, page_context=page_context,
                           document_context=document, owner_id=store.owner_id,
@@ -1059,7 +1094,8 @@ def conversation_chat():
                           if profile is not None else None,
                           profile_candidates=profile.facts(limit=4)
                           if profile is not None and profile.consent_status() else (),
-                          account_seed=profile.seed_facts() if profile is not None else {})
+                          account_seed=profile.seed_facts() if profile is not None else {},
+                          knowledge_context=knowledge_context)
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
     assistant_event = store.add_event(sid, "assistant", answer,
@@ -1120,6 +1156,25 @@ def list_knowledge_items():
     return jsonify(items=store.knowledge_items())
 
 
+@app.get("/api/v2/knowledge/search")
+def search_knowledge_items():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(error="知识检索尚未配置"), 503
+    if not profile.consent_status():
+        return jsonify(error="尚未同意使用个人知识检索"), 403
+    try:
+        items = store.search_knowledge(request.args.get("q"), limit=10)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(items=items, retrieval="lexical_source_match",
+                   verified_facts=False, vector_search=False)
+
+
 @app.post("/api/v2/knowledge")
 def save_knowledge_item():
     """Save a user-supplied note linked to its original conversation event."""
@@ -1173,6 +1228,93 @@ def list_relation_candidates():
     if store is None:
         return jsonify(error="关系存储尚未配置"), 503
     return jsonify(items=store.relation_candidates(), status="candidate_only")
+
+
+@app.get("/api/v2/relations/paths")
+def list_relation_paths():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(error="关系检索尚未配置"), 503
+    if not profile.consent_status():
+        return jsonify(error="尚未同意使用个人关系检索"), 403
+    start_id = _uuid(request.args.get("start_id"))
+    if not start_id:
+        return jsonify(error="起点不正确"), 400
+    paths = store.relation_paths(start_id)
+    if paths is None:
+        return jsonify(error="起点不存在"), 404
+    return jsonify(paths=paths, evidence_status="relation_candidate_only",
+                   causal_support=False)
+
+
+@app.get("/api/v2/causal-claims")
+def list_causal_claims():
+    guard = _v2_guard()
+    if guard:
+        return guard
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(error="因果证据存储尚未配置"), 503
+    if not profile.consent_status():
+        return jsonify(error="尚未同意使用个人关系检索"), 403
+    relation_id = request.args.get("relation_id")
+    if relation_id and not _uuid(relation_id):
+        return jsonify(error="关系编号不正确"), 400
+    return jsonify(items=store.causal_claims(relation_id),
+                   supported_claims=False, review_workflow="not_implemented")
+
+
+@app.post("/api/v2/causal-claims")
+def save_causal_claim():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if request.mimetype != "application/json" or not request.content_length or request.content_length > MAX_JSON:
+        return jsonify(error="因果证据格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="因果证据格式不正确"), 400
+    relation_id = _uuid(data.get("relation_id"))
+    source_event_id = _uuid(data.get("source_event_id"))
+    if not relation_id or not source_event_id:
+        return jsonify(error="请提供本账号的关系与来源消息"), 400
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(error="因果证据存储尚未配置"), 503
+    if not profile.consent_status():
+        return jsonify(error="尚未同意使用个人关系检索"), 403
+    try:
+        item = store.add_causal_claim(relation_id, source_event_id,
+                                      data.get("evidence_quote"),
+                                      data.get("counterevidence"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except StoreUnavailable:
+        return jsonify(error="关系或原始证据不存在"), 404
+    return jsonify(item=item), 201
+
+
+@app.delete("/api/v2/causal-claims/<claim_id>")
+def retract_causal_claim(claim_id):
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    store = _chat_store()
+    profile = _profile_store(store)
+    if store is None or profile is None:
+        return jsonify(error="因果证据存储尚未配置"), 503
+    if not profile.consent_status():
+        return jsonify(error="尚未同意使用个人关系检索"), 403
+    cid = _uuid(claim_id)
+    if not cid or not store.retract_causal_claim(cid):
+        return jsonify(error="因果主张不存在"), 404
+    return jsonify(ok=True, status="retracted")
 
 
 @app.post("/api/v2/relations")

@@ -56,6 +56,107 @@ class ProfileApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json, model.call_args.kwargs
 
+    def test_source_search_and_multihop_paths_are_scoped_and_retractable(self):
+        self.assertEqual(self.client.get("/api/v2/storage/readiness",
+                                         base_url=self.base).status_code, 401)
+        self.login()
+        ready = self.client.get("/api/v2/storage/readiness", base_url=self.base)
+        self.assertEqual(ready.status_code, 200)
+        self.assertTrue(ready.json["local_integrity"])
+        self.assertFalse(ready.json["cross_deploy_verified"])
+        event, _ = self.chat("合成測試：甲支持乙，乙連結丙")
+        source_id = event["user_event"]["id"]
+        self.assertEqual(self.client.get("/api/v2/knowledge/search?q=支持",
+                                         base_url=self.base).status_code, 403)
+        self.assertEqual(self.client.post("/api/v2/profile/consent", base_url=self.base,
+                                          headers=self.headers, json={"enabled": True}).status_code, 200)
+        ids = []
+        for title, content in (("甲", "甲支持乙"), ("乙", "乙連結丙"), ("丙", "丙是節點")):
+            response = self.client.post("/api/v2/knowledge", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"title": title, "content": content,
+                                              "source_event_id": source_id})
+            self.assertEqual(response.status_code, 201)
+            ids.append(response.json["item"]["id"])
+        found = self.client.get("/api/v2/knowledge/search?q=甲支持乙",
+                                base_url=self.base)
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.json["items"][0]["id"], ids[0])
+        self.assertEqual(found.json["items"][0]["source_event_id"], source_id)
+        self.assertFalse(found.json["vector_search"])
+        _, model_kwargs = self.chat("甲支持乙")
+        self.assertEqual(model_kwargs["knowledge_context"][0]["source_event_id"], source_id)
+        for left, right in zip(ids, ids[1:]):
+            response = self.client.post("/api/v2/relations", base_url=self.base,
+                                        headers=self.headers,
+                                        json={"subject_id": left, "object_id": right,
+                                              "predicate": "合成關係", "source_event_id": source_id})
+            self.assertEqual(response.status_code, 201)
+            if left == ids[0]:
+                relation_id = response.json["item"]["id"]
+        paths = self.client.get("/api/v2/relations/paths?start_id=" + ids[0],
+                                base_url=self.base)
+        self.assertEqual(paths.status_code, 200)
+        self.assertEqual([len(item["edges"]) for item in paths.json["paths"]], [1, 2])
+        self.assertFalse(paths.json["causal_support"])
+        claim = self.client.post("/api/v2/causal-claims", base_url=self.base,
+                                 headers=self.headers,
+                                 json={"relation_id": relation_id,
+                                       "source_event_id": source_id,
+                                       "evidence_quote": "甲支持乙"})
+        self.assertEqual(claim.status_code, 201)
+        claim_id = claim.json["item"]["id"]
+        self.assertEqual(claim.json["item"]["status"], "candidate")
+        self.assertFalse(self.client.get("/api/v2/causal-claims",
+                                         base_url=self.base).json["supported_claims"])
+
+        other = server.app.test_client()
+        self.login(other, username="other", password="synthetic-other-password")
+        other.post("/api/v2/profile/consent", base_url=self.base, headers=self.headers,
+                   json={"enabled": True})
+        self.assertEqual(other.get("/api/v2/knowledge/search?q=甲支持乙",
+                                   base_url=self.base).json["items"], [])
+        _, other_model_kwargs = self.chat("甲支持乙", client=other)
+        self.assertEqual(other_model_kwargs["knowledge_context"], [])
+        self.assertEqual(other.get("/api/v2/relations/paths?start_id=" + ids[0],
+                                   base_url=self.base).status_code, 404)
+        self.assertEqual(other.post("/api/v2/knowledge", base_url=self.base,
+                                    headers=self.headers,
+                                    json={"title": "偷取", "content": "跨帳號",
+                                          "source_event_id": source_id}).status_code, 404)
+        self.assertEqual(other.post("/api/v2/relations", base_url=self.base,
+                                    headers=self.headers,
+                                    json={"subject_id": ids[0], "object_id": ids[1],
+                                          "predicate": "偷取", "source_event_id": source_id}).status_code, 404)
+        self.assertEqual(other.get("/api/v2/causal-claims", base_url=self.base).json["items"], [])
+        self.assertEqual(other.post("/api/v2/causal-claims", base_url=self.base,
+                                    headers=self.headers,
+                                    json={"relation_id": relation_id,
+                                          "source_event_id": source_id,
+                                          "evidence_quote": "甲支持乙"}).status_code, 404)
+        self.assertEqual(other.delete("/api/v2/causal-claims/" + claim_id,
+                                      base_url=self.base, headers=self.headers).status_code, 404)
+
+        self.assertEqual(self.client.delete("/api/v2/causal-claims/" + claim_id,
+                                            base_url=self.base,
+                                            headers=self.headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/v2/causal-claims",
+                                         base_url=self.base).json["items"][0]["status"],
+                         "retracted")
+
+        self.assertEqual(self.client.delete("/api/v2/knowledge/" + ids[1],
+                                            base_url=self.base,
+                                            headers=self.headers).status_code, 200)
+        paths = self.client.get("/api/v2/relations/paths?start_id=" + ids[0],
+                                base_url=self.base)
+        self.assertEqual(paths.json["paths"], [])
+        self.assertEqual(self.client.post("/api/v2/profile/consent", base_url=self.base,
+                                          headers=self.headers, json={"enabled": False}).status_code, 200)
+        self.assertEqual(self.client.get("/api/v2/knowledge/search?q=甲",
+                                         base_url=self.base).status_code, 403)
+        _, model_kwargs = self.chat("甲支持乙")
+        self.assertEqual(model_kwargs["knowledge_context"], ())
+
     def test_explicit_consent_and_source_bound_candidate(self):
         self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).status_code, 401)
         self.login()

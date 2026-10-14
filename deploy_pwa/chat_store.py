@@ -6,6 +6,7 @@ import json
 from hashlib import sha256
 import time
 import re
+import unicodedata
 from urllib.parse import urlsplit
 from deploy_pwa.public_page_reader import PageReadError, _validated_url
 from contextlib import contextmanager
@@ -23,6 +24,14 @@ class PageReadQuotaExceeded(RuntimeError):
 
 
 OWNER_TABLES = ("sessions", "images", "documents", "memories", "knowledge_items", "relation_candidates")
+
+
+def _search_terms(text):
+    tokens = re.findall(r"[\u3400-\u9fff]|[a-z0-9]+", text)
+    terms = set(tokens)
+    terms.update(left + right for left, right in zip(tokens, tokens[1:])
+                 if len(left) == len(right) == 1)
+    return terms
 
 
 class ChatStore:
@@ -90,6 +99,15 @@ class ChatStore:
                     object_id TEXT NOT NULL, source_event_id TEXT,
                     status TEXT NOT NULL DEFAULT 'candidate', created_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS causal_claims (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                    relation_id TEXT NOT NULL, source_event_id TEXT NOT NULL,
+                    evidence_quote TEXT NOT NULL, counterevidence TEXT,
+                    status TEXT NOT NULL CHECK(status IN ('candidate','retracted')),
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS causal_claims_owner_relation
+                    ON causal_claims(owner_id, relation_id);
                 CREATE TABLE IF NOT EXISTS page_reads (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
                     source_event_id TEXT NOT NULL, url TEXT NOT NULL,
@@ -603,9 +621,88 @@ class ChatStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def search_knowledge(self, query, limit=10):
+        """Bounded, source-linked lexical retrieval. No model-derived fact promotion.
+
+        Unicode bigrams cover Chinese text where SQLite's default FTS tokenizer
+        does not split words. All candidate rows are owner filtered in SQL first.
+        """
+        if not isinstance(query, str) or not 1 <= len(query.strip()) <= 200:
+            raise ValueError("检索文字需在 1 至 200 字内")
+        limit = max(1, min(int(limit), 20))
+        normalized = unicodedata.normalize("NFKC", query).casefold().strip()
+        terms = {term for term in _search_terms(normalized)
+                 if len(term) >= 2 or len(normalized) == 1}
+        if not terms:
+            return []
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                "FROM knowledge_items WHERE owner_id=? AND source_event_id IS NOT NULL "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 2000",
+                (self.owner_id,),
+            ).fetchall()
+        matches = []
+        for row in rows:
+            item = dict(row)
+            title_terms = _search_terms(unicodedata.normalize("NFKC", item["title"]).casefold())
+            content_terms = _search_terms(unicodedata.normalize("NFKC", item["content"]).casefold())
+            score = sum(3 if term in title_terms else 1 if term in content_terms else 0
+                        for term in terms)
+            if score:
+                item["score"] = score
+                item["retrieval_status"] = "lexical_source_match"
+                matches.append(item)
+        matches.sort(key=lambda item: (-item["score"], -item["created_at"], item["id"]))
+        return matches[:limit]
+
+    def relation_paths(self, start_id, max_hops=3, limit=20):
+        """Traverse sourced candidate edges only; paths are not causal evidence."""
+        if not isinstance(start_id, str) or not start_id:
+            raise ValueError("起点不正确")
+        max_hops = max(1, min(int(max_hops), 3))
+        limit = max(1, min(int(limit), 20))
+        with self._connect() as db:
+            nodes = {row["id"]: dict(row) for row in db.execute(
+                "SELECT id,title,source_event_id FROM knowledge_items "
+                "WHERE owner_id=? AND source_event_id IS NOT NULL",
+                (self.owner_id,))}
+            if start_id not in nodes:
+                return None
+            edges = [dict(row) for row in db.execute(
+                "SELECT id,subject_id,predicate,object_id,source_event_id,status "
+                "FROM relation_candidates WHERE owner_id=? AND status='candidate' "
+                "AND source_event_id IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 2000",
+                (self.owner_id,))]
+        adjacency = {}
+        for edge in edges:
+            if edge["subject_id"] in nodes and edge["object_id"] in nodes:
+                adjacency.setdefault(edge["subject_id"], []).append(edge)
+        paths = []
+        frontier = [(start_id, [start_id], [])]
+        while frontier and len(paths) < limit:
+            node, visited, steps = frontier.pop(0)
+            if len(steps) >= max_hops:
+                continue
+            for edge in adjacency.get(node, []):
+                next_id = edge["object_id"]
+                if next_id in visited:
+                    continue
+                next_steps = steps + [edge]
+                paths.append({"nodes": [nodes[x] for x in visited + [next_id]],
+                              "edges": next_steps, "evidence_status": "relation_candidate_only"})
+                if len(paths) >= limit:
+                    break
+                frontier.append((next_id, visited + [next_id], next_steps))
+        return paths
+
     def delete_knowledge_item(self, item_id):
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM causal_claims WHERE owner_id=? AND relation_id IN "
+                       "(SELECT id FROM relation_candidates WHERE owner_id=? "
+                       "AND (subject_id=? OR object_id=?))",
+                       (self.owner_id, self.owner_id, item_id, item_id))
             db.execute("DELETE FROM relation_candidates WHERE owner_id=? "
                        "AND (subject_id=? OR object_id=?)",
                        (self.owner_id, item_id, item_id))
@@ -648,6 +745,60 @@ class ChatStore:
                 "object_id": object_id, "source_event_id": source_event_id,
                 "status": "candidate", "created_at": now}
 
+    def add_causal_claim(self, relation_id, source_event_id, evidence_quote,
+                         counterevidence=None):
+        """Store a sourced causal hypothesis, separate from a relation path."""
+        if (not isinstance(relation_id, str) or not relation_id or
+                not isinstance(source_event_id, str) or not source_event_id or
+                not isinstance(evidence_quote, str) or
+                not 1 <= len(evidence_quote.strip()) <= 500 or
+                counterevidence is not None and
+                (not isinstance(counterevidence, str) or len(counterevidence) > 1000)):
+            raise ValueError("因果主张或证据不正确")
+        claim_id = str(uuid4())
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            relation = db.execute(
+                "SELECT 1 FROM relation_candidates WHERE id=? AND owner_id=? "
+                "AND status='candidate'", (relation_id, self.owner_id)).fetchone()
+            source = db.execute(
+                "SELECT e.text FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=? AND e.role='user' AND s.owner_id=?",
+                (source_event_id, self.owner_id)).fetchone()
+            if relation is None or source is None or evidence_quote.strip() not in source["text"]:
+                raise StoreUnavailable("关系或原始证据不存在")
+            db.execute(
+                "INSERT INTO causal_claims(id,owner_id,relation_id,source_event_id,"
+                "evidence_quote,counterevidence,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (claim_id, self.owner_id, relation_id, source_event_id,
+                 evidence_quote.strip(), counterevidence, "candidate", now))
+        return {"id": claim_id, "relation_id": relation_id,
+                "source_event_id": source_event_id,
+                "evidence_quote": evidence_quote.strip(),
+                "counterevidence": counterevidence, "status": "candidate",
+                "created_at": now}
+
+    def causal_claims(self, relation_id=None, limit=50):
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT c.id,c.relation_id,c.source_event_id,c.evidence_quote,"
+                "c.counterevidence,c.status,c.created_at FROM causal_claims c "
+                "JOIN relation_candidates r ON r.id=c.relation_id AND r.owner_id=c.owner_id "
+                "WHERE c.owner_id=? AND (? IS NULL OR c.relation_id=?) "
+                "ORDER BY c.created_at DESC,c.id DESC LIMIT ?",
+                (self.owner_id, relation_id, relation_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def retract_causal_claim(self, claim_id):
+        with self._connect() as db:
+            changed = db.execute(
+                "UPDATE causal_claims SET status='retracted' "
+                "WHERE id=? AND owner_id=? AND status='candidate'",
+                (claim_id, self.owner_id)).rowcount
+        return changed > 0
+
     def relation_candidates(self, limit=50):
         limit = max(1, min(int(limit), 100))
         with self._connect() as db:
@@ -668,6 +819,9 @@ class ChatStore:
 
     def delete_relation_candidate(self, relation_id):
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM causal_claims WHERE relation_id=? AND owner_id=?",
+                       (relation_id, self.owner_id))
             cur = db.execute("DELETE FROM relation_candidates WHERE id=? AND owner_id=?",
                              (relation_id, self.owner_id))
             return cur.rowcount > 0

@@ -12,6 +12,16 @@
 
 `POST /api/v2/relations` 可用同帳號兩個知識條目 ID、關係描述及一則使用者來源訊息 ID 保存**關係候選**；`GET /api/v2/relations` 與 `DELETE /api/v2/relations/{id}` 供列出和撤回。狀態固定為 `candidate`，不表示因果已證實。刪除知識條目會同步清除與其相連的候選關係。目前只是 SQLite 來源紀錄，沒有圖資料庫查詢或自動推論。
 
+### 記憶整合升級候選（隔離分支）
+
+`GET /api/v2/knowledge/search?q=...` 以帳號篩選有來源的筆記，再做 Unicode 字元／雙字檢索；需該帳號啟用人物資料同意。結果含 `source_event_id`，但只是 `lexical_source_match`，**不是向量或語意檢索**。同意啟用時，文字聊天最多接收三筆同帳號筆記片段，作為不可信參考；關閉同意後不再接入。既有筆記列表與刪除仍開放給本人管理，寫入筆記本身是本人明示動作。
+
+`GET /api/v2/relations/paths?start_id=...` 最多走三跳，回傳同帳號、有來源的候選邊；回應 `causal_support=false`。`POST/GET/DELETE /api/v2/causal-claims` 另存原始訊息片段可核對的因果主張，僅能建立 `candidate` 或撤回；沒有將主張升格為已支持的審核流程。刪除邊或知識節點會清除其下的因果主張，撤回單一主張則保留 `retracted` 狀態。正式稽核／歷史撤回鏈仍待設計。
+
+`GET /api/v2/storage/readiness` 需登入，檢查四個 SQLite 檔案完整性與必要表；它明確回報 `cross_deploy_verified=false`。四檔離線快照工具 `python -m deploy_pwa.backup_memory_bundle CHAT_DB COMPANION_ROOT NEW_DIRECTORY` 可產出 SHA-256、表列數及私有權限，並以 `verify_bundle` 核對。因四檔沒有跨檔交易，**備份前必須停止寫入**；本機合成資料還原已測，正式 Volume 還原與跨部署讀回仍未驗證。
+
+`benchmark_vector_candidate.py` 是僅用合成繁簡中文與字元雜湊向量的 `sqlite-vec` 儲存試驗，不是語意模型。它不屬於部署依賴，不影響線上查詢。PostgreSQL／`pgvector` 尚未在隔離環境跑起，暫不選定正式向量後端。
+
 通話記憶簽發是預設關閉的 POC 功能。必須由 PWA 與 Agent 各自設定相同、至少 32 bytes 的 `POC_VOICE_CONTEXT_HMAC_KEY`，再於 PWA 設定 `POC_VOICE_CONTEXT_ENABLED=1`；缺任一條件時不能宣稱語音可讀記憶。簽發只取已登入帳號的使用者明示記憶，不使用前端提交的 identity、owner 或 metadata。啟用前先驗證同源檢查、跨帳號拒絕、部署後持久性及真人通話；現有 `/tmp` 資料仍會在重建時消失。
 
 `Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除目前瀏覽器的 Cookie；更換帳密或簽章祕密會使相應舊登入失效。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
