@@ -145,7 +145,8 @@ def _compact_small_talk(answer):
 
 def reply_to(text, history, memories=(), image=None, link_url=None,
              page_context=None, document_context=None, owner_id=None,
-             display_name=None, profile_candidates=(), account_seed=None):
+             display_name=None, profile_candidates=(), account_seed=None,
+             usage_observer=None):
     key = os.environ.get("MINIMAX_API_KEY", "").strip()
     if not key:
         raise ProviderError("对话模型尚未配置")
@@ -303,6 +304,9 @@ def reply_to(text, history, memories=(), image=None, link_url=None,
         raise ProviderError("对话模型暂时无法回应") from exc
     except (URLError, TimeoutError, ValueError) as exc:
         raise ProviderError("对话模型暂时无法连接") from exc
+    if usage_observer is not None:
+        from deploy_pwa.model_usage import response_usage
+        usage_observer(response_usage(payload, model))
     chunks = payload.get("content", [])
     answer = "".join(x.get("text", "") for x in chunks if x.get("type") == "text").strip()
     if not answer:

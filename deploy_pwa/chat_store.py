@@ -115,6 +115,15 @@ class ChatStore:
                 );
                 CREATE INDEX IF NOT EXISTS voice_usage_owner_time
                     ON voice_usage_events(owner_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS text_model_usage_events (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                    scope TEXT NOT NULL CHECK(scope IN ('chat','call_reflection')),
+                    scope_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+                    source_status TEXT NOT NULL, cost_status TEXT NOT NULL,
+                    counters_json TEXT NOT NULL, created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS text_usage_owner_time
+                    ON text_model_usage_events(owner_id, created_at DESC);
             """)
         # Existing single-account databases are assigned to the configured
         # legacy owner once. New records always carry their owner explicitly.
@@ -215,7 +224,74 @@ class ChatStore:
             ).fetchall()
         return {"totals": [dict(row) for row in totals],
                 "recent": [dict(row) for row in recent],
+                "text_llm": self.text_usage_summary(limit=limit),
                 "source": "livekit_sdk_reported", "currency_estimate_verified": False}
+
+    def record_text_model_usage(self, *, scope, scope_id, observation):
+        """Record one authenticated account's provider response or missing usage.
+
+        The caller must derive scope_id from this account's saved event or
+        verified call, never from an untrusted request field.
+        """
+        if scope not in {"chat", "call_reflection"} or not isinstance(scope_id, str) or not scope_id:
+            raise StoreUnavailable("用量来源不正确")
+        if not isinstance(observation, dict) or observation.get("provider") != "minimax":
+            raise StoreUnavailable("用量来源不正确")
+        model = observation.get("model")
+        counters = observation.get("counters")
+        status = observation.get("source_status")
+        if (not isinstance(model, str) or not 1 <= len(model) <= 120 or
+                status not in {"provider_response_reported", "usage_missing"} or
+                observation.get("cost_status") != "unknown_no_rate_or_invoice" or
+                not isinstance(counters, dict) or
+                any(k not in {"input_tokens", "output_tokens", "cache_read_input_tokens",
+                              "cache_creation_input_tokens"} or type(v) is not int or
+                    not 0 <= v <= 10**12 for k, v in counters.items())):
+            raise StoreUnavailable("用量格式不正确")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if scope == "chat":
+                owns = db.execute("SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                                  "WHERE e.id=? AND s.owner_id=?", (scope_id, self.owner_id)).fetchone()
+            else:
+                owns = db.execute("SELECT 1 FROM call_reflections "
+                                  "WHERE call_id=? AND owner_id=?", (scope_id, self.owner_id)).fetchone()
+            if not owns:
+                raise StoreUnavailable("用量来源不属于当前用户")
+            db.execute("INSERT INTO text_model_usage_events "
+                       "(id,owner_id,scope,scope_id,provider,model,source_status,"
+                       "cost_status,counters_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       (str(uuid4()), self.owner_id, scope, scope_id, "minimax", model,
+                        status, "unknown_no_rate_or_invoice",
+                        json.dumps(counters, sort_keys=True), time.time()))
+
+    def text_usage_summary(self, limit=30):
+        """Response-level LLM usage only; no inferred tokens or money."""
+        with self._connect() as db:
+            rows = db.execute("SELECT scope,scope_id,provider,model,source_status,"
+                              "cost_status,counters_json,created_at "
+                              "FROM text_model_usage_events WHERE owner_id=? "
+                              "ORDER BY created_at DESC LIMIT ?",
+                              (self.owner_id, max(1, min(int(limit), 100)))).fetchall()
+            all_rows = db.execute("SELECT scope,source_status,counters_json "
+                                  "FROM text_model_usage_events WHERE owner_id=?",
+                                  (self.owner_id,)).fetchall()
+        totals = {"chat": {"requests": 0, "missing_usage": 0, "input_tokens": 0,
+                            "output_tokens": 0},
+                  "call_reflection": {"requests": 0, "missing_usage": 0,
+                                      "input_tokens": 0, "output_tokens": 0}}
+        for row in all_rows:
+            entry = totals[row["scope"]]
+            entry["requests"] += 1
+            entry["missing_usage"] += row["source_status"] == "usage_missing"
+            counters = json.loads(row["counters_json"])
+            for field in ("input_tokens", "output_tokens"):
+                entry[field] += counters.get(field, 0)
+        return {"totals": totals,
+                "recent": [{**{k: row[k] for k in row.keys() if k != "counters_json"},
+                            "counters": json.loads(row["counters_json"])} for row in rows],
+                "cost_status": "unknown_no_rate_or_invoice",
+                "provider_invoice_reconciled": False}
 
     @contextmanager
     def _connect(self):

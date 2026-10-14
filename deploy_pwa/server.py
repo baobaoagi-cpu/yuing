@@ -1088,8 +1088,14 @@ def reflect_on_call(call_id):
     if not substantial_call(events):
         store.finish_call_reflection(call_id, "skipped")
         return jsonify(item=store.call_reflection(call_id), created=True), 201
+    def observe_reflection_usage(observation):
+        try:
+            store.record_text_model_usage(scope="call_reflection", scope_id=call_id,
+                                          observation=observation)
+        except (StoreUnavailable, OSError):
+            app.logger.exception("call reflection usage recording failed")
     try:
-        note, model = generate_reflection(events)
+        note, model = generate_reflection(events, usage_observer=observe_reflection_usage)
     except (ProviderError, ValueError, TypeError):
         store.finish_call_reflection(call_id, "failed")
         return jsonify(item=store.call_reflection(call_id),
@@ -1182,6 +1188,12 @@ def conversation_chat():
                                requested_scopes=[], cost="unknown")
             except Exception:
                 app.logger.exception("skill candidate capture failed")
+    def observe_chat_usage(observation):
+        try:
+            store.record_text_model_usage(scope="chat", scope_id=user_event["id"],
+                                          observation=observation)
+        except (StoreUnavailable, OSError):
+            app.logger.exception("text model usage recording failed")
     try:
         answer = reply_to(text_value, history, memories_for_turn(store, text_value), image=image,
                           link_url=link_url, page_context=page_context,
@@ -1190,7 +1202,8 @@ def conversation_chat():
                           if profile is not None else None,
                           profile_candidates=profile.facts(limit=4)
                           if profile is not None and profile.consent_status() else (),
-                          account_seed=profile.seed_facts() if profile is not None else {})
+                          account_seed=profile.seed_facts() if profile is not None else {},
+                          usage_observer=observe_chat_usage)
     except ProviderError as exc:
         return jsonify(error=str(exc), session_id=sid, user_event=user_event), 502
     assistant_event = store.add_event(sid, "assistant", answer,
