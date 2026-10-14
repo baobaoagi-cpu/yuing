@@ -237,6 +237,23 @@ class ChatStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_voice_context(self, limit=8):
+        """Bounded prior turns from this owner only; conversation is not a saved fact."""
+        limit = max(0, min(int(limit), 8))
+        if not limit:
+            return []
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT e.role,e.text,e.source_kind,e.created_at FROM events e "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE s.owner_id=? AND e.source_kind IN "
+                "('livekit_browser_transcript','user_explicit','model_generated') "
+                "AND e.text<>'' ORDER BY e.created_at DESC,e.rowid DESC LIMIT ?",
+                (self.owner_id, limit),
+            ).fetchall()
+        return [{"role": row["role"], "text": row["text"][:240],
+                 "source_kind": row["source_kind"]} for row in reversed(rows)]
+
     def call_transcript(self, call_id, limit=500):
         """Return an owner's saved turns; a different owner's ID looks absent."""
         with self._connect() as db:

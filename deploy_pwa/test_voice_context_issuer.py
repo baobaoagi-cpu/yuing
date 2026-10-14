@@ -96,6 +96,36 @@ class VoiceContextIssuerTest(unittest.TestCase):
         self.assertIn("朋友喜欢散步", friend_context)
         self.assertNotIn("妮可喜欢安静", friend_context)
 
+    def test_recent_voice_context_is_scoped_to_logged_in_owner(self):
+        owner = ChatStore(self.db_path, "friend", legacy_owner_id="nicole")
+        sid = owner.create_session()
+        owner.add_event(sid, "user", "我想先聊今天的劇本", source_kind="user_explicit")
+        owner.add_call_transcript(sid, "call-friend", "speaker-a", "segment-a",
+                                  "assistant", "上次說到分鏡",)
+        other = ChatStore(self.db_path, "nicole", legacy_owner_id="nicole")
+        other_sid = other.create_session()
+        other.add_event(other_sid, "user", "只屬於妮可的內容", source_kind="user_explicit")
+        self._login("friend", "synthetic-friend-password")
+        response = self._call(owner_id="nicole", recent_turns=[{"role":"user",
+                              "text":"偽造瀏覽器內容","source_kind":"user_explicit"}])
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("今天的劇本", context)
+        self.assertIn("上次說到分鏡", context)
+        self.assertNotIn("只屬於妮可的內容", context)
+        self.assertNotIn("偽造瀏覽器內容", context)
+        self.assertIn("逐字稿可能有辨识错误", context)
+
+    def test_waitin_gets_server_bound_account_name(self):
+        server.EXTRA_ACCOUNTS["WAITIN"] = generate_password_hash(
+            "synthetic-waitin-password", method="pbkdf2:sha256:1000000")
+        self._login("WAITIN", "synthetic-waitin-password")
+        response = self._call(display_name="偽造名稱")
+        metadata, _ = self._agent_metadata(response)
+        context = signed_context_text(metadata, SIGNING_KEY, response.json["room"])
+        self.assertIn("当前账号是威廷", context)
+        self.assertNotIn("偽造名稱", context)
+
     def test_nicole_name_is_signed_even_before_any_saved_memory(self):
         self._login()
         response = self._call(identity="friend", owner_id="friend")

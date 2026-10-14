@@ -24,15 +24,35 @@
   .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
   .top{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .top.callpane{ position:fixed; top:50%; left:0; right:0; z-index:3;
+    transform:translateY(-50%); margin:0; pointer-events:none; }
+  .top.callpane .clock,.top.callpane .name{ display:none; }
   .clock{ font-size:13px; color:var(--dim); letter-spacing:.06em; margin-bottom:4px; }
   .name{ font-size:26px; font-weight:500; letter-spacing:.08em; }
   .status{ font-size:15px; color:var(--dim); min-height:22px; letter-spacing:.04em; }
 
   #viz{ position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; }
-  /* 人像贴住视口右下角；视频自带黑底，其他区域保持纯黑。 */
-  #dunni-portrait{ position:fixed; right:0; bottom:0; z-index:1; pointer-events:none;
-    display:block; width:min(58vw,54vh,460px); height:auto; aspect-ratio:9/16;
-    object-fit:contain; background:#000; user-select:none; -webkit-user-drag:none; }
+  #dunni-portrait{ position:fixed; left:12px; top:calc(max(8px,env(safe-area-inset-top)) + 60px);
+    z-index:3; pointer-events:none; display:block; width:56px; height:56px; border-radius:50%;
+    object-fit:cover; border:1px solid rgba(255,255,255,.32); background:#111;
+    user-select:none; -webkit-user-drag:none; }
+  .live-dialogue{ position:fixed; inset:calc(max(8px,env(safe-area-inset-top)) + 60px) 12px
+    calc(max(8vh,40px) + 178px); z-index:3; pointer-events:none; }
+  .live-turn{ position:absolute; max-width:min(72vw,420px); display:flex; flex-direction:column;
+    gap:5px; text-align:left; }
+  .live-turn.agent{ left:68px; top:0; align-items:flex-start; }
+  .live-turn.user{ right:64px; bottom:0; align-items:flex-end; text-align:right; }
+  .live-speaker{ font-size:12px; color:var(--dim); }
+  .live-bubble{ max-height:min(32vh,230px); overflow-y:auto; overflow-wrap:anywhere;
+    padding:10px 14px; border-radius:16px; font-size:16px; line-height:1.55;
+    background:rgba(20,20,20,.93); border:1px solid rgba(255,255,255,.14);
+    white-space:pre-wrap; scrollbar-width:thin; }
+  .live-turn.user .live-bubble{ background:rgba(24,42,56,.94); }
+  .live-bubble.interim{ color:rgba(255,255,255,.72); }
+  .user-avatar{ position:fixed; right:12px; bottom:calc(max(8vh,40px) + 178px); z-index:3;
+    width:56px; height:56px; display:grid; place-items:center; border-radius:50%;
+    border:1px solid rgba(255,255,255,.32); background:#203041; color:#fff;
+    font-size:18px; font-weight:600; }
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:3; }
   .call-toolbar{ position:fixed; top:max(8px,env(safe-area-inset-top)); left:12px; right:12px;
@@ -251,8 +271,13 @@
     body{ --phone-top:max(14px,env(safe-area-inset-top)); }
     .controls.callpane{ align-self:center; width:100%; margin-left:0; }
     .call-toolbar{ top:var(--phone-top); left:8px; right:8px; gap:4px; }
+    #dunni-portrait{ top:calc(var(--phone-top) + 56px); left:8px; width:48px; height:48px; }
+    .user-avatar{ right:8px; bottom:calc(max(8vh,40px) + 178px); width:48px; height:48px; }
+    .live-dialogue{ inset:calc(var(--phone-top) + 56px) 8px calc(max(8vh,40px) + 178px); }
+    .live-turn.agent{ left:58px; }
+    .live-turn.user{ right:58px; }
+    .live-bubble{ font-size:15px; max-height:25vh; }
     .panel-close{ top:var(--phone-top); right:8px; }
-    .top.callpane{ margin-top:calc(50px + max(0px,env(safe-area-inset-top) - 14px)); }
     .logbody{ max-width:none; padding:12px 12px 24px; }
     .logbody.detail{ max-width:none; gap:12px; }
     .detailgrid,.detailmeta{ gap:12px; }
@@ -285,9 +310,14 @@
 <h2 class="sr-only">语灵：点中间的绿色按钮就能跟陈端倪实时语音通话。中央光球会随声音呼吸。</h2>
 
 <canvas id="viz" aria-hidden="true"></canvas>
-<video id="dunni-portrait" src="/yuling-media/chen-dunni-loop.m4v"
-  poster="/yuling-media/chen-dunni-poster.jpg" autoplay muted loop playsinline
-  preload="metadata" aria-hidden="true"></video>
+<img id="dunni-portrait" src="/assets/dunni-icon-v1-192.png" alt="陳端倪" />
+<div class="live-dialogue" id="liveDialogue" aria-label="即時對話文字">
+  <div class="live-turn agent"><span class="live-speaker">陳端倪</span>
+    <div class="live-bubble" id="agentLiveBubble">通話接通後，這裡會顯示端倪正在說的話。</div></div>
+  <div class="live-turn user"><span class="live-speaker" id="userLiveName">你</span>
+    <div class="live-bubble" id="userLiveBubble">你說的話會即時出現在這裡。</div></div>
+</div>
+<div class="user-avatar" id="userAvatar" aria-label="使用者頭像">你</div>
 
 <div class="call-toolbar">
 <button class="nav-control chat-return" id="chatReturn" type="button" aria-label="返回上一页，文字聊天">
@@ -437,6 +467,35 @@
   const chatReturn=$('chatReturn'), leaveDialog=$('leaveDialog');
   const leaveCancel=$('leaveCancel'), leaveConfirm=$('leaveConfirm');
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
+  const liveBubbles={assistant:$('agentLiveBubble'),user:$('userLiveBubble')};
+  const liveSegments=new Map();
+  const liveLatest={assistant:0,user:0};
+  let liveSequence=0;
+  function resetLiveDialogue(){
+    liveSegments.clear(); liveLatest.assistant=0; liveLatest.user=0; liveSequence=0;
+    liveBubbles.assistant.textContent='通話接通後，這裡會顯示端倪正在說的話。';
+    liveBubbles.user.textContent='你說的話會即時出現在這裡。';
+    liveBubbles.assistant.classList.remove('interim');
+    liveBubbles.user.classList.remove('interim');
+  }
+  function showLiveTranscript(role,segmentId,text,isFinal){
+    if(!liveBubbles[role] || !segmentId || !text) return;
+    const key=role+':'+segmentId;
+    let segment=liveSegments.get(key);
+    if(!segment){
+      segment={order:++liveSequence,final:false}; liveSegments.set(key,segment);
+      // Keep only a bounded amount of segment bookkeeping during long calls.
+      if(liveSegments.size>80) liveSegments.delete(liveSegments.keys().next().value);
+    }
+    if(segment.final && !isFinal) return;
+    if(isFinal) segment.final=true;
+    if(segment.order<liveLatest[role]) return;
+    liveLatest[role]=segment.order;
+    const bubble=liveBubbles[role];
+    bubble.textContent=text;
+    bubble.classList.toggle('interim',!isFinal);
+    bubble.scrollTop=bubble.scrollHeight;
+  }
   const meetingView=$('meetingView'), swipeHint=$('swipeHint');
   const meetingStatus=$('meetingStatus'), meetingBadge=$('meetingBadge'), meetingTimer=$('meetingTimer');
   const meetingChunkMeta=$('meetingChunkMeta'), meetingDraftState=$('meetingDraftState');
@@ -469,6 +528,10 @@
     .then(data=>{ if(data&&typeof data.account==='string'&&data.account){
       CHAT_SESSION_KEY='yuling_chat_session_v2:'+data.account;
       localStorage.removeItem('yuling_chat_session_v2');
+      const accountName=data.account==='WAITIN'?'威廷':data.account;
+      $('userLiveName').textContent=accountName;
+      $('userAvatar').textContent=accountName.slice(0,1).toUpperCase();
+      $('userAvatar').setAttribute('aria-label',accountName+'的頭像');
     } }).catch(()=>{});
   let meetingProgress=0;
   let meetingDrag=null;
@@ -1916,6 +1979,7 @@
   async function startCall(){
     if(connecting||room) return;
     const attempt=++callAttemptId;
+    resetLiveDialogue();
     let pendingRoom=null;
     let roomJoined=false;
     connecting=true; agentState=''; lastUserVoiceAt=0; lastBaoVoiceAt=0;
@@ -1942,14 +2006,24 @@
       // AgentSession publishes STT and spoken replies as lk.transcription text
       // streams. The legacy TranscriptionReceived event does not receive them.
       callRoom.registerTextStreamHandler('lk.transcription',async(reader,participantInfo)=>{
-        let transcript;
-        try{ transcript=String(await reader.readAll()).trim(); }catch(_){ return; }
         const attributes=reader.info&&reader.info.attributes||{};
-        if(attributes['lk.transcription_final']!=='true' || !transcript) return;
+        const isFinal=attributes['lk.transcription_final']==='true';
         const speakerIdentity=participantInfo&&participantInfo.identity;
         const segmentId=attributes['lk.segment_id']||(reader.info&&reader.info.id);
         if(!speakerIdentity || !segmentId || !callId) return;
         const role=speakerIdentity===callRoom.localParticipant.identity?'user':'assistant';
+        let transcript='';
+        try{
+          // LiveKit yields the full text received so far. This also follows
+          // TTS-synchronised agent speech instead of guessing from audio.
+          for await(const update of reader){
+            transcript=String(update).trim();
+            if(room===callRoom && attempt===callAttemptId)
+              showLiveTranscript(role,String(segmentId),transcript,isFinal);
+          }
+        }catch(_){ return; }
+        if(room!==callRoom || attempt!==callAttemptId || !isFinal || !transcript) return;
+        showLiveTranscript(role,String(segmentId),transcript,true);
         if(role==='user') setLamp('stt','ok');
         else setLamp('llm','warn','本次已收到 Agent 文字回复；模型供应商尚未独立验证');
         saveFinalTranscript(callId,speakerIdentity,String(segmentId),role,transcript);
@@ -2066,6 +2140,7 @@
     try{ if(audioEventFX.timer) clearInterval(audioEventFX.timer); audioEventFX.timer=null; audioEventFX.bound=false; }catch(_){}
     micCalc=null; baoCalc=null;       // 声浪源归零 → 光球回待机呼吸
     room=null; muted=false; agentState=''; currentCallId=''; setMic(''); setLamp('room',''); setLamp('agent',''); setLamp('audio','');
+    resetLiveDialogue();
     setLamp('stt',''); setLamp('llm',''); setLamp('tts',''); uiIdle(); setCallPhase(msg==='已断线'?'disconnected':'ended');
     if(finishedCallId){
       // The server reads only this authenticated owner's saved final events.

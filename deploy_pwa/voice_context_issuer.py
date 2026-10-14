@@ -19,7 +19,9 @@ def _b64url(data: bytes) -> str:
 
 def issue_voice_context(secret: str, room: str, owner_id: str,
                         memories: list[dict], now: int | None = None,
-                        account_seed: dict | None = None) -> str:
+                        account_seed: dict | None = None,
+                        display_name: str | None = None,
+                        recent_turns: list[dict] | None = None) -> str:
     """Sign the authenticated owner and bounded, explicit saved memories."""
     if not isinstance(secret, str) or len(secret.encode("utf-8")) < 32:
         raise ValueError("voice context signing key is missing or too short")
@@ -43,6 +45,16 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         "expires_at": issued + 90,
         "memories": clean,
     }
+    if isinstance(display_name, str) and 1 <= len(display_name) <= 40:
+        claims["display_name"] = display_name
+    turns = []
+    for item in recent_turns or []:
+        if (isinstance(item, dict) and item.get("role") in {"user", "assistant"}
+                and item.get("source_kind") in {"livekit_browser_transcript", "user_explicit", "model_generated"}
+                and isinstance(item.get("text"), str) and item["text"].strip()):
+            turns.append({"role": item["role"], "text": item["text"][:240],
+                          "source_kind": item["source_kind"]})
+    claims["recent_turns"] = turns[-8:]
     if owner_id == "MING" and isinstance(account_seed, dict):
         claims["account_seed"] = {
             field: {"value": item["value"], "source_kind": item["source_kind"],
@@ -59,7 +71,12 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         raw = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).digest()
         token = _b64url(raw) + "." + _b64url(signature)
-        if len(token) <= 11_000 or not clean:
+        if len(token) <= 11_000:
             break
-        clean.pop()
+        if claims["recent_turns"]:
+            claims["recent_turns"].pop(0)
+        elif clean:
+            clean.pop()
+        else:
+            raise ValueError("voice context exceeds size limit")
     return json.dumps({"voice_context": token}, separators=(",", ":"))

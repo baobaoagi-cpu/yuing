@@ -58,6 +58,17 @@ class SignedContextTest(unittest.TestCase):
         self.assertIn("当前登录账号的称呼", context)
         self.assertIn("不要把这些资料说成自己从声音认出来的", context)
 
+    def test_signed_name_and_recent_turns_are_labeled_unverified(self):
+        context = signed_context_text(envelope(owner_id="WAITIN", memories=[],
+            display_name="威廷", recent_turns=[{"role":"user", "text":"談到分鏡",
+            "source_kind":"livekit_browser_transcript"}]), KEY, ROOM, now=110)
+        self.assertIn("当前账号是威廷", context)
+        self.assertIn("談到分鏡", context)
+        self.assertIn("不是已核实的个人事实", context)
+        with self.assertRaises(ContextRejected):
+            signed_context_text(envelope(recent_turns=[{"role":"user", "text":"偽造",
+                "source_kind":"unknown"}]), KEY, ROOM, now=110)
+
     def test_room_mismatch_and_expired_context_are_rejected(self):
         with self.assertRaises(ContextRejected):
             signed_context_text(envelope(), KEY, "other-room", now=110)
