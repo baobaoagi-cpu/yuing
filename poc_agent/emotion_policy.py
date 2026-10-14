@@ -12,9 +12,11 @@ from collections.abc import AsyncIterable, AsyncIterator, Callable
 
 
 SUPPORTED_MODELS = frozenset({"speech-2.8-hd", "speech-2.8-turbo"})
-_MAX_LOOKAHEAD = 48
+_MAX_LOOKAHEAD = 128
 _MAX_CUES_PER_REPLY = 2
 _SENTENCE_END = frozenset("。！？!?，,；;\n")
+_SENSITIVE = re.compile(r"(?:自杀|自傷|自伤|死亡|去世|生病|受伤|受傷|难过|難過|崩溃|崩潰|哭了|痛苦|被欺负|被欺負)")
+_QUOTE_OR_QUESTION = re.compile(r"[“”‘’\"'《》]|(?:什么是|什麼是|为什么|為什麼|是不是|怎么|怎麼)")
 
 # All tags below appear in the official MiniMax Speech 2.8 interjection list.
 _DIRECT_CUES = (
@@ -28,7 +30,7 @@ _DIRECT_CUES = (
 # Clear intent phrases can suggest a sound even without an opening filler.
 # General positive/negative topics do not trigger a cue: that would overact.
 _PHRASE_CUES = (
-    (re.compile(r"(?:逗你的|开个玩笑|你逗我|别逗我)"), "chuckle"),
+    (re.compile(r"(?:逗你的|我开个玩笑|今天开个玩笑)"), "chuckle"),
     (re.compile(r"(?:真没想到|居然是这样|这也太巧了)"), "gasps"),
     (re.compile(r"(?:还好没事|总算松了口气)"), "exhale"),
 )
@@ -36,6 +38,8 @@ _PHRASE_CUES = (
 
 def choose_tts_cue(text: str) -> tuple[str, str | None]:
     """Return TTS-only text and selected cue, without changing the transcript."""
+    if _SENSITIVE.search(text) or _QUOTE_OR_QUESTION.search(text):
+        return text, None
     for pattern, category in _DIRECT_CUES:
         match = pattern.match(text)
         if match:
@@ -54,16 +58,14 @@ def tts_only_interjection(text: str) -> tuple[str, bool]:
 
 
 def _ready_parts(text: str, *, flush: bool = False) -> tuple[list[str], str]:
-    """Release clauses or a bounded prefix without waiting for a full reply."""
+    """Release clauses, retaining enough context for phrases split across LLM chunks."""
     parts: list[str] = []
     while text:
-        boundary = next((i + 1 for i, ch in enumerate(text) if ch in _SENTENCE_END), None)
+        boundary = next((i + 1 for i, ch in enumerate(text[:_MAX_LOOKAHEAD]) if ch in _SENTENCE_END), None)
         if boundary is None:
             if len(text) < _MAX_LOOKAHEAD and not flush:
                 break
             boundary = min(len(text), _MAX_LOOKAHEAD)
-        elif boundary > _MAX_LOOKAHEAD:
-            boundary = _MAX_LOOKAHEAD
         parts.append(text[:boundary])
         text = text[boundary:]
     return parts, text
@@ -78,7 +80,8 @@ async def minimax_tts_text(
 ) -> AsyncIterator[str]:
     """Select at most two cues per reply, only for MiniMax Speech 2.8.
 
-    ``on_decision`` receives only the cue category, never the words.
+    ``on_decision`` receives selected cue categories, or one ``None`` when
+    the whole reply had no cue. Segment boundaries are not decisions.
     """
     if model not in SUPPORTED_MODELS:
         if on_decision:
@@ -91,20 +94,20 @@ async def minimax_tts_text(
 
     pending = ""
     cues_used = 0
-    decisions = 0
+    sensitive_reply = False
 
     def adapt(part: str) -> str:
-        nonlocal cues_used, decisions
+        nonlocal cues_used, sensitive_reply
         if on_source_part:
             on_source_part(part)
-        if cues_used < _MAX_CUES_PER_REPLY:
+        sensitive_reply = sensitive_reply or bool(_SENSITIVE.search(part))
+        if cues_used < _MAX_CUES_PER_REPLY and not sensitive_reply:
             altered, category = choose_tts_cue(part)
         else:
             altered, category = part, None
         if category is not None:
             cues_used += 1
-        decisions += 1
-        if on_decision:
+        if on_decision and category is not None:
             on_decision(category)
         return altered
 
@@ -117,5 +120,5 @@ async def minimax_tts_text(
     ready, pending = _ready_parts(pending, flush=True)
     for part in ready:
         yield adapt(part)
-    if decisions == 0 and on_decision:
+    if cues_used == 0 and on_decision:
         on_decision(None)
