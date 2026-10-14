@@ -582,6 +582,10 @@
     }
   }
   function syncLiveSpeakerVisibility(ts){
+    // The local microphone stays open between utterances and may carry fan,
+    // traffic or speaker echo. LiveKit's speaking state, which includes the
+    // local participant, is the voice-activity signal for the user bubble.
+    if(room?.localParticipant?.isSpeaking===true && !muted) lastUserVoiceAt=ts;
     const active=Boolean(room && callPhase!=='reconnecting');
     setLiveSpeakerVisible('user',Boolean(active && !muted &&
       lastUserVoiceAt && ts-lastUserVoiceAt<1400));
@@ -1449,7 +1453,6 @@
     if(t0===null) t0=ts; const t=(ts-t0)/1000;
     const micRaw = micCalc ? Math.min(1, micCalc()*1.7) : 0;
     const baoRaw = baoCalc ? Math.min(1, baoCalc()*1.8) : 0;
-    if(micRaw>0.08) lastUserVoiceAt=ts;
     if(baoRaw>0.06){
       const firstRemoteAudio=lastBaoVoiceAt===0;
       lastBaoVoiceAt=ts;
@@ -1459,8 +1462,8 @@
         if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
       }
     }
-    // These portraits and bubbles reflect audible track activity, not stale
-    // transcript text or a guessed Agent state. A short hold bridges pauses.
+    // A short hold bridges pauses; local activity comes from LiveKit's
+    // speaking state rather than raw microphone amplitude.
     syncLiveSpeakerVisibility(ts);
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);

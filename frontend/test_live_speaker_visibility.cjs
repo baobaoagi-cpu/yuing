@@ -87,4 +87,12 @@ assert.equal(shown('assistant'),false,'reconnecting hides stale remote activity'
 runtime.state.callPhase='listening'; runtime.state.room=null;
 runtime.syncLiveSpeakerVisibility(4550);
 assert.equal(shown('assistant'),false,'ended call hides remote activity immediately');
+const localParticipant={isSpeaking:true};
+runtime.state.room={localParticipant};
+runtime.state.lastUserVoiceAt=0;
+runtime.syncLiveSpeakerVisibility(5000);
+assert.equal(shown('user'),true,'LiveKit voice activity reveals the user');
+localParticipant.isSpeaking=false;
+runtime.syncLiveSpeakerVisibility(6500);
+assert.equal(shown('user'),false,'server-reported silence hides the user even if the microphone stays open');
 console.log('Live speaker bubbles: audio-driven visibility, silence, mute, disconnect PASS');
