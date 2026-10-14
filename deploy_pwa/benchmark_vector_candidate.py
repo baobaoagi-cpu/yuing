@@ -16,9 +16,6 @@ import tempfile
 import time
 from pathlib import Path
 
-import sqlite_vec
-
-
 DIM = 128
 CORPUS = [
     (1, "繁體：端倪喜歡散步"),
@@ -63,6 +60,8 @@ def vector(text):
 
 
 def run(semantic=False, cache_dir=None):
+    import sqlite_vec
+
     dimension = DIM
     embed = vector
     model_name = "deterministic_character_hash_not_semantic"
