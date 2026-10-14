@@ -96,6 +96,32 @@ class VoiceContextIssuerTest(unittest.TestCase):
         self.assertIn("朋友喜欢散步", friend_context)
         self.assertNotIn("妮可喜欢安静", friend_context)
 
+    def test_recent_sourced_knowledge_requires_separate_consent(self):
+        owner = ChatStore(self.db_path, "nicole", legacy_owner_id="nicole")
+        sid = owner.create_session()
+        source = owner.add_event(sid, "user", "我喜歡夜間散步",
+                                 source_kind="user_explicit")
+        owner.add_knowledge_item("散步偏好", "我喜歡夜間散步", source["id"])
+        self._login()
+        before = self._call()
+        before_meta, _ = self._agent_metadata(before)
+        self.assertNotIn("散步偏好", signed_context_text(before_meta, SIGNING_KEY,
+                                                      before.json["room"]))
+        consent = self.client.post("/api/v2/knowledge/consent", base_url=self.base,
+                                   headers=self.headers, json={"enabled": True})
+        self.assertEqual(consent.status_code, 200)
+        after = self._call()
+        after_meta, _ = self._agent_metadata(after)
+        context = signed_context_text(after_meta, SIGNING_KEY, after.json["room"])
+        self.assertIn("散步偏好", context)
+        self.assertIn(source["id"], context)
+        self.client.post("/api/logout", base_url=self.base, headers=self.headers)
+        self._login("friend", "synthetic-friend-password")
+        other = self._call()
+        other_meta, _ = self._agent_metadata(other)
+        other_context = signed_context_text(other_meta, SIGNING_KEY, other.json["room"])
+        self.assertNotIn("散步偏好", other_context or "")
+
     def test_nicole_name_is_signed_even_before_any_saved_memory(self):
         self._login()
         response = self._call(identity="friend", owner_id="friend")

@@ -24,6 +24,8 @@
 
 通話記憶簽發是預設關閉的 POC 功能。必須由 PWA 與 Agent 各自設定相同、至少 32 bytes 的 `POC_VOICE_CONTEXT_HMAC_KEY`，再於 PWA 設定 `POC_VOICE_CONTEXT_ENABLED=1`；缺任一條件時不能宣稱語音可讀記憶。簽發只取已登入帳號的使用者明示記憶，不使用前端提交的 identity、owner 或 metadata。啟用前先驗證同源檢查、跨帳號拒絕、部署後持久性及真人通話；現有 `/tmp` 資料仍會在重建時消失。
 
+升級候選可在語音通話開始時，依同帳號最近五分鐘的明示文字話題與**獨立知識使用同意**，另外放入最多兩筆附來源的未核實筆記摘錄。這份資料跟明示記憶一起經伺服器簽章、綁定通話房間並在 90 秒後失效，Agent 只看到短效片段，不持有資料庫憑證。沒有近期文字話題或同意關閉時不帶筆記；通話中換話題不會重新檢索，因此還不能稱為完整的語音知識問答。
+
 `Dockerfile` 只複製此目錄並以 Flask/Gunicorn 提供。`server.py` 要求部署環境設定 `POC_PREVIEW_USER`、`POC_PREVIEW_PASSWORD` 和獨立的 `POC_SESSION_SECRET`（至少 32 字元），未設定時健康檢查不通過。登入使用 Flask 簽章、HttpOnly、SameSite Cookie；勾選「保持登入 30 天」時設 30 天到期，未勾選為瀏覽器工作階段 Cookie 且伺服器端 12 小時到期。登出可清除目前瀏覽器的 Cookie；更換帳密或簽章祕密會使相應舊登入失效。HTTPS 網址可在手機 Safari 開啟並嘗試加入主畫面。iPhone 與上海網路的實際感知效果仍需實機驗收。
 
 ### 可選的個別測試帳號

@@ -171,6 +171,9 @@ def api_yuling_token():
                               legacy_owner_id=os.environ.get(
                                   "POC_LEGACY_OWNER", os.environ.get("POC_PREVIEW_USER", owner)))
             memories = store.memories(limit=30)
+            recent_text = store.latest_user_text(max_age_seconds=300)
+            knowledge = (store.search_knowledge(recent_text, limit=2)
+                         if recent_text and store.knowledge_consent_enabled() else [])
         except (OSError, ValueError, StoreUnavailable, sqlite3.Error):
             return jsonify({"error": "通话记忆暂时不可用"}), 503
         identity = "guest-" + uuid4().hex[:20]
@@ -187,7 +190,8 @@ def api_yuling_token():
             except (OSError, ValueError, sqlite3.Error):
                 return jsonify({"error": "账号基础资料暂时不可用"}), 503
         agent_meta = issue_voice_context(signing_key, room, owner, memories,
-                                         account_seed=account_seed)
+                                         account_seed=account_seed,
+                                         knowledge=knowledge)
     else:
         # Keep calls separate even before voice-memory context is enabled.
         # Browser identity is neither an account proof nor a safe room key.

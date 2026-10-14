@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import time
+from uuid import UUID
 
 
 def _b64url(data: bytes) -> str:
@@ -19,7 +20,8 @@ def _b64url(data: bytes) -> str:
 
 def issue_voice_context(secret: str, room: str, owner_id: str,
                         memories: list[dict], now: int | None = None,
-                        account_seed: dict | None = None) -> str:
+                        account_seed: dict | None = None,
+                        knowledge: list[dict] | None = None) -> str:
     """Sign the authenticated owner and bounded, explicit saved memories."""
     if not isinstance(secret, str) or len(secret.encode("utf-8")) < 32:
         raise ValueError("voice context signing key is missing or too short")
@@ -43,6 +45,23 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         "expires_at": issued + 90,
         "memories": clean,
     }
+    clean_knowledge = []
+    for item in (knowledge or [])[:2]:
+        if not isinstance(item, dict) or item.get("source_kind") != "user_explicit":
+            continue
+        try:
+            source = str(UUID(item["source_event_id"]))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            continue
+        title, content = item.get("title"), item.get("content")
+        if (not isinstance(title, str) or not 1 <= len(title) <= 120 or
+                not isinstance(content, str) or not content):
+            continue
+        clean_knowledge.append({"title": title, "excerpt": content[:500],
+                                "source_event_id": source,
+                                "status": "user_note_unverified"})
+    if clean_knowledge:
+        claims["knowledge"] = clean_knowledge
     if owner_id == "MING" and isinstance(account_seed, dict):
         claims["account_seed"] = {
             field: {"value": item["value"], "source_kind": item["source_kind"],
@@ -59,7 +78,14 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         raw = json.dumps(claims, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).digest()
         token = _b64url(raw) + "." + _b64url(signature)
-        if len(token) <= 11_000 or not clean:
+        if len(token) <= 11_000:
             break
-        clean.pop()
+        if clean_knowledge:
+            clean_knowledge.pop()
+            if not clean_knowledge:
+                claims.pop("knowledge", None)
+        elif clean:
+            clean.pop()
+        else:
+            break
     return json.dumps({"voice_context": token}, separators=(",", ":"))

@@ -81,6 +81,20 @@ class SignedContextTest(unittest.TestCase):
             signed_context_text(envelope(memories=[{
                 "text": "x" * 501, "source_kind": "user_explicit"}]), KEY, ROOM, now=110)
 
+    def test_knowledge_excerpt_requires_source_and_candidate_label(self):
+        item = {"title": "测试笔记", "excerpt": "甲可能影响乙",
+                "source_event_id": "2c2b21a2-4718-4f08-8026-a6423a68e20e",
+                "status": "user_note_unverified"}
+        context = signed_context_text(envelope(knowledge=[item]), KEY, ROOM, now=110)
+        self.assertIn("未经核实", context)
+        self.assertIn(item["source_event_id"], context)
+        with self.assertRaises(ContextRejected):
+            signed_context_text(envelope(knowledge=[{**item, "source_event_id": "not-a-uuid"}]),
+                                KEY, ROOM, now=110)
+        with self.assertRaises(ContextRejected):
+            signed_context_text(envelope(knowledge=[{**item, "status": "verified"}]),
+                                KEY, ROOM, now=110)
+
 
 if __name__ == "__main__":
     unittest.main()

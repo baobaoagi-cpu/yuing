@@ -676,6 +676,20 @@ class ChatStore:
         matches.sort(key=lambda item: (-item["score"], -item["created_at"], item["id"]))
         return matches[:limit]
 
+    def latest_user_text(self, max_age_seconds=300):
+        """Recent same-account explicit text only, for call-start context."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT e.text,e.created_at FROM events e "
+                "JOIN sessions s ON s.id=e.session_id "
+                "WHERE s.owner_id=? AND e.role='user' AND e.source_kind='user_explicit' "
+                "ORDER BY e.created_at DESC,e.rowid DESC LIMIT 1",
+                (self.owner_id,),
+            ).fetchone()
+        if row and 0 <= time.time() - row["created_at"] <= max_age_seconds:
+            return row["text"][:200]
+        return None
+
     def relation_paths(self, start_id, max_hops=3, limit=20):
         """Traverse sourced candidate edges only; paths are not causal evidence."""
         if not isinstance(start_id, str) or not start_id:
