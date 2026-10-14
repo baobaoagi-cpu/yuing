@@ -114,7 +114,7 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
     """
     counts = {
         "stt_final": 0, "assistant_item": 0, "speech_queued": 0,
-        "speech_done": 0, "speech_interrupted": 0,
+        "speech_done": 0, "speech_interrupted": 0, "speech_error": 0,
         "false_interruption": 0, "provider_error": 0,
     }
 
@@ -149,10 +149,11 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
                         call_ref, source, handle.id, counts["speech_queued"])
 
             def _speech_done(done_handle) -> None:
-                # The deployed LiveKit 1.8.6 wheel exposes id, interrupted,
-                # and add_done_callback. Terminal is not handset audibility,
-                # nor proof that provider generation succeeded.
-                if done_handle.interrupted:
+                # The pinned LiveKit 1.8.6 SpeechHandle reports generation
+                # failures through exception() once its callback fires.
+                if done_handle.exception() is not None:
+                    outcome = "error"
+                elif done_handle.interrupted:
                     outcome = "interrupted"
                 else:
                     outcome = "done"
@@ -191,11 +192,12 @@ def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
         logger.info("call_stage session_closed call_ref=%s reason=%s", call_ref, reason)
         logger.info(
             "call_stage turn_summary call_ref=%s stt_final=%d assistant_item=%d speech_queued=%d "
-            "speech_done=%d speech_interrupted=%d false_interruption=%d provider_error=%d",
+            "speech_done=%d speech_interrupted=%d speech_error=%d "
+            "false_interruption=%d provider_error=%d",
             call_ref,
             *(counts[key] for key in (
                 "stt_final", "assistant_item", "speech_queued", "speech_done",
-                "speech_interrupted", "false_interruption", "provider_error",
+                "speech_interrupted", "speech_error", "false_interruption", "provider_error",
             )),
         )
 
