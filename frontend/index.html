@@ -62,20 +62,20 @@
     gap:5px; text-align:left; }
   .live-turn.agent{ left:68px; top:0; align-items:flex-start; }
   .live-turn.user{ right:64px; bottom:0; align-items:flex-end; text-align:right; }
-  .live-speaker{ font-size:12px; color:var(--dim); }
+  .live-speaker{ font-size:12px; color:#fff; }
   .live-bubble{ max-height:min(32vh,230px); overflow-y:auto; overflow-wrap:anywhere;
     padding:10px 14px; border-radius:16px; font-size:16px; line-height:1.55;
-    background:rgba(20,20,20,.93); border:1px solid rgba(255,255,255,.14);
+    color:#fff; background:rgba(20,20,20,.25); border:0;
     white-space:pre-wrap; scrollbar-width:thin; position:relative; isolation:isolate; }
   .live-turn.agent .live-bubble{ transition:border-color .35s ease; }
   .live-turn.agent .live-bubble::before{ content:""; position:absolute; inset:0;
     border-radius:inherit; background:var(--emotion-gradient,transparent); opacity:0;
     pointer-events:none; z-index:0; transition:opacity .35s ease; }
-  body[data-emotion] .live-turn.agent .live-bubble{ border-color:var(--emotion-border); }
+  body[data-emotion] .live-turn.agent .live-bubble{ border:1px solid var(--emotion-border); }
   body[data-emotion] .live-turn.agent .live-bubble::before{ opacity:1; }
   .live-bubble .live-text{ position:relative; z-index:1; }
-  .live-turn.user .live-bubble{ background:rgba(24,42,56,.94); }
-  .live-bubble.interim{ color:rgba(255,255,255,.72); }
+  .live-turn.user .live-bubble{ background:rgba(24,42,56,.25); }
+  .live-bubble.interim{ color:#fff; }
   .user-avatar{ position:fixed; right:12px; bottom:calc(max(8vh,40px) + 178px); z-index:3;
     width:56px; height:56px; display:grid; place-items:center; border-radius:50%;
     border:1px solid rgba(255,255,255,.32); background:#203041; color:#fff;
@@ -150,15 +150,16 @@
   #inCallBar{ transform:translate3d(var(--swipe-bar-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); }
   .call-toolbar{ touch-action:pan-y pinch-zoom; }
-  .call-toolbar,#viz,#emotionStage,#dunni-portrait,#callTop,#callStage,#callControls{
+  .call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{
     transform:translate3d(var(--swipe-scene-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
   body.swipe-moving #chatOverlay,body.swipe-moving #inCallBar,
   body.swipe-moving #chatSwipeFallback,
   body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #emotionStage,body.swipe-moving #dunni-portrait,
+  body.swipe-moving #liveDialogue,body.swipe-moving #userAvatar,
   body.swipe-moving #callTop,body.swipe-moving #callStage,body.swipe-moving #callControls{ transition:none; }
   @media(prefers-reduced-motion:reduce){
-    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#emotionStage,#dunni-portrait,#callTop,#callStage,#callControls{transition:none;}
+    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#emotionStage,#dunni-portrait,#liveDialogue,#userAvatar,#callTop,#callStage,#callControls{transition:none;}
     .emotion-blackout{transition:none;}
   }
   #inCallBar[hidden]{ display:none; }
@@ -630,8 +631,8 @@
       const accountName=typeof data.display_name==='string'&&data.display_name
         ? data.display_name : data.account;
       $('userLiveName').textContent=accountName;
-      $('userAvatar').textContent=accountName.slice(0,1).toUpperCase();
-      $('userAvatar').setAttribute('aria-label',accountName+'的頭像');
+      $('userAvatar').textContent='你';
+      $('userAvatar').setAttribute('aria-label',accountName+'的預設頭像');
     } }).catch(()=>{});
   let meetingProgress=0;
   let meetingDrag=null;
