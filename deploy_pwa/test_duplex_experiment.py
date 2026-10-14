@@ -1,7 +1,9 @@
 """The optional realtime offer relay must not expose its paid provider key."""
 
 import os
+import io
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from deploy_pwa import server
@@ -77,6 +79,16 @@ class DuplexExperimentTest(unittest.TestCase):
         with patch.object(server, "urlopen", return_value=_Answer()):
             responses = [self._send().status_code for _ in range(5)]
         self.assertEqual(responses, [200, 200, 200, 200, 429])
+
+    def test_unpurchased_provider_error_is_actionable_and_keeps_key_private(self):
+        self._login()
+        error = HTTPError("https://provider.example/", 403, "Forbidden", {},
+                          io.BytesIO(b'{"code":"AccessDenied.Unpurchased","message":"denied"}'))
+        with patch.object(server, "urlopen", side_effect=error):
+            response = self._send()
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json["provider_code"], "AccessDenied.Unpurchased")
+        self.assertNotIn("synthetic-provider-key", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":

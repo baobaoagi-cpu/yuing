@@ -244,6 +244,14 @@ def duplex_experiment_offer():
         with urlopen(upstream, timeout=25) as response:
             answer = response.read(120_001)
     except HTTPError as exc:
+        if exc.code == 403:
+            try:
+                provider_code = json.loads(exc.read(2048)).get("code")
+            except (ValueError, AttributeError):
+                provider_code = None
+            if provider_code == "AccessDenied.Unpurchased":
+                return jsonify(error="阿里云百炼账户欠费或服务未开通，请先检查账户余额。",
+                               upstream_status=403, provider_code=provider_code), 502
         return jsonify(error="双工服务拒绝连接", upstream_status=exc.code), 502
     except (URLError, TimeoutError, OSError):
         return jsonify(error="双工服务暂时无法连接"), 502
