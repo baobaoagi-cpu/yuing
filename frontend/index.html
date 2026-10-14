@@ -52,11 +52,11 @@
   body[data-emotion="angry"]{ --emotion-gradient:linear-gradient(145deg,#3b202b,#241b20); --emotion-border:#a45a71; }
   body[data-emotion="delighted"]{ --emotion-gradient:linear-gradient(145deg,#40291f,#251e1d); --emotion-border:#b97863; }
   body[data-emotion="playful_face"]{ --emotion-gradient:linear-gradient(145deg,#35233f,#211d2b); --emotion-border:#9169aa; }
-  #dunni-portrait{ position:fixed; left:12px; top:calc(max(8px,env(safe-area-inset-top)) + 60px);
+  #dunni-portrait{ position:fixed; left:12px; top:calc(max(8px,env(safe-area-inset-top)) + 88px);
     z-index:3; pointer-events:none; display:block; width:56px; height:56px; border-radius:50%;
     object-fit:cover; border:1px solid rgba(255,255,255,.32); background:#111;
     user-select:none; -webkit-user-drag:none; }
-  .live-dialogue{ position:fixed; inset:calc(max(8px,env(safe-area-inset-top)) + 60px) 12px
+  .live-dialogue{ position:fixed; inset:calc(max(8px,env(safe-area-inset-top)) + 88px) 12px
     calc(max(8vh,40px) + 178px); z-index:3; pointer-events:none; }
   .live-turn{ position:absolute; max-width:min(72vw,420px); display:flex; flex-direction:column;
     gap:5px; text-align:left; }
@@ -74,12 +74,20 @@
   body[data-emotion] .live-turn.agent .live-bubble{ border:1px solid var(--emotion-border); }
   body[data-emotion] .live-turn.agent .live-bubble::before{ opacity:1; }
   .live-bubble .live-text{ position:relative; z-index:1; }
+  .live-text:empty::before{ content:'···'; opacity:.65; }
   .live-turn.user .live-bubble{ background:rgba(24,42,56,.25); }
   .live-bubble.interim{ color:#fff; }
   .user-avatar{ position:fixed; right:12px; bottom:calc(max(8vh,40px) + 178px); z-index:3;
     width:56px; height:56px; display:grid; place-items:center; border-radius:50%;
     border:1px solid rgba(255,255,255,.32); background:#203041; color:#fff;
     font-size:18px; font-weight:600; }
+  #dunni-portrait,.user-avatar,.live-turn{ opacity:0; visibility:hidden; transform:translateY(8px);
+    transition:opacity .2s ease, transform .2s ease, visibility 0s linear .2s; }
+  #dunni-portrait.speaking-visible,.user-avatar.speaking-visible,.live-turn.speaking-visible{
+    opacity:1; visibility:visible; transform:translateY(0); transition-delay:0s; }
+  @media (prefers-reduced-motion:reduce){
+    #dunni-portrait,.user-avatar,.live-turn{ transition:none; }
+  }
   .stage{ flex:1; }
   .top, .controls{ position:relative; z-index:3; }
   .call-toolbar{ position:fixed; top:max(8px,env(safe-area-inset-top)); left:12px; right:12px;
@@ -333,9 +341,9 @@
     body{ --phone-top:max(14px,env(safe-area-inset-top)); }
     .controls.callpane{ align-self:center; width:100%; margin-left:0; }
     .call-toolbar{ top:var(--phone-top); left:8px; right:8px; gap:4px; }
-    #dunni-portrait{ top:calc(var(--phone-top) + 56px); left:8px; width:48px; height:48px; }
+    #dunni-portrait{ top:calc(var(--phone-top) + 86px); left:8px; width:48px; height:48px; }
     .user-avatar{ right:8px; bottom:calc(max(8vh,40px) + 178px); width:48px; height:48px; }
-    .live-dialogue{ inset:calc(var(--phone-top) + 56px) 8px calc(max(8vh,40px) + 178px); }
+    .live-dialogue{ inset:calc(var(--phone-top) + 86px) 8px calc(max(8vh,40px) + 178px); }
     .live-turn.agent{ left:58px; }
     .live-turn.user{ right:58px; }
     .live-bubble{ font-size:15px; max-height:25vh; }
@@ -378,14 +386,14 @@
   <video id="emotionClip" muted playsinline webkit-playsinline preload="none" hidden></video>
   <div id="emotionBlackout" class="emotion-blackout"></div>
 </div>
-<img id="dunni-portrait" src="/assets/dunni-icon-v1-192.png" alt="陳端倪" />
+<img id="dunni-portrait" src="/assets/dunni-icon-v1-192.png" alt="陳端倪" aria-hidden="true" />
 <div class="live-dialogue" id="liveDialogue" aria-label="即時對話文字">
-  <div class="live-turn agent"><span class="live-speaker" id="dunniLiveSpeaker">陳端倪</span>
-    <div class="live-bubble" id="agentLiveBubble"><span class="live-text" id="agentLiveText">通話接通後，這裡會顯示端倪正在說的話。</span></div></div>
-  <div class="live-turn user"><span class="live-speaker" id="userLiveName">你</span>
-    <div class="live-bubble" id="userLiveBubble"><span class="live-text" id="userLiveText">你說的話會即時出現在這裡。</span></div></div>
+  <div class="live-turn agent" aria-hidden="true"><span class="live-speaker" id="dunniLiveSpeaker">陳端倪</span>
+    <div class="live-bubble" id="agentLiveBubble"><span class="live-text" id="agentLiveText"></span></div></div>
+  <div class="live-turn user" aria-hidden="true"><span class="live-speaker" id="userLiveName">你</span>
+    <div class="live-bubble" id="userLiveBubble"><span class="live-text" id="userLiveText"></span></div></div>
 </div>
-<div class="user-avatar" id="userAvatar" aria-label="使用者頭像">你</div>
+<div class="user-avatar" id="userAvatar" aria-label="使用者頭像" aria-hidden="true">你</div>
 
 <div class="call-toolbar">
 <button class="nav-control chat-return" id="chatReturn" type="button" aria-label="返回上一页，文字聊天">
@@ -549,13 +557,47 @@
   const callPanes=[$('callTop'), $('callStage'), $('callControls'), $('verLink')];
   const liveBubbles={assistant:$('agentLiveBubble'),user:$('userLiveBubble')};
   const liveTexts={assistant:$('agentLiveText'),user:$('userLiveText')};
+  const liveTurns={assistant:liveBubbles.assistant.closest('.live-turn'),
+    user:liveBubbles.user.closest('.live-turn')};
+  const liveAvatars={assistant:$('dunni-portrait'),user:$('userAvatar')};
+  const liveVisible={assistant:false,user:false};
+  const liveDisplayedSegment={assistant:'',user:''};
+  const liveSegmentAtHide={assistant:'',user:''};
   const liveSegments=new Map();
   const liveLatest={assistant:0,user:0};
   let liveSequence=0;
+  function setLiveSpeakerVisible(role,visible){
+    if(liveVisible[role]===visible) return;
+    liveVisible[role]=visible;
+    // A final transcription may arrive after its speaker has gone quiet.
+    // Keep a genuinely new segment received before audio, but never replay
+    // the previous sentence when the next voice burst begins.
+    if(visible && liveDisplayedSegment[role]===liveSegmentAtHide[role])
+      liveTexts[role].textContent='';
+    for(const el of [liveTurns[role],liveAvatars[role]]){
+      el.classList.toggle('speaking-visible',visible);
+      el.setAttribute('aria-hidden',String(!visible));
+    }
+    if(!visible){
+      liveSegmentAtHide[role]=liveDisplayedSegment[role];
+      liveTexts[role].textContent='';
+      liveBubbles[role].classList.remove('interim');
+    }
+  }
+  function syncLiveSpeakerVisibility(ts){
+    const active=Boolean(room && callPhase!=='reconnecting');
+    setLiveSpeakerVisible('user',Boolean(active && !muted &&
+      lastUserVoiceAt && ts-lastUserVoiceAt<1400));
+    setLiveSpeakerVisible('assistant',Boolean(active &&
+      lastBaoVoiceAt && ts-lastBaoVoiceAt<1400));
+  }
   function resetLiveDialogue(){
     liveSegments.clear(); liveLatest.assistant=0; liveLatest.user=0; liveSequence=0;
-    liveTexts.assistant.textContent='通話接通後，這裡會顯示端倪正在說的話。';
-    liveTexts.user.textContent='你說的話會即時出現在這裡。';
+    setLiveSpeakerVisible('assistant',false);
+    setLiveSpeakerVisible('user',false);
+    liveTexts.assistant.textContent=''; liveTexts.user.textContent='';
+    liveDisplayedSegment.assistant=''; liveDisplayedSegment.user='';
+    liveSegmentAtHide.assistant=''; liveSegmentAtHide.user='';
     liveBubbles.assistant.classList.remove('interim');
     liveBubbles.user.classList.remove('interim');
   }
@@ -573,6 +615,7 @@
     if(segment.order<liveLatest[role]) return;
     liveLatest[role]=segment.order;
     const bubble=liveBubbles[role];
+    liveDisplayedSegment[role]=String(segmentId);
     liveTexts[role].textContent=text;
     bubble.classList.toggle('interim',!isFinal);
     bubble.scrollTop=bubble.scrollHeight;
@@ -1419,6 +1462,9 @@
         if(room) setLamp('tts','warn','本次已检测到 Agent 声音；MiniMax TTS 尚未独立验证');
       }
     }
+    // These portraits and bubbles reflect audible track activity, not stale
+    // transcript text or a guessed Agent state. A short hold bridges pauses.
+    syncLiveSpeakerVisibility(ts);
     mLvl = lerp(mLvl, micRaw, micRaw>mLvl?0.35:0.08);   // 起快落慢 = 自然
     bLvl = lerp(bLvl, baoRaw, baoRaw>bLvl?0.40:0.07);
     if(ts-lastVizTelemetryAt>250){
