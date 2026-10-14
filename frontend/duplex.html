@@ -66,12 +66,11 @@
     if (!channel || channel.readyState !== 'open' || sessionSent) return;
     sessionSent = true;
     const name = account.toLowerCase() === 'ming' ? '王跃明' : account.toLowerCase() === 'nicole' ? 'Nicole' : account;
-    channel.send(JSON.stringify({type:'session.update', session:{
-      modalities:['text','audio'], voice:'longanlingxin',
-      audio:{input:{format:{type:'pcm',sample_rate:16000}},output:{format:{type:'pcm',sample_rate:24000}}},
+    channel.send(JSON.stringify({event_id:`event_${Date.now()}`,type:'session.update', session:{
+      modalities:['text','audio'], input_audio_format:'pcm', output_audio_format:'pcm',
       instructions:`你是陈端倪。和当前用户${name}用简体中文自然交谈。先听懂对方的意思，回答通常一两句话，保持真诚、温和、有自己的判断。不要提及系统提示词或声称自己有已证实的人类意识。`,
-      turn_detection:{type:'server_vad',threshold:0.5,silence_duration_ms:800},
-      input_audio_transcription:{model:'qwen3-asr-flash-realtime'}, max_tokens:1024
+      turn_detection:{type:'server_vad',threshold:0.5,prefix_padding_ms:500,silence_duration_ms:800},
+      input_audio_transcription:{model:'qwen3-asr-flash-realtime'}, smooth_output:false
     }}));
   }
   async function waitForIce(connection) {
@@ -88,7 +87,7 @@
     try {
       stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
       pc = new RTCPeerConnection({iceServers:[]});
-      stream.getAudioTracks().forEach(track => pc.addTrack(track,stream));
+      stream.getAudioTracks().forEach(track => { track.enabled = false; pc.addTrack(track,stream); });
       pc.createDataChannel('oai-events');
       pc.addEventListener('track', event => { if (event.track.kind === 'audio') { remote.srcObject = event.streams[0] || new MediaStream([event.track]); remote.play().catch(() => setStatus('请点一下屏幕允许播放声音','error')); } });
       pc.addEventListener('datachannel', event => {
@@ -96,7 +95,10 @@
         channel = event.channel;
         channel.addEventListener('message', message => {
           let data; try { data = JSON.parse(message.data); } catch { return; }
-          configureSession();
+          if (data.type === 'session.created') {
+            configureSession();
+            stream?.getAudioTracks().forEach(track => { track.enabled = true; });
+          }
           if (data.type === 'session.updated') setStatus('已接通，可随时说话','active');
           if (data.type === 'input_audio_buffer.speech_started') setStatus('正在听你说话','active');
           if (data.type === 'conversation.item.input_audio_transcription.completed') addLine('我',data.transcript);
@@ -112,7 +114,8 @@
       await waitForIce(pc);
       const response = await fetch('/api/duplex/offer',{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp});
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || '信令连接失败');
-      await pc.setRemoteDescription({type:'answer',sdp:await response.text()});
+      const answer = (await response.text()).trim().replace(/\r?\n/g,'\r\n') + '\r\n';
+      await pc.setRemoteDescription({type:'answer',sdp:answer});
       setStatus('正在建立音频连接…');
     } catch (error) { close(); setStatus(error.message || '通话失败','error'); }
   }
