@@ -10,6 +10,14 @@ LLM 與 TTS 共用同一把 `MINIMAX_API_KEY`，只放在 Agent 服務端。國�
 
 聲音設計候選提示詞與試聽文案在 `voice_design/chen_dunni_v1.md`。產生的聲音需經實際聆聽，再設定 `MINIMAX_VOICE_ID`；不能以 API 成功取代音色驗收。
 
+## 中國區公開網頁搜尋（待啟用）
+
+通話 Agent 已接入阿里雲百煉 WebSearch MCP 的外部 Streamable HTTP 介面。只有同時在**語音 Agent 服務**設定私密的 `DASHSCOPE_API_KEY` 和 `DUNNI_WEB_SEARCH_ENABLED=1`，新通話才會取得 `web_search` 工具；只設定金鑰不會啟用。原版 PWA 服務上的同名金鑰不會自動傳給語音 Agent。需先在百煉 MCP 廣場開通 WebSearch，並由帳戶持有人核對剩餘額度、付費狀態和可用的費用限制。
+
+程式每通最多送出三次搜尋請求，短查詢最多 120 字；嘗試次數在連線前計入，並發請求也共用同一上限。這只限制**單通電話**，不等於跨通話或跨部署的月費上限；若需要硬性總費用上限，必須另外使用供應商的可驗證額度或持久化的共享計數器。搜尋失敗時不把憑證或查詢寫入日誌。搜尋結果會被限制為 4,000 字元，Agent 應說明來源網站與不確定性；未實際搜尋成功不能聲稱已查到。
+
+本機測試：`python -m unittest poc_agent.test_web_search -v`。這涵蓋預設關閉、單通併發上限、錯誤遮蔽與結果長度；不代表供應商帳戶已啟用或真人通話已驗收。
+
 陳端倪的人格憲法固定在 `persona/chen_dunni_constitution_v1.md`，每次建立通話 Agent 時作為底層 system instructions 載入。改動須新增版本並核對差異；目前的能力限制另外追加，不以人格描述冒充已接入的感知或記憶功能。這份檔案屬於此 MiniMax POC，原 Builder Agent 不會自動使用。
 
 第二層原則篇是 `persona/pset_principles_v0.1.md`，固定接在核心人格之後、通話能力邊界之前。PSET 的「演化」是產品規則；此 POC 尚無自動修改人格檔或長期記憶的寫入流程。
