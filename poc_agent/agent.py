@@ -28,6 +28,7 @@ logger = logging.getLogger("duanni.call")
 
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
+TTS_FIRST_FRAME_TIMEOUT = 15.0
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
 # Mandarin. Only the agent's name is global; a user's name must come from the
 # authenticated, room-bound account context rather than biasing every STT turn.
@@ -97,13 +98,32 @@ class ChenDunni(Agent):
                 category or "none",
             )
 
-        async for frame in Agent.default.tts_node(
+        frames = Agent.default.tts_node(
             self, minimax_tts_text(
                 text, model=model, on_decision=log_cue,
                 on_source_part=self.visual_emotion.on_assistant_part if self.visual_emotion else None,
             ), model_settings
-        ):
-            yield frame
+        )
+        try:
+            # The provider websocket may remain open without delivering a
+            # decodable frame. Bound only the first frame; later speech can be
+            # any length. A timeout surfaces through the SDK error event.
+            try:
+                first = await asyncio.wait_for(anext(frames), TTS_FIRST_FRAME_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("call_stage tts_first_frame_timeout seconds=%d",
+                             int(TTS_FIRST_FRAME_TIMEOUT))
+                raise
+            except StopAsyncIteration:
+                logger.error("call_stage tts_zero_frames")
+                raise RuntimeError("TTS completed without an audio frame") from None
+            logger.info("call_stage tts_first_frame_ready sample_rate=%d samples=%d",
+                        first.sample_rate, first.samples_per_channel)
+            yield first
+            async for frame in frames:
+                yield frame
+        finally:
+            await frames.aclose()
 
 
 def _attach_call_diagnostics(session: AgentSession, call_ref: str) -> None:
