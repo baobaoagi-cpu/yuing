@@ -25,11 +25,12 @@ logger = logging.getLogger("duanni.call")
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
-# Mandarin, and Nova-3 supports a keyterm to bias this proper name.
+# Mandarin. Only the agent's name is global; a user's name must come from the
+# authenticated, room-bound account context rather than biasing every STT turn.
 STT_OPTIONS = {
     "model": "deepgram/nova-3",
     "language": "zh-CN",
-    "extra_kwargs": {"keyterm": ["陈端倪", "Nicole"]},
+    "extra_kwargs": {"keyterm": ["陈端倪"]},
 }
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
@@ -69,6 +70,8 @@ class ChenDunni(Agent):
                 "这是手机通话测试版，尚未接入完整 Hermes、知识库或图数据库。"
                 "只有在本次通话实际附带登录账号的记忆或近期对话片段时才能参考它；"
                 "近期逐字稿可能有误，不等于已确认的个人事实或永久记忆。"
+                "不要根据语音辨识出的名字猜当前用户是谁；以本次签名的登录账号资料为准。"
+                "如果对方自称与账号资料不一致，先询问，不要把两个人的记忆合并。"
                 "未提供的往事不要假装记得。不要声称能识别咳嗽、跌倒或车声等生活声，"
                 "除非系统真的提供了识别结果。听不清楚时请对方重说。"
                 + context_text
@@ -183,8 +186,10 @@ async def phone_call(ctx: agents.JobContext) -> None:
         logger.warning("call_stage context_rejected reason=%s", reason.replace(" ", "_"))
     else:
         logger.info(
-            "call_stage context_status=%s account_seed=%s",
+            "call_stage context_status=%s account_name=%s account_seed=%s",
             "accepted" if context_text else "absent",
+            "present" if "【本次已登录账号的称呼】" in context_text or
+                         "【已验证的账号称呼】" in context_text else "absent",
             "present" if "【当前账号开通时提供的基础资料" in context_text else "absent",
         )
 
