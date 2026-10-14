@@ -107,8 +107,31 @@
   .lamp.ok{ color:rgba(255,255,255,.8); }
   #meetingView,#swipeHint{ display:none !important; }
   #chatOverlay[hidden]{ display:none; }
+  #chatSwipeFallback{ display:none; position:fixed; inset:0; z-index:7;
+    transform:translate3d(var(--swipe-chat-x,0px),0,0);
+    transition:transform .22s cubic-bezier(.22,.8,.24,1);
+    background:#080a09; color:#f4f6f2; text-align:left; }
+  body.swipe-chat-loading #chatSwipeFallback{ display:block; }
+  #chatSwipeFallback::before{ content:'陈端倪'; display:block; height:67px; padding:19px 22px;
+    border-bottom:1px solid #28342d; font-size:18px; font-weight:600; }
+  #chatSwipeFallback span{ display:block; margin:30vh auto 0; text-align:center;
+    color:#a4afa5; font-size:14px; }
+  body.swipe-chat-loading #chatOverlay{ opacity:0; }
   #chatOverlay{ position:fixed; inset:0; width:100%; height:100%; z-index:8;
-    border:0; background:#080a09; }
+    border:0; background:transparent; transform:translate3d(var(--swipe-chat-x,0px),0,0);
+    transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
+  #inCallBar{ transform:translate3d(var(--swipe-bar-x,0px),0,0);
+    transition:transform .22s cubic-bezier(.22,.8,.24,1); }
+  .call-toolbar,#viz,#dunni-portrait,#callTop,#callStage,#callControls{
+    transform:translate3d(var(--swipe-scene-x,0px),0,0);
+    transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
+  body.swipe-moving #chatOverlay,body.swipe-moving #inCallBar,
+  body.swipe-moving #chatSwipeFallback,
+  body.swipe-moving .call-toolbar,body.swipe-moving #viz,body.swipe-moving #dunni-portrait,
+  body.swipe-moving #callTop,body.swipe-moving #callStage,body.swipe-moving #callControls{ transition:none; }
+  @media(prefers-reduced-motion:reduce){
+    #chatOverlay,#chatSwipeFallback,#inCallBar,.call-toolbar,#viz,#dunni-portrait,#callTop,#callStage,#callControls{transition:none;}
+  }
   #inCallBar[hidden]{ display:none; }
   #inCallBar{ position:fixed; z-index:9; top:calc(max(9px,env(safe-area-inset-top)) + 76px);
     left:12px; right:12px; min-height:44px; display:flex; align-items:center; justify-content:space-between;
@@ -345,6 +368,7 @@
 </button>
 </div>
 
+<div id="chatSwipeFallback" aria-hidden="true"><span>正在打开文字聊天…</span></div>
 <iframe id="chatOverlay" title="文字聊天" src="about:blank" hidden></iframe>
 <div id="inCallBar" hidden>
   <span id="inCallBarStatus" role="status" aria-live="polite"></span>
@@ -2209,14 +2233,16 @@
     chatOverlay.hidden=false;
     chatOverlay.setAttribute('aria-hidden','false');
     syncInCallBar();
+    window.YulingSwipeNavigation?.sync();
   }
   function showCall(){
     chatOverlay.hidden=true;
     chatOverlay.setAttribute('aria-hidden','true');
     syncInCallBar();
+    window.YulingSwipeNavigation?.sync();
     chatReturn.focus();
   }
-  window.YulingCallNavigation={showChat,showCall};
+  window.YulingCallNavigation={showChat,showCall,syncInCallBar};
   window.addEventListener('message',event=>{
     if(event.origin!==location.origin || event.source!==chatOverlay.contentWindow) return;
     if(event.data && event.data.type==='yuling:view-call') showCall();
