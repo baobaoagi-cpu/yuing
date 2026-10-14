@@ -5,6 +5,7 @@ Status: isolated development candidate. This branch has not been deployed or acc
 ## Scope included in this branch
 
 - Owner-scoped sourced knowledge search with separate knowledge-use consent.
+- Sourced explicit-memory revisions and withdrawal checks for fresh contexts.
 - Candidate relation paths and causal claims. A candidate claim is not a verified causal finding.
 - Short-lived, room-bound voice context carrying bounded sourced notes without giving the voice worker database credentials.
 - Synthetic SQLite backup/restore and vector comparison probes, plus an opt-in PostgreSQL/pgvector probe that requires an isolated disposable database.
