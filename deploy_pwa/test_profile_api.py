@@ -70,6 +70,15 @@ class ProfileApiTest(unittest.TestCase):
                                          base_url=self.base).status_code, 403)
         self.assertEqual(self.client.post("/api/v2/profile/consent", base_url=self.base,
                                           headers=self.headers, json={"enabled": True}).status_code, 200)
+        self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json
+                         ["knowledge_consent_enabled"], False)
+        self.assertEqual(self.client.post("/api/v2/knowledge/consent", base_url=self.base,
+                                          json={"enabled": True}).status_code, 403)
+        self.assertEqual(self.client.post("/api/v2/knowledge/consent", base_url=self.base,
+                                          headers=self.headers,
+                                          json={"enabled": "true"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/v2/knowledge/consent", base_url=self.base,
+                                          headers=self.headers, json={"enabled": True}).status_code, 200)
         ids = []
         for title, content in (("甲", "甲支持乙"), ("乙", "乙連結丙"), ("丙", "丙是節點")):
             response = self.client.post("/api/v2/knowledge", base_url=self.base,
@@ -112,7 +121,7 @@ class ProfileApiTest(unittest.TestCase):
 
         other = server.app.test_client()
         self.login(other, username="other", password="synthetic-other-password")
-        other.post("/api/v2/profile/consent", base_url=self.base, headers=self.headers,
+        other.post("/api/v2/knowledge/consent", base_url=self.base, headers=self.headers,
                    json={"enabled": True})
         self.assertEqual(other.get("/api/v2/knowledge/search?q=甲支持乙",
                                    base_url=self.base).json["items"], [])
@@ -150,7 +159,7 @@ class ProfileApiTest(unittest.TestCase):
         paths = self.client.get("/api/v2/relations/paths?start_id=" + ids[0],
                                 base_url=self.base)
         self.assertEqual(paths.json["paths"], [])
-        self.assertEqual(self.client.post("/api/v2/profile/consent", base_url=self.base,
+        self.assertEqual(self.client.post("/api/v2/knowledge/consent", base_url=self.base,
                                           headers=self.headers, json={"enabled": False}).status_code, 200)
         self.assertEqual(self.client.get("/api/v2/knowledge/search?q=甲",
                                          base_url=self.base).status_code, 403)

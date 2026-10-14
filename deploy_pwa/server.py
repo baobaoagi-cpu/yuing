@@ -483,13 +483,32 @@ def companion_profile():
     guard = _v2_guard()
     if guard:
         return guard
-    profile = _profile_store(_chat_store())
+    store = _chat_store()
+    profile = _profile_store(store)
     if profile is None:
         return jsonify(error="个人资料存储尚未配置"), 503
     return jsonify(identity=profile.identity(),
                    consent_enabled=profile.consent_status(),
                    consent_decided=profile.consent_decided(),
+                   knowledge_consent_enabled=store.knowledge_consent_enabled(),
                    facts=profile.facts(), account_seed=profile.seed_facts())
+
+
+@app.post("/api/v2/knowledge/consent")
+def set_knowledge_use_consent():
+    guard = _v2_guard(write=True)
+    if guard:
+        return guard
+    if (request.mimetype != "application/json" or not request.content_length or
+            request.content_length > 256):
+        return jsonify(error="同意设置格式不正确"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {"enabled"} or type(data["enabled"]) is not bool:
+        return jsonify(error="同意设置格式不正确"), 400
+    store = _chat_store()
+    if store is None:
+        return jsonify(error="知识存储尚未配置"), 503
+    return jsonify(knowledge_consent_enabled=store.set_knowledge_consent(data["enabled"]))
 
 
 @app.patch("/api/v2/profile/account-seed/<field>")
@@ -1085,7 +1104,7 @@ def conversation_chat():
                 app.logger.exception("skill candidate capture failed")
     try:
         knowledge_context = (store.search_knowledge(text_value, limit=3)
-                             if profile is not None and profile.consent_status()
+                             if store.knowledge_consent_enabled()
                              and isinstance(text_value, str) and text_value.strip() else ())
         answer = reply_to(text_value, history, store.memories(), image=image,
                           link_url=link_url, page_context=page_context,
@@ -1162,10 +1181,9 @@ def search_knowledge_items():
     if guard:
         return guard
     store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    if store is None:
         return jsonify(error="知识检索尚未配置"), 503
-    if not profile.consent_status():
+    if not store.knowledge_consent_enabled():
         return jsonify(error="尚未同意使用个人知识检索"), 403
     try:
         items = store.search_knowledge(request.args.get("q"), limit=10)
@@ -1236,10 +1254,9 @@ def list_relation_paths():
     if guard:
         return guard
     store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    if store is None:
         return jsonify(error="关系检索尚未配置"), 503
-    if not profile.consent_status():
+    if not store.knowledge_consent_enabled():
         return jsonify(error="尚未同意使用个人关系检索"), 403
     start_id = _uuid(request.args.get("start_id"))
     if not start_id:
@@ -1257,10 +1274,9 @@ def list_causal_claims():
     if guard:
         return guard
     store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    if store is None:
         return jsonify(error="因果证据存储尚未配置"), 503
-    if not profile.consent_status():
+    if not store.knowledge_consent_enabled():
         return jsonify(error="尚未同意使用个人关系检索"), 403
     relation_id = request.args.get("relation_id")
     if relation_id and not _uuid(relation_id):
@@ -1284,10 +1300,9 @@ def save_causal_claim():
     if not relation_id or not source_event_id:
         return jsonify(error="请提供本账号的关系与来源消息"), 400
     store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    if store is None:
         return jsonify(error="因果证据存储尚未配置"), 503
-    if not profile.consent_status():
+    if not store.knowledge_consent_enabled():
         return jsonify(error="尚未同意使用个人关系检索"), 403
     try:
         item = store.add_causal_claim(relation_id, source_event_id,
@@ -1306,10 +1321,9 @@ def retract_causal_claim(claim_id):
     if guard:
         return guard
     store = _chat_store()
-    profile = _profile_store(store)
-    if store is None or profile is None:
+    if store is None:
         return jsonify(error="因果证据存储尚未配置"), 503
-    if not profile.consent_status():
+    if not store.knowledge_consent_enabled():
         return jsonify(error="尚未同意使用个人关系检索"), 403
     cid = _uuid(claim_id)
     if not cid or not store.retract_causal_claim(cid):

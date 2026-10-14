@@ -784,6 +784,7 @@ const memoryChoice = $("memory-choice");
 const memorySettings = $("memory-settings");
 const memoryStateLabel = $("memory-state");
 const memoryToggle = $("memory-toggle");
+const knowledgeUseToggle = $("knowledge-use-toggle");
 const memoryFacts = $("memory-facts");
 const memoryError = $("memory-error");
 let profile = null;
@@ -812,6 +813,9 @@ function renderProfile() {
   $("memory-title").textContent = `关于 ${name} 的记忆`;
   memoryChoice.hidden = !!profile.consent_decided;
   memorySettings.hidden = !profile.consent_decided;
+  knowledgeUseToggle.textContent = profile.knowledge_consent_enabled
+    ? "暂停使用知识笔记" : "允许在回答中使用知识笔记";
+  knowledgeUseToggle.disabled = profileBusy;
   if (!profile.consent_decided) return;
   memoryStateLabel.textContent = profile.consent_enabled
     ? "已允许记录你主动分享的个人线索。"
@@ -880,6 +884,26 @@ async function setProfileConsent(enabled) {
   }
 }
 
+async function setKnowledgeUseConsent(enabled) {
+  if (profileBusy) return;
+  profileBusy = true;
+  knowledgeUseToggle.disabled = true;
+  showMemoryError("");
+  try {
+    await jsonResponse(await fetch("/api/v2/knowledge/consent", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }));
+    await loadProfile();
+  } catch {
+    showMemoryError("知识使用设置没有确认保存，请重试。");
+  } finally {
+    profileBusy = false;
+    renderProfile();
+  }
+}
+
 async function deleteProfileFact(factId) {
   if (profileBusy) return;
   profileBusy = true;
@@ -907,6 +931,8 @@ $("memory-close").addEventListener("click", () => { closeMemoryPanel(); memoryBu
 $("memory-allow").addEventListener("click", () => setProfileConsent(true));
 $("memory-decline").addEventListener("click", () => setProfileConsent(false));
 memoryToggle.addEventListener("click", () => setProfileConsent(!profile.consent_enabled));
+knowledgeUseToggle.addEventListener("click", () =>
+  setKnowledgeUseConsent(!profile.knowledge_consent_enabled));
 document.addEventListener("pointerdown", (event) => {
   if (!memoryPanel.hidden && !memoryPanel.contains(event.target) && !memoryButton.contains(event.target)) closeMemoryPanel();
 });

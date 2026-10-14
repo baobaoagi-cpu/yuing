@@ -108,6 +108,10 @@ class ChatStore:
                 );
                 CREATE INDEX IF NOT EXISTS causal_claims_owner_relation
                     ON causal_claims(owner_id, relation_id);
+                CREATE TABLE IF NOT EXISTS knowledge_consent (
+                    owner_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL
+                    CHECK(enabled IN (0,1)), updated_at REAL NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS page_reads (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
                     source_event_id TEXT NOT NULL, url TEXT NOT NULL,
@@ -172,6 +176,22 @@ class ChatStore:
             db.execute("INSERT INTO sessions(id,created_at,updated_at,owner_id) "
                        "VALUES(?,?,?,?)", (sid, now, now, self.owner_id))
         return sid
+
+    def knowledge_consent_enabled(self):
+        with self._connect() as db:
+            row = db.execute("SELECT enabled FROM knowledge_consent WHERE owner_id=?",
+                             (self.owner_id,)).fetchone()
+        return bool(row["enabled"]) if row else False
+
+    def set_knowledge_consent(self, enabled):
+        if type(enabled) is not bool:
+            raise ValueError("同意设置不正确")
+        with self._connect() as db:
+            db.execute("INSERT INTO knowledge_consent(owner_id,enabled,updated_at) "
+                       "VALUES(?,?,?) ON CONFLICT(owner_id) DO UPDATE SET "
+                       "enabled=excluded.enabled,updated_at=excluded.updated_at",
+                       (self.owner_id, int(enabled), time.time()))
+        return enabled
 
     def has_session(self, sid):
         with self._connect() as db:
