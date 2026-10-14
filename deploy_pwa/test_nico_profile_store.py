@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from deploy_pwa.chat_store import ChatStore
 from deploy_pwa.nico_profile_store import NicoProfileStore, ProfileSourceError
@@ -38,6 +39,31 @@ class NicoProfileStoreTest(unittest.TestCase):
         self.assertEqual(NicoProfileStore(self.chat_path, "nicole", self.store_root).identity()["display_name"], "Niki")
         with self.assertRaises(ProfileSourceError):
             self.other.correct_display_name("Niki", source)
+
+    def test_three_account_names_are_scoped_and_correction_stays_with_owner(self):
+        ming = NicoProfileStore(self.chat_path, "MING", self.store_root)
+        waitin = NicoProfileStore(self.chat_path, "WAITIN", self.store_root)
+        self.assertEqual(ming.identity()["display_name"], "王跃明")
+        self.assertEqual(waitin.identity()["display_name"], "威廷")
+        self.assertEqual(self.nicole.identity()["display_name"], "Nicole")
+        source = self.event("以后叫我 Niki")
+        self.nicole.correct_display_name("Niki", source)
+        self.assertEqual(self.nicole.identity()["display_name"], "Niki")
+        self.assertEqual(ming.identity()["display_name"], "王跃明")
+        self.assertEqual(waitin.identity()["display_name"], "威廷")
+
+    def test_server_config_name_applies_without_cross_account_override(self):
+        with patch.dict("os.environ", {"POC_ACCOUNT_DISPLAY_NAMES_JSON":
+                               '{"WAITIN":"威廷测试称呼","new-user":"新用户"}'}):
+            waitin = NicoProfileStore(self.chat_path, "WAITIN", self.store_root)
+            newcomer = NicoProfileStore(self.chat_path, "new-user", self.store_root)
+            self.assertEqual(waitin.identity()["display_name"], "威廷测试称呼")
+            self.assertEqual(newcomer.identity()["display_name"], "新用户")
+            self.assertEqual(self.nicole.identity()["display_name"], "Nicole")
+            source = self.event("以后叫我 Niki")
+            self.nicole.correct_display_name("Niki", source)
+            self.assertEqual(self.nicole.identity()["display_name"], "Niki")
+        self.assertEqual(waitin.identity()["display_name"], "威廷")
 
     def test_consent_default_off_source_bound_and_account_isolated(self):
         source = self.event("我喜欢散步")

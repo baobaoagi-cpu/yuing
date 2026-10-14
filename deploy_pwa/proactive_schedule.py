@@ -38,7 +38,7 @@ class Delivery:
     in_app_text: str
     # Do not expose a potentially private topic on a lock screen.
     push_title: str = "陈端倪"
-    push_text: str = "Nicole，想起我们聊过的事。想继续聊时，我在。"
+    push_text: str = "想起我们聊过的事。想继续聊时，我在。"
 
 
 class ProactiveSchedule:
@@ -251,7 +251,7 @@ class ProactiveSchedule:
             owner_id=owner_id, local_day=slot["local_day"],
             idempotency_key=f"proactive:{owner_id}:{slot['local_day']}",
             source_event_id=topic.source_event_id,
-            in_app_text=f"Nicole，上次我们聊到「{topic.subject.strip()}」。你后来有什么新想法吗？",
+            in_app_text=f"上次我们聊到「{topic.subject.strip()}」。你后来有什么新想法吗？",
         )
         try:
             # Recheck opt-out as close to the external side effect as possible.

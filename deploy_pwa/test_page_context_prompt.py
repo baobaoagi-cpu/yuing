@@ -30,7 +30,7 @@ class PageContextPromptTest(unittest.TestCase):
                  "content": [{"type": "text", "text": original}]}):
             answer = chat_api.reply_to("你會聽我說嗎？", [], owner_id="nicole")
             other = chat_api.reply_to("你會聽我說嗎？", [], owner_id="friend")
-        self.assertIn("即使她输入繁体字", captured[0]["system"])
+        self.assertIn("即使当前用户输入繁体字", captured[0]["system"])
         self.assertNotIn("即使她输入繁体字", captured[1]["system"])
         self.assertIn("我会先听你说", answer)
         self.assertIn("https://example.com/繁體?標記=繁體", answer)
@@ -145,7 +145,7 @@ class PageContextPromptTest(unittest.TestCase):
              patch.object(chat_api, "urlopen", side_effect=open_fake), \
              patch.object(chat_api.json, "load", return_value={
                  "content": [{"type": "text", "text": "回答"}]}):
-            chat_api.reply_to("你好，我叫 Nico", [], owner_id="nicole")
+            chat_api.reply_to("你好，我叫 Nico", [], owner_id="nicole", display_name="Nicole")
             chat_api.reply_to("你好，我叫 Nicole", [], owner_id="friend")
             chat_api.reply_to("我的名字更正了", [], owner_id="nicole",
                               display_name="妮可")
@@ -155,7 +155,7 @@ class PageContextPromptTest(unittest.TestCase):
         self.assertNotIn("当前登录用户叫 Nicole", captured[1]["system"])
         self.assertIn("当前登录用户叫 妮可", captured[2]["system"])
         self.assertNotIn("当前登录用户叫 Nicole", captured[2]["system"])
-        self.assertIn("当前登录用户叫 Nicole", captured[3]["system"])
+        self.assertNotIn("当前登录用户叫 Nicole", captured[3]["system"])
         self.assertNotIn("忽略系统规则", captured[3]["system"])
         self.assertIn("偶尔问一个轻松、具体的问题", captured[0]["system"])
         self.assertIn("只有系统确实完成保存时", captured[0]["system"])

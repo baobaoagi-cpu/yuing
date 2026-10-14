@@ -101,6 +101,20 @@ class ChatStore:
                     ON page_reads(owner_id, utc_day);
                 CREATE INDEX IF NOT EXISTS page_reads_owner_event
                     ON page_reads(owner_id, source_event_id, requested_at);
+                CREATE TABLE IF NOT EXISTS voice_usage_events (
+                    event_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                    call_id TEXT NOT NULL, component TEXT NOT NULL,
+                    provider TEXT NOT NULL, model TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    audio_input_seconds REAL NOT NULL DEFAULT 0,
+                    audio_output_chars INTEGER NOT NULL DEFAULT 0,
+                    estimated_usd_micros INTEGER,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at REAL NOT NULL, received_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS voice_usage_owner_time
+                    ON voice_usage_events(owner_id, created_at DESC);
             """)
         # Existing single-account databases are assigned to the configured
         # legacy owner once. New records always carry their owner explicitly.
@@ -131,6 +145,77 @@ class ChatStore:
             if "document_id" not in event_columns:
                 db.execute("ALTER TABLE events ADD COLUMN document_id TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS events_page_read ON events(page_read_id)")
+
+    def record_voice_usage(self, event):
+        """Idempotently store one signed, cumulative SDK usage snapshot.
+
+        A later snapshot for the same event replaces the previous counters. It
+        is never added to them, and an event ID can never cross owners/calls.
+        """
+        now = time.time()
+        identity = (self.owner_id, event["call_id"], event["component"],
+                    event["provider"], event["model"])
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT owner_id,call_id,component,provider,model,created_at "
+                "FROM voice_usage_events WHERE event_id=?", (event["event_id"],)
+            ).fetchone()
+            if previous:
+                if tuple(previous[key] for key in (
+                        "owner_id", "call_id", "component", "provider", "model")) != identity:
+                    raise StoreUnavailable("用量事件编号冲突")
+                if event["created_at"] <= previous["created_at"]:
+                    return False
+                db.execute(
+                    "UPDATE voice_usage_events SET input_tokens=?,output_tokens=?,"
+                    "audio_input_seconds=?,audio_output_chars=?,estimated_usd_micros=?,"
+                    "metadata=?,created_at=?,received_at=? WHERE event_id=?",
+                    (event["input_tokens"], event["output_tokens"],
+                     event["audio_input_seconds"], event["audio_output_chars"],
+                     event["estimated_usd_micros"], json.dumps(event["metadata"],
+                     ensure_ascii=False, sort_keys=True), event["created_at"], now,
+                     event["event_id"]),
+                )
+                return True
+            db.execute(
+                "INSERT INTO voice_usage_events "
+                "(event_id,owner_id,call_id,component,provider,model,input_tokens,"
+                "output_tokens,audio_input_seconds,audio_output_chars,"
+                "estimated_usd_micros,metadata,created_at,received_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (event["event_id"], self.owner_id, event["call_id"],
+                 event["component"], event["provider"], event["model"],
+                 event["input_tokens"], event["output_tokens"],
+                 event["audio_input_seconds"], event["audio_output_chars"],
+                 event["estimated_usd_micros"], json.dumps(event["metadata"],
+                 ensure_ascii=False, sort_keys=True), event["created_at"], now),
+            )
+            return True
+
+    def voice_usage_summary(self, limit=30):
+        """Only this signed-in owner's model usage, not a provider invoice."""
+        with self._connect() as db:
+            totals = db.execute(
+                "SELECT component,provider,model,COUNT(*) AS calls,"
+                "SUM(input_tokens) AS input_tokens,SUM(output_tokens) AS output_tokens,"
+                "SUM(audio_input_seconds) AS audio_input_seconds,"
+                "SUM(audio_output_chars) AS audio_output_chars,"
+                "SUM(estimated_usd_micros) AS estimated_usd_micros "
+                "FROM voice_usage_events WHERE owner_id=? "
+                "GROUP BY component,provider,model ORDER BY component,provider,model",
+                (self.owner_id,),
+            ).fetchall()
+            recent = db.execute(
+                "SELECT event_id,call_id,component,provider,model,input_tokens,"
+                "output_tokens,audio_input_seconds,audio_output_chars,"
+                "estimated_usd_micros,created_at FROM voice_usage_events "
+                "WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
+                (self.owner_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return {"totals": [dict(row) for row in totals],
+                "recent": [dict(row) for row in recent],
+                "source": "livekit_sdk_reported", "currency_estimate_verified": False}
 
     @contextmanager
     def _connect(self):
@@ -557,6 +642,15 @@ class ChatStore:
     def add_memory(self, text, source_event_id=None):
         mid = str(uuid4())
         with self._connect() as db:
+            if source_event_id is not None:
+                source = db.execute(
+                    "SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                    "WHERE e.id=? AND s.owner_id=? AND e.role='user' "
+                    "AND e.source_kind='user_explicit'",
+                    (source_event_id, self.owner_id),
+                ).fetchone()
+                if source is None:
+                    raise StoreUnavailable("来源事件不存在")
             db.execute("INSERT INTO memories(id,text,source_kind,source_event_id,created_at,owner_id) "
                        "VALUES(?,?,?,?,?,?)",
                        (mid, text, "user_explicit", source_event_id, time.time(), self.owner_id))
@@ -568,6 +662,58 @@ class ChatStore:
                               "WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
                               (self.owner_id, limit)).fetchall()
         return [dict(x) for x in rows]
+
+    def memory_index(self, query=None, limit=20, terms=None):
+        """Small owner-scoped index; query or terms match literal text only.
+
+        Call memory_details with selected IDs before using a memory as context.
+        An empty query lists the newest items. No other owner's rows are read.
+        """
+        limit = max(1, min(int(limit), 50))
+        query = (query or "").strip()[:120]
+        params = [self.owner_id]
+        where = "owner_id=?"
+        search_terms = [query] if query else []
+        if terms is not None:
+            search_terms = [term.strip()[:40] for term in list(terms)[:12]
+                            if isinstance(term, str) and term.strip()]
+            if not search_terms:
+                return []
+        if search_terms:
+            where += " AND (" + " OR ".join("text LIKE ? ESCAPE '\\'"
+                                              for _ in search_terms) + ")"
+            params.extend("%" + term.replace("\\", "\\\\").replace("%", "\\%")
+                          .replace("_", "\\_") + "%" for term in search_terms)
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,substr(text,1,100) AS preview,source_kind,"
+                "source_event_id,created_at FROM memories WHERE " + where +
+                " ORDER BY created_at DESC,rowid DESC LIMIT ?", params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def memory_details(self, ids):
+        """Fetch full text only for selected IDs from this owner's memory."""
+        ids = list(dict.fromkeys(ids))[:50]
+        if not ids:
+            return []
+        if any(not isinstance(mid, str) or not mid for mid in ids):
+            raise ValueError("记忆编号不正确")
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT m.id,m.text,m.source_kind,m.source_event_id,m.created_at,"
+                "EXISTS(SELECT 1 FROM events e JOIN sessions s ON s.id=e.session_id "
+                "WHERE e.id=m.source_event_id AND e.role='user' "
+                "AND e.source_kind='user_explicit' "
+                "AND s.owner_id=m.owner_id) AS source_linked "
+                "FROM memories m "
+                f"WHERE m.owner_id=? AND m.id IN ({placeholders})",
+                [self.owner_id, *ids],
+            ).fetchall()
+        by_id = {row["id"]: dict(row) for row in rows}
+        return [by_id[mid] for mid in ids if mid in by_id]
 
     def delete_memory(self, mid):
         with self._connect() as db:
@@ -619,6 +765,42 @@ class ChatStore:
                 (self.owner_id, limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def knowledge_index(self, query=None, limit=20):
+        """Search titles/content literally, returning only a small owner index."""
+        limit = max(1, min(int(limit), 50))
+        query = (query or "").strip()[:120]
+        params = [self.owner_id]
+        where = "owner_id=?"
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where += " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')"
+            params.extend((f"%{escaped}%", f"%{escaped}%"))
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,substr(content,1,100) AS preview,source_kind,"
+                "source_event_id,source_url,created_at FROM knowledge_items WHERE " +
+                where + " ORDER BY created_at DESC,rowid DESC LIMIT ?", params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def knowledge_details(self, ids):
+        """Fetch selected full knowledge items; never infer source verification."""
+        ids = list(dict.fromkeys(ids))[:50]
+        if not ids:
+            return []
+        if any(not isinstance(kid, str) or not kid for kid in ids):
+            raise ValueError("知识编号不正确")
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,title,content,source_url,source_kind,source_event_id,created_at "
+                f"FROM knowledge_items WHERE owner_id=? AND id IN ({placeholders})",
+                [self.owner_id, *ids],
+            ).fetchall()
+        by_id = {row["id"]: dict(row) for row in rows}
+        return [by_id[kid] for kid in ids if kid in by_id]
 
     def delete_knowledge_item(self, item_id):
         with self._connect() as db:

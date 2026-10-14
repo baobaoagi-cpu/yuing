@@ -122,6 +122,7 @@
     transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
   #inCallBar{ transform:translate3d(var(--swipe-bar-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); }
+  .call-toolbar{ touch-action:pan-y pinch-zoom; }
   .call-toolbar,#viz,#dunni-portrait,#callTop,#callStage,#callControls{
     transform:translate3d(var(--swipe-scene-x,0px),0,0);
     transition:transform .22s cubic-bezier(.22,.8,.24,1); will-change:transform; }
@@ -209,7 +210,7 @@
     border-radius:12px; padding:13px 16px; }
   .inneritem .it{ font-size:11px; color:var(--dim); margin-bottom:7px; letter-spacing:.04em; }
   .inneritem .ix{ font-size:14px; color:rgba(255,255,255,.82); line-height:1.7; white-space:pre-wrap; }
-  .callpane{ position:relative; z-index:3; transition:transform .34s ease, opacity .34s ease; will-change:transform,opacity; touch-action:pan-y; }
+  .callpane{ position:relative; z-index:3; transition:transform .34s ease, opacity .34s ease; will-change:transform,opacity; touch-action:pan-y pinch-zoom; }
   .meetingview{ position:fixed; inset:0; z-index:2; padding:max(7.4vh,58px) 16px max(4.8vh,22px);
     display:flex; align-items:stretch; justify-content:flex-start; pointer-events:none; opacity:0; touch-action:pan-y;
     transform:translate3d(calc(-100% - 18px),0,0); transition:transform .34s ease, opacity .34s ease; }
@@ -557,7 +558,8 @@
     .then(data=>{ if(data&&typeof data.account==='string'&&data.account){
       CHAT_SESSION_KEY='yuling_chat_session_v2:'+data.account;
       localStorage.removeItem('yuling_chat_session_v2');
-      const accountName=data.account==='WAITIN'?'威廷':data.account;
+      const accountName=typeof data.display_name==='string'&&data.display_name
+        ? data.display_name : data.account;
       $('userLiveName').textContent=accountName;
       $('userAvatar').textContent=accountName.slice(0,1).toUpperCase();
       $('userAvatar').setAttribute('aria-label',accountName+'的頭像');
@@ -591,7 +593,8 @@
     callPanes.forEach(el=>{
       if(!el) return;
       el.style.transition=animate===false?'none':'';
-      el.style.transform=`translate3d(${shift}px,0,0)`;
+      if(MEETING_ENABLED) el.style.transform=`translate3d(${shift}px,0,0)`;
+      else el.style.removeProperty('transform');
       el.style.opacity=String(1-meetingProgress*0.78);
       el.style.pointerEvents=meetingProgress>0.82?'none':'';
     });

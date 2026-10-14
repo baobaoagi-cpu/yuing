@@ -178,13 +178,15 @@
   }
   function canStart(target, x) {
     if (blocked(target) || selectionActive()) return false;
-    const region = view === 'chat' ? '#conversation' : '#callTop, #callStage, #callControls';
+    const region = view === 'chat' ? '#conversation' : '.call-toolbar, #callTop, #callStage, #callControls';
     if (!target?.closest?.(region) && !(view === 'call' && target === document.body)) return false;
     if (view === 'call' && document.querySelector('.panel:not(.hidden), [role="dialog"]:not(.hidden)')) return false;
     if (view === 'chat' && (document.activeElement?.matches?.('input, textarea, [contenteditable]') ||
         (window.visualViewport && window.visualViewport.height < window.innerHeight - 120))) return false;
-    // Keep iPhone's native back/forward edge gesture available.
-    return x >= 28 && x <= window.innerWidth - 28;
+    // Safari owns the iPhone edge gesture. Android's system edge swipe may
+    // preempt this handler, but a gesture delivered to the page should work.
+    const edge = /iP(hone|od|ad)/.test(navigator.userAgent) ? 28 : 0;
+    return x >= edge && x <= window.innerWidth - edge;
   }
   function navigate() {
     lastNavigationAt = performance.now();

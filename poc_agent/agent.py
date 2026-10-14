@@ -5,6 +5,7 @@ read only server-signed, user-explicit memories for its room; Hermes and the
 knowledge base are not connected.
 """
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -14,7 +15,8 @@ from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
 from livekit.plugins import anthropic, minimax
 from emotion_policy import minimax_tts_text
-from signed_context import ContextRejected, signed_context_text
+from call_usage_meter import UsageLedgerError, send_signed_receipts
+from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
 
 
@@ -25,11 +27,12 @@ logger = logging.getLogger("duanni.call")
 AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
-# Mandarin, and Nova-3 supports a keyterm to bias this proper name.
+# Mandarin. Only the agent's name is global; a user's name must come from the
+# authenticated, room-bound account context rather than biasing every STT turn.
 STT_OPTIONS = {
     "model": "deepgram/nova-3",
     "language": "zh-CN",
-    "extra_kwargs": {"keyterm": ["陈端倪", "Nicole"]},
+    "extra_kwargs": {"keyterm": ["陈端倪"]},
 }
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
@@ -69,6 +72,8 @@ class ChenDunni(Agent):
                 "这是手机通话测试版，尚未接入完整 Hermes、知识库或图数据库。"
                 "只有在本次通话实际附带登录账号的记忆或近期对话片段时才能参考它；"
                 "近期逐字稿可能有误，不等于已确认的个人事实或永久记忆。"
+                "不要根据语音辨识出的名字猜当前用户是谁；以本次签名的登录账号资料为准。"
+                "如果对方自称与账号资料不一致，先询问，不要把两个人的记忆合并。"
                 "未提供的往事不要假装记得。不要声称能识别咳嗽、跌倒或车声等生活声，"
                 "除非系统真的提供了识别结果。听不清楚时请对方重说。"
                 + context_text
@@ -163,7 +168,13 @@ async def phone_call(ctx: agents.JobContext) -> None:
         raise RuntimeError("MINIMAX_API_KEY is required")
 
     context_text = ""
+    verified_owner_id = None
     try:
+        claims = verified_context_claims(
+            ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
+            ctx.room.name,
+        )
+        verified_owner_id = claims["owner_id"] if claims else None
         context_text = signed_context_text(
             ctx.job.metadata, os.environ.get("POC_VOICE_CONTEXT_HMAC_KEY", ""),
             ctx.room.name,
@@ -183,8 +194,10 @@ async def phone_call(ctx: agents.JobContext) -> None:
         logger.warning("call_stage context_rejected reason=%s", reason.replace(" ", "_"))
     else:
         logger.info(
-            "call_stage context_status=%s account_seed=%s",
+            "call_stage context_status=%s account_name=%s account_seed=%s",
             "accepted" if context_text else "absent",
+            "present" if "【本次已登录账号的称呼】" in context_text or
+                         "【已验证的账号称呼】" in context_text else "absent",
             "present" if "【当前账号开通时提供的基础资料" in context_text else "absent",
         )
 
@@ -213,6 +226,43 @@ async def phone_call(ctx: agents.JobContext) -> None:
             ),
         )
         _attach_call_diagnostics(session)
+        usage_endpoint = os.environ.get("POC_USAGE_ENDPOINT", "").strip()
+        usage_key = os.environ.get("POC_USAGE_HMAC_KEY", "").strip()
+        usage_task = None
+
+        async def _report_usage() -> None:
+            # Only a room-bound, authenticated owner can be billed. Never take
+            # this identity from a transcript or the browser's LiveKit name.
+            if not verified_owner_id or not usage_endpoint or len(usage_key.encode()) < 32:
+                logger.info("call_stage usage_receipt=unconfigured")
+                return
+            try:
+                count = await asyncio.to_thread(
+                    send_signed_receipts, endpoint=usage_endpoint,
+                    verified_owner_id=verified_owner_id, room=ctx.room.name,
+                    model_usage=session.usage.model_usage, secret=usage_key,
+                    timeout=2,
+                )
+            except UsageLedgerError:
+                logger.warning("call_stage usage_receipt=unavailable")
+            else:
+                logger.info("call_stage usage_receipt=accepted models=%d", count)
+
+        @session.on("close")
+        def _usage_on_close(_event) -> None:
+            nonlocal usage_task
+            if usage_task is None:
+                usage_task = asyncio.create_task(_report_usage())
+
+        async def _usage_on_shutdown(_reason: str) -> None:
+            # The LiveKit SDK runs shutdown callbacks together. A call that
+            # closes after this callback started can still have a pending send.
+            if usage_task is not None:
+                await usage_task
+            else:
+                await _report_usage()
+
+        ctx.add_shutdown_callback(_usage_on_shutdown)
         await session.start(room=ctx.room, agent=ChenDunni(context_text))
         logger.info("call_stage session_started")
         await session.generate_reply(instructions="向用户简短打招呼：你好，我是陈端倪。")

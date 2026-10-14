@@ -8,6 +8,7 @@ from hashlib import sha256
 import hmac
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -31,6 +32,7 @@ BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 from routes import yuling_bp  # noqa: E402
 from deploy_pwa.chat_store import ChatStore, StoreUnavailable, PageReadQuotaExceeded
+from deploy_pwa.progressive_memory import memories_for_turn
 from deploy_pwa.chat_api import reply_to, ProviderError
 from deploy_pwa.nico_profile_store import NicoProfileStore
 from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
@@ -95,6 +97,9 @@ _page_read_lock = threading.Lock()
 @app.before_request
 def _protect_original_yuling_api():
     if request.path.startswith("/api/yuling/"):
+        # Agent-to-server usage receipts use their own HMAC and no browser cookie.
+        if request.path == "/api/yuling/usage/ingest" and request.method == "POST":
+            return None
         guard = _require_login(api=True)
         if guard:
             return guard
@@ -314,7 +319,10 @@ def current_account():
     guard = _require_login(api=True)
     if guard:
         return guard
-    return jsonify(account=session["account"])
+    store = _chat_store()
+    profile = _profile_store(store) if store is not None else None
+    display_name = (profile.identity() or {}).get("display_name") if profile else None
+    return jsonify(account=session["account"], display_name=display_name)
 
 
 def _bridge(path, body=None, content_type=None):
@@ -344,6 +352,121 @@ def _chat_store():
                          legacy_owner_id=os.environ.get("POC_LEGACY_OWNER", USERNAME))
     except (StoreUnavailable, OSError):
         return None
+
+
+_USAGE_COMPONENTS = {"llm", "stt", "tts", "turn_detector", "interruption"}
+_USAGE_META_FIELDS = {"source_status", "cost_status", "input_cached_tokens",
+                      "input_cache_creation_tokens", "input_audio_tokens",
+                      "output_audio_tokens", "total_requests", "session_duration"}
+
+
+def _usage_store(owner_id):
+    """A Railway receipt must live on its mounted volume, or fail closed."""
+    path = os.environ.get("POC_CHAT_DB_PATH", "").strip()
+    if not path or not Path(path).is_absolute():
+        return None
+    if os.environ.get("RAILWAY_SERVICE_ID"):
+        mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+        if not mount or not Path(path).resolve().is_relative_to(Path(mount).resolve()):
+            return None
+    try:
+        return ChatStore(path, owner_id,
+                         legacy_owner_id=os.environ.get("POC_LEGACY_OWNER", USERNAME))
+    except (StoreUnavailable, OSError):
+        return None
+
+
+def _usage_receipt(raw):
+    """Validate a signed, strictly metering-only SDK receipt."""
+    try:
+        item = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    required = {"event_id", "owner_id", "call_id", "created_at", "provider",
+                "component", "model", "input_tokens", "output_tokens",
+                "audio_input_seconds", "audio_output_chars", "estimated_usd_micros",
+                "metadata"}
+    if not isinstance(item, dict) or set(item) != required:
+        return None
+    if (not isinstance(item["event_id"], str) or
+            not re.fullmatch(r"[0-9a-f]{64}", item["event_id"]) or
+            not isinstance(item["owner_id"], str) or
+            item["owner_id"] not in ({USERNAME} | set(EXTRA_ACCOUNTS)) or
+            not isinstance(item["call_id"], str) or
+            not re.fullmatch(r"ailivex-yuling-[A-Za-z0-9_-]{1,115}", item["call_id"]) or
+            not isinstance(item["component"], str) or
+            item["component"] not in _USAGE_COMPONENTS):
+        return None
+    for key, limit in (("provider", 100), ("model", 120)):
+        value = item[key]
+        if not isinstance(value, str) or not value or len(value) > limit or any(
+                ord(char) < 32 for char in value):
+            return None
+    timestamp = item["created_at"]
+    if (isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or
+            not math.isfinite(timestamp) or abs(time.time() - timestamp) > 300):
+        return None
+    for key in ("input_tokens", "output_tokens", "audio_output_chars"):
+        value = item[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10**12:
+            return None
+    duration = item["audio_input_seconds"]
+    if (isinstance(duration, bool) or not isinstance(duration, (int, float)) or
+            not math.isfinite(duration) or not 0 <= duration <= 86_400):
+        return None
+    # Pricing is not configured: no guessed USD cost or credit is accepted.
+    if item["estimated_usd_micros"] is not None:
+        return None
+    metadata = item["metadata"]
+    if (not isinstance(metadata, dict) or not set(metadata) <= _USAGE_META_FIELDS or
+            metadata.get("source_status") != "livekit_sdk_reported" or
+            metadata.get("cost_status") != "unpriced"):
+        return None
+    for key, value in metadata.items():
+        if key in {"source_status", "cost_status"}:
+            continue
+        if key == "session_duration":
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 86_400:
+                return None
+        elif isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10**12:
+            return None
+    return item
+
+
+@app.post("/api/yuling/usage/ingest")
+def ingest_voice_usage():
+    key = os.environ.get("POC_USAGE_HMAC_KEY", "")
+    if len(key.encode("utf-8")) < 32:
+        return jsonify(error="用量接收未配置"), 503
+    if (request.mimetype != "application/json" or request.content_length is None or
+            not 0 < request.content_length <= 4096):
+        return jsonify(error="请求格式不正确"), 400
+    raw = request.get_data(cache=False)
+    signature = request.headers.get("X-Usage-Signature", "")
+    expected = "sha256=" + hmac.new(key.encode("utf-8"), raw, sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return jsonify(error="签名不正确"), 403
+    item = _usage_receipt(raw)
+    if item is None:
+        return jsonify(error="用量格式不正确"), 400
+    store = _usage_store(item["owner_id"])
+    if store is None:
+        return jsonify(error="用量存储未就绪"), 503
+    try:
+        changed = store.record_voice_usage(item)
+    except StoreUnavailable:
+        return jsonify(error="用量事件冲突"), 409
+    return jsonify(ok=True, changed=changed), 201 if changed else 200
+
+
+@app.get("/api/yuling/usage")
+def my_voice_usage():
+    # The before_request guard already validated the login cookie. A query
+    # parameter can never select another owner's usage.
+    store = _usage_store(request.environ["poc.authenticated_owner"])
+    if store is None:
+        return jsonify(error="用量存储未就绪"), 503
+    return jsonify(store.voice_usage_summary())
 
 
 def _companion_root():
@@ -1053,7 +1176,7 @@ def conversation_chat():
             except Exception:
                 app.logger.exception("skill candidate capture failed")
     try:
-        answer = reply_to(text_value, history, store.memories(), image=image,
+        answer = reply_to(text_value, history, memories_for_turn(store, text_value), image=image,
                           link_url=link_url, page_context=page_context,
                           document_context=document, owner_id=store.owner_id,
                           display_name=(profile.identity() or {}).get("display_name")
