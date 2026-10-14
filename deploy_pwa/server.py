@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+import sqlite3
 import sys
 import threading
 import time
@@ -39,6 +40,7 @@ from deploy_pwa.skill_growth import SkillGrowthStore, explicit_skill_need
 from deploy_pwa.call_reflection import PROMPT_VERSION, substantial_call, generate_reflection
 from deploy_pwa.public_page_reader import PageReadError, _validated_url, read_public_page
 from deploy_pwa.time_tool import ZONES, TimeToolError, convert_time
+from deploy_pwa.search_budget import reserve_trial_search
 USERNAME = os.environ.get("POC_PREVIEW_USER", "")
 PASSWORD = os.environ.get("POC_PREVIEW_PASSWORD", "")
 SESSION_SECRET = os.environ.get("POC_SESSION_SECRET", "")
@@ -98,7 +100,8 @@ _page_read_lock = threading.Lock()
 def _protect_original_yuling_api():
     if request.path.startswith("/api/yuling/"):
         # Agent-to-server usage receipts use their own HMAC and no browser cookie.
-        if request.path == "/api/yuling/usage/ingest" and request.method == "POST":
+        if (request.path in {"/api/yuling/usage/ingest", "/api/yuling/search/reserve"}
+                and request.method == "POST"):
             return None
         guard = _require_login(api=True)
         if guard:
@@ -376,6 +379,18 @@ def _usage_store(owner_id):
         return None
 
 
+def _search_budget_path():
+    """Use only the PWA's mounted, persistent SQLite file."""
+    path = os.environ.get("POC_CHAT_DB_PATH", "").strip()
+    if not path or not Path(path).is_absolute():
+        return None
+    if os.environ.get("RAILWAY_SERVICE_ID"):
+        mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+        if not mount or not Path(path).resolve().is_relative_to(Path(mount).resolve()):
+            return None
+    return path
+
+
 def _usage_receipt(raw):
     """Validate a signed, strictly metering-only SDK receipt."""
     try:
@@ -457,6 +472,47 @@ def ingest_voice_usage():
     except StoreUnavailable:
         return jsonify(error="用量事件冲突"), 409
     return jsonify(ok=True, changed=changed), 201 if changed else 200
+
+
+@app.post("/api/yuling/search/reserve")
+def reserve_voice_search():
+    """Private Agent-only reservation; failure never permits provider search."""
+    key = os.environ.get("POC_USAGE_HMAC_KEY", "")
+    if len(key.encode("utf-8")) < 32:
+        return jsonify(error="搜索额度未配置"), 503
+    if (request.mimetype != "application/json" or request.content_length is None or
+            not 0 < request.content_length <= 1024):
+        return jsonify(error="请求格式不正确"), 400
+    raw = request.get_data(cache=False)
+    signature = request.headers.get("X-Search-Signature", "")
+    expected = "sha256=" + hmac.new(
+        key.encode("utf-8"), b"dunni-search-v1\n" + raw, sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return jsonify(error="签名不正确"), 403
+    try:
+        item = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return jsonify(error="请求格式不正确"), 400
+    if (not isinstance(item, dict) or set(item) !=
+            {"request_id", "owner_id", "call_id", "created_at"} or
+            not isinstance(item["request_id"], str) or
+            not re.fullmatch(r"[0-9a-f]{32}", item["request_id"]) or
+            not isinstance(item["owner_id"], str) or
+            item["owner_id"] not in ({USERNAME} | set(EXTRA_ACCOUNTS)) or
+            not isinstance(item["call_id"], str) or
+            not re.fullmatch(r"ailivex-yuling-[A-Za-z0-9_-]{1,115}", item["call_id"]) or
+            type(item["created_at"]) is not int or
+            abs(time.time() - item["created_at"]) > 300):
+        return jsonify(error="请求格式不正确"), 400
+    path = _search_budget_path()
+    if path is None:
+        return jsonify(error="搜索额度存储未就绪"), 503
+    try:
+        allowed = reserve_trial_search(path, item)
+    except (sqlite3.Error, OSError):
+        return jsonify(error="搜索额度存储未就绪"), 503
+    return (jsonify(ok=True), 201) if allowed else (jsonify(error="试用额度已用完"), 429)
 
 
 @app.get("/api/yuling/usage")

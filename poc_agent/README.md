@@ -1,5 +1,20 @@
 # 陳端倪 MiniMax 通話 POC
 
+## 聯網搜尋試用
+
+百煉官方 `WebSearch` MCP 的工具名是 `bailian_web_search`，請求欄位為
+`query` 與 `count`。只有 Agent 的 `DUNNI_WEB_SEARCH_ENABLED=1`、
+`DASHSCOPE_API_KEY`、既有 `POC_USAGE_ENDPOINT` 與兩端共用的
+`POC_USAGE_HMAC_KEY` 都就緒，且通話帶有已驗簽的登入帳號時才開放。
+每通最多 3 次，PWA 掛載資料庫對所有測試帳號合計只准 20 次試用搜尋；
+每次在呼叫百煉前先向 `/api/yuling/search/reserve` 原子預留額度，
+服務或資料庫不可用時不呼叫供應商。失敗的供應商嘗試也計入額度。
+搜尋摘要與網址來自未核實的公開網頁，通話中應告訴使用者來源。
+
+這 20 次是本應用的試用硬停，不能控制同一阿里雲主帳號下其他應用的用量。
+百煉頁面目前標示帳號前 2,000 次免費，超額按量計費；因此上線前仍需
+核對實際帳號、API Key 所屬地域、當期用量及供應商帳單。
+
 這是獨立的 LiveKit Agent，使用原版語靈通話前端與現有 LiveKit 專案：
 
 `手機 → LiveKit → Deepgram Nova-3 (LiveKit Inference) → MiniMax M3 → MiniMax Speech 2.8 Turbo → 手機`

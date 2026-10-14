@@ -18,7 +18,7 @@ from emotion_policy import minimax_tts_text
 from call_usage_meter import UsageLedgerError, send_signed_receipts
 from signed_context import ContextRejected, signed_context_text, verified_context_claims
 from tts_config import minimax_tts_options
-from web_search import CallSearch, search_is_enabled
+from web_search import CallSearch, SearchBudget, search_is_enabled
 
 
 load_dotenv(".env.local")
@@ -211,8 +211,12 @@ async def phone_call(ctx: agents.JobContext) -> None:
     logger.info("call_stage job_accepted")
     try:
         search_tool = None
-        if search_is_enabled():
-            call_search = CallSearch(os.environ["DASHSCOPE_API_KEY"])
+        if search_is_enabled() and verified_owner_id:
+            budget = SearchBudget(
+                os.environ["POC_USAGE_ENDPOINT"], os.environ["POC_USAGE_HMAC_KEY"],
+                verified_owner_id, ctx.room.name,
+            )
+            call_search = CallSearch(os.environ["DASHSCOPE_API_KEY"], budget)
 
             @function_tool(
                 name="web_search",
