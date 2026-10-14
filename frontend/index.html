@@ -2022,14 +2022,15 @@
         const role=speakerIdentity===callRoom.localParticipant.identity?'user':'assistant';
         let transcript='';
         try{
-          // LiveKit yields the full text received so far. This also follows
-          // TTS-synchronised agent speech instead of guessing from audio.
+          // LiveKit yields text chunks. Accumulate them so a streamed
+          // character never replaces the rest of the spoken sentence.
           for await(const update of reader){
-            transcript=String(update).trim();
+            transcript+=String(update);
             if(room===callRoom && attempt===callAttemptId)
-              showLiveTranscript(role,String(segmentId),transcript,isFinal);
+              showLiveTranscript(role,String(segmentId),transcript.trim(),isFinal);
           }
         }catch(_){ return; }
+        transcript=transcript.trim();
         if(room!==callRoom || attempt!==callAttemptId || !isFinal || !transcript) return;
         showLiveTranscript(role,String(segmentId),transcript,true);
         if(role==='user') setLamp('stt','ok');
