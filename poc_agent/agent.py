@@ -31,12 +31,12 @@ AGENT_NAME = "duanni-minimax-poc"
 ROOM_PREFIX = "ailivex-yuling-"
 TTS_FIRST_FRAME_TIMEOUT = 15.0
 # Nova-3's "multi" language set excludes Mandarin.  Shanghai POC calls use
-# Mandarin. Only the agent's name is global; a user's name must come from the
-# authenticated, room-bound account context rather than biasing every STT turn.
+# Mandarin. Keep global hints to public product names and technical terms;
+# a user's name must come from authenticated, room-bound account context.
 STT_OPTIONS = {
     "model": "deepgram/nova-3",
     "language": "zh-CN",
-    "extra_kwargs": {"keyterm": ["陈端倪"]},
+    "extra_kwargs": {"keyterm": ["陈端倪", "语灵", "MiniMax", "STT", "TTS", "LiveKit", "Hermes"]},
 }
 PERSONA_PATH = Path(__file__).resolve().parent / "persona" / "chen_dunni_constitution_v1.md"
 PERSONA_CONSTITUTION = PERSONA_PATH.read_text(encoding="utf-8").strip()
