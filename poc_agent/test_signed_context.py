@@ -58,6 +58,20 @@ class SignedContextTest(unittest.TestCase):
         self.assertIn("当前登录账号的称呼", context)
         self.assertIn("不要把这些资料说成自己从声音认出来的", context)
 
+    def test_waitin_creator_seed_is_bound_to_waitin_only(self):
+        seed = {"display_name": {"value": "威廷",
+                                 "source_kind": "account_setup_user_provided",
+                                 "source_date": "2026-10-14",
+                                 "confidence": "user_provided_unverified"}}
+        context = signed_context_text(envelope(owner_id="WAITIN", memories=[],
+                                               account_seed=seed), KEY, ROOM, now=110)
+        self.assertIn("威廷", context)
+        self.assertIn("不授予服务器", context)
+        with self.assertRaises(ContextRejected):
+            signed_context_text(envelope(owner_id="MING", memories=[],
+                                         account_seed={"creator": seed["display_name"]}),
+                                KEY, ROOM, now=110)
+
     def test_room_mismatch_and_expired_context_are_rejected(self):
         with self.assertRaises(ContextRejected):
             signed_context_text(envelope(), KEY, "other-room", now=110)

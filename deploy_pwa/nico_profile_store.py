@@ -36,6 +36,12 @@ _MING_SEED = {
     "collaboration": "协助准备陈端倪的中国区服务器",
     "account_purpose": "王跃明是陈端倪的独立陪伴使用者；由他主动打开对话",
 }
+_WAITIN_SEED = {
+    "display_name": "威廷",
+    "relationship": "陈端倪的创作者",
+    "account_purpose": "威廷以独立账号体验陈端倪；他的对话、记忆、知识和关系候选与其他用户隔离",
+}
+_ACCOUNT_SEEDS = {"MING": _MING_SEED, "WAITIN": _WAITIN_SEED}
 _SEED_SOURCE = "account_setup_user_provided"
 _SEED_DATE = "2026-10-14"  # Date precision only; no account-opening clock time was supplied.
 
@@ -109,8 +115,8 @@ class NicoProfileStore:
                            "(owner_id,display_name,source_kind,source_event_id,updated_at) "
                            "VALUES(?,?,?,?,?)",
                            (owner_id, "Nicole", "account_seed", None, time.time()))
-            if owner_id == "MING":
-                for field, value in _MING_SEED.items():
+            if owner_id in _ACCOUNT_SEEDS:
+                for field, value in _ACCOUNT_SEEDS[owner_id].items():
                     exists = db.execute(
                         "SELECT 1 FROM account_seed_revisions WHERE owner_id=? AND field=? LIMIT 1",
                         (owner_id, field)).fetchone()
@@ -174,7 +180,7 @@ class NicoProfileStore:
         return row
 
     def identity(self):
-        if self.owner_id == "MING":
+        if self.owner_id in _ACCOUNT_SEEDS:
             name = self.seed_facts().get("display_name")
             if name and name["status"] == "active":
                 return {"display_name": name["value"], "source_kind": name["source_kind"],
@@ -199,7 +205,7 @@ class NicoProfileStore:
 
     def correct_seed_fact(self, field: str, value: str | None):
         """Record an authenticated user's correction or retraction without erasing provenance."""
-        if field not in _MING_SEED or field not in self.seed_facts():
+        if field not in _ACCOUNT_SEEDS.get(self.owner_id, {}) or field not in self.seed_facts():
             raise ValueError("种子字段不存在")
         if value is not None and (not isinstance(value, str) or not 1 <= len(value.strip()) <= 120
                                   or any(ord(ch) < 32 for ch in value)):

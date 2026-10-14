@@ -29,7 +29,8 @@ class ProfileApiTest(unittest.TestCase):
             patch.object(server, "SESSION_SECRET", "synthetic-secret-at-least-thirty-two-characters"),
             patch.object(server, "EXTRA_ACCOUNTS", {"other": generate_password_hash(
                 "synthetic-other-password", method="pbkdf2:sha256:1000000"),
-                "MING": generate_password_hash("synthetic-ming-password", method="pbkdf2:sha256:1000000")}),
+                "MING": generate_password_hash("synthetic-ming-password", method="pbkdf2:sha256:1000000"),
+                "WAITIN": generate_password_hash("synthetic-waitin-password", method="pbkdf2:sha256:1000000")}),
             patch.dict(os.environ, {
                 "POC_CHAT_DB_PATH": self.db_path,
                 "POC_COMPANION_ROOT": self.profile_root,
@@ -136,6 +137,7 @@ class ProfileApiTest(unittest.TestCase):
         self.assertEqual(corrected.json["item"]["source_kind"], "authenticated_user_correction")
         self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json
                          ["account_seed"]["occupation"]["value"], "软件工程师")
+
         retracted = self.client.patch("/api/v2/profile/account-seed/gender",
                                       base_url=self.base, headers=self.headers,
                                       json={"value": None})
@@ -155,6 +157,24 @@ class ProfileApiTest(unittest.TestCase):
                                      json={"value": "冒名修改"}).status_code, 400)
         self.assertEqual(self.client.get("/api/v2/profile", base_url=self.base).json
                          ["account_seed"]["occupation"]["value"], "软件工程师")
+
+    def test_waitin_seed_and_memory_are_isolated_from_ming(self):
+        self.login(username="waitin", password="synthetic-waitin-password")
+        profile = self.client.get("/api/v2/profile", base_url=self.base).json
+        self.assertEqual(profile["identity"]["display_name"], "威廷")
+        self.assertEqual(profile["account_seed"]["relationship"]["value"], "陈端倪的创作者")
+        self.assertEqual(profile["account_seed"]["relationship"]["confidence"],
+                         "user_provided_unverified")
+        _, kwargs = self.chat("你好")
+        self.assertEqual(kwargs["owner_id"], "WAITIN")
+        self.assertEqual(kwargs["account_seed"]["display_name"]["value"], "威廷")
+        self.assertEqual(self.client.post("/api/v2/memories", base_url=self.base,
+                                          headers=self.headers, json={"text": "仅威廷的记忆"}).status_code, 201)
+        other = server.app.test_client()
+        self.login(other, "MING", "synthetic-ming-password")
+        self.assertEqual(other.get("/api/v2/memories", base_url=self.base).json["memories"], [])
+        self.assertEqual(other.get("/api/v2/profile", base_url=self.base).json
+                         ["account_seed"]["display_name"]["value"], "王跃明")
 
     def test_other_account_cannot_read_or_delete_nicole_candidates(self):
         self.login()

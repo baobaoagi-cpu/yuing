@@ -43,7 +43,7 @@ def issue_voice_context(secret: str, room: str, owner_id: str,
         "expires_at": issued + 90,
         "memories": clean,
     }
-    if owner_id == "MING" and isinstance(account_seed, dict):
+    if owner_id in {"MING", "WAITIN"} and isinstance(account_seed, dict):
         claims["account_seed"] = {
             field: {"value": item["value"], "source_kind": item["source_kind"],
                     "source_date": item["source_date"], "confidence": item["confidence"]}
