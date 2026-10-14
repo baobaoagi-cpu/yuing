@@ -284,6 +284,9 @@ async def phone_call(ctx: agents.JobContext) -> None:
             tts=minimax.TTS(**minimax_tts_options(api_key)),
             turn_handling=TurnHandlingOptions(
                 turn_detection=inference.TurnDetector(),
+                # The live Mandarin call logged a final STT result after its
+                # turn was committed. Give trailing syllables time to arrive.
+                endpointing={"min_delay": 0.9, "max_delay": 3.0},
                 interruption={
                     "enabled": True,
                     "min_duration": 0.5,
