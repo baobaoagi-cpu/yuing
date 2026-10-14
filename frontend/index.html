@@ -2272,7 +2272,8 @@
       if(attempt!==callAttemptId){ await pendingRoom.disconnect().catch(()=>{}); return; }
       roomJoined=true;
       setLamp('room','ok');
-      setCallPhase('waiting');
+      if(agentState) applyAgentState(agentState);
+      else setCallPhase('waiting');
       armCallAnswerTimer(callRoom,attempt);
       try{
         await room.localParticipant.setMicrophoneEnabled(true);
